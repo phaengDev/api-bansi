@@ -50,7 +50,6 @@ const insertData = (table, fields, data, callback) => {
 };
 
 const updateData = (table, field, data, condition, callback) => {
-    // const placeholders = new Array(data.length).fill('?').join(', ');
     const setFields = field.split(',').map(field => `${field} = ?`).join(', ');
     const query = `UPDATE ${table} SET ${setFields} WHERE ${condition}`;
     connection.query(query, data, (err, results) => {
@@ -61,6 +60,18 @@ const updateData = (table, field, data, condition, callback) => {
         callback(null, results);
     });
 };
+
+// connection.updateData = function (table, fields, data, condition, callback) {
+//     const query = `UPDATE ${table} SET ${fields} WHERE ${condition}`;
+  
+//     db.query(query, data, (err, results) => {
+//       if (err) {
+//         console.error('Error executing update query:', err);
+//         return callback(err, null);
+//       }
+//       callback(null, results);
+//     });
+//   };
 
 
 const deleteData = (table, where, callback) => {

@@ -71,7 +71,7 @@ router.post('/create', upload.fields([{ name: 'profile' }, { name: 'document' }]
                 let userName = first_name + '' + last_name;
                 let userId = uuidv4();
                 const fieldsLogin = `userId,employee_id_fk,userName,userEmail,userPassword,rightsUse,statusUse`;
-                const dataLogin = [userId, employee_id, userName, userEmail, userPassword, rightsUse, '1'];
+                const dataLogin = [userId, employee_id, userName, btoa(userEmail), userPassword, rightsUse, '1'];
                 db.insertData('tbl_users', fieldsLogin, dataLogin, (err, results) => {
                     if (err) {
                         console.error('Error inserting data:', err);
@@ -134,14 +134,14 @@ tbl_employee.employee_id,
 	tbl_department.depart_name, 
 	tbl_users.userId, 
 	tbl_users.userName, 
-	tbl_users.userEmail, 
+	tbl_users.userEmail,
 	tbl_users.userPassword, 
     tbl_users.rightsUse,
     tbl_users.statusUse,
 	tbl_rights_use.rightsName, 
-	tbl_rights_use.insert, 
-	tbl_rights_use.edit, 
-	tbl_rights_use.delete, 
+	tbl_rights_use.inserts, 
+	tbl_rights_use.edits, 
+	tbl_rights_use.deletes, 
 	tbl_rights_use.status_ck`;
 const wheres=`status_inout='1' ${departId} ${districtId} ${provinceId}`;
     db.queryConditions(tables, fileds, wheres, (err, results) => {
@@ -149,8 +149,16 @@ const wheres=`status_inout='1' ${departId} ${districtId} ${provinceId}`;
             console.error('Error inserting data:', err);
         }
         res.status(200).json(results);
-    })
-
-})
+    });
+});
+router.get("/option", function (req, res) {
+    const where=`status_inout='1'`;
+    db.queryData('tbl_employee', where,(err, results) => {
+        if (err) {
+            return res.status(400).send();
+        }
+        res.status(200).json(results);
+    });
+});
 
 module.exports = router;

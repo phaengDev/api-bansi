@@ -29,7 +29,7 @@ router.post("/check", function(req, res) {
 	tbl_users.userPassword,
     tbl_employee.profile, 
 	tbl_department.depart_name`; 
-    const where = `userEmail = '${userEmail}' AND statusUse='1'`; 
+    const where = `userEmail = '${btoa(userEmail)}' AND statusUse='1'`; 
     db.queryConditions(table, fields, where, (err, results) => {
         if (err) {
             return res.status(400)
@@ -70,6 +70,7 @@ router.post("/check", function(req, res) {
                     inserts:results[0].inserts,
                     edits:results[0].edits,
                     deletes:results[0].deletes,
+                    status_ck:results[0].status_ck,
                     profile:results[0].profile,
                     departName:results[0].depart_name,
                 });
@@ -82,7 +83,7 @@ router.post("/check", function(req, res) {
 router.post("/authen", jsonParser, function (req, res) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ status: '401', message: 'ບໍ່ໄດ້ຮັບອະນຸຍາດ:: Token missing' });
+        return res.status(401).json({ status: '401', message: 'ບໍ່ໄດ້ຮັບອະນຸຍາດ: Token missing' });
     }
     try {
         const token = authHeader.split(' ')[1]; // Extract the token
