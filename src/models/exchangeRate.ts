@@ -53,10 +53,14 @@ ExchangeRate.init(
       defaultValue: DataTypes.NOW
     },
   },
-  { sequelize, modelName: "ExchangeRate", tableName: "tbl_exchange_rate", timestamps: true }
+  { sequelize, 
+    modelName: "ExchangeRate", 
+    tableName: "tbl_exchange_rate", 
+    timestamps: true }
 );
 
-ExchangeRate.belongsTo(Currency, { foreignKey: "currencyId", as: "currency" });
+ExchangeRate.belongsTo(Currency, { 
+  foreignKey: "currencyId", as: "currency" });
 
 autoSync(ExchangeRate);
 export default ExchangeRate;

@@ -28,22 +28,75 @@ class ChartAccount extends Model {
 
 ChartAccount.init(
   {
-    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    account_code: { type: DataTypes.STRING(20), allowNull: false, unique: true },
-    name_la: { type: DataTypes.STRING(200), allowNull: false },
-    name_en: DataTypes.STRING(200),
-    name_cn: DataTypes.STRING(200),
-    parent_id: DataTypes.INTEGER,
-    account_group: { type: DataTypes.TINYINT, allowNull: false },
-    account_type: { type: DataTypes.STRING(30), allowNull: false },
-    normal_side: { type: DataTypes.TINYINT, allowNull: false },
-    is_postable: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
-    currency_id: DataTypes.INTEGER,
-    is_system: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
-    description: DataTypes.STRING(255),
-    status: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
-    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    account_code: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      unique: true
+    },
+    name_la: {
+      type: DataTypes.STRING(200),
+      allowNull: false
+    },
+    name_en: {
+      type: DataTypes.STRING(200),
+      allowNull: true
+    },
+    name_cn: {
+      type: DataTypes.STRING(200),
+      allowNull: true
+    },
+    parent_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    account_group: {
+      type: DataTypes.TINYINT,
+      allowNull: false
+    },
+    account_type: {
+      type: DataTypes.STRING(30),
+      allowNull: false
+    },
+    normal_side: {
+      type: DataTypes.TINYINT,
+      allowNull: false
+    },
+    is_postable: {
+      type: DataTypes.TINYINT,
+      allowNull: false, defaultValue: 1
+    },
+    currency_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    is_system: {
+      type: DataTypes.TINYINT,
+      allowNull: false, defaultValue: 0
+    },
+    description: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    status: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
   },
   {
     sequelize,

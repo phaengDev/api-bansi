@@ -26,19 +26,50 @@ class JournalLine extends Model {
 
 JournalLine.init(
   {
-    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    entry_id: { type: DataTypes.INTEGER, allowNull: false },
-    line_no: { type: DataTypes.INTEGER, allowNull: false },
-    account_id: { type: DataTypes.INTEGER, allowNull: false },
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    entry_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    line_no: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
     description: DataTypes.STRING(255),
-    debit: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
-    credit: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
+    debit: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false, defaultValue: 0
+    },
+    credit: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false, defaultValue: 0
+    },
     currency_id: DataTypes.INTEGER,
-    amount_currency: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
-    exchange_rate: { type: DataTypes.DECIMAL(16, 4), allowNull: false, defaultValue: 1 },
+    amount_currency: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false, defaultValue: 0
+    },
+    exchange_rate: {
+      type: DataTypes.DECIMAL(16, 4),
+      allowNull: false, defaultValue: 1
+    },
     treasury_account_id: DataTypes.INTEGER,
-    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false, defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false, defaultValue: DataTypes.NOW
+    },
   },
   {
     sequelize,
@@ -48,7 +79,10 @@ JournalLine.init(
   }
 );
 
-JournalLine.belongsTo(ChartAccount, { foreignKey: "account_id", as: "account", constraints: false });
+JournalLine.belongsTo(ChartAccount, {
+  foreignKey: "account_id", as: "account",
+  constraints: false
+});
 
 autoSync(JournalLine);
 export default JournalLine;

@@ -2,6 +2,7 @@ import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
 import TypeUser from "./typeUserModel";
+import Employee from "./employee";
 // ✅ Define attributes
 interface UserAttributes {
     user_uuid: number;
@@ -9,6 +10,7 @@ interface UserAttributes {
     user_name: string;
     phones: string;
     password: string;
+    employee_id?: number | null;
     status: number;
     deletes: number;
     updates: number;
@@ -26,6 +28,8 @@ class Users extends Model<UserAttributes, UserCreationAttributes>
     public user_name!: string;
     public phones!: string;
     public password!: string;
+    /** ພະນັກງານເຈົ້າຂອງບັນຊີ (tbl_employee) — ບໍ່ບັງຄັບ, ໜຶ່ງພະນັກງານມີໄດ້ບັນຊີດຽວ */
+    public employee_id!: number | null;
     public status!: number;
     public deletes!: number;
     public updates!: number;
@@ -56,6 +60,10 @@ Users.init(
         },
         password: {
             type: DataTypes.STRING, // hash password ໄດ້
+            allowNull: true,
+        },
+        employee_id: {
+            type: DataTypes.INTEGER,
             allowNull: true,
         },
         status: {
@@ -95,6 +103,7 @@ Users.belongsTo(TypeUser, {
   foreignKey: "type_user",
   as: "typeuser",   // must match include
 });
+Users.belongsTo(Employee, { foreignKey: "employee_id", as: "employee", constraints: false });
 // ✅ Export model
 // ສ້າງ/ປັບຕາຕະລາງເອງຕອນເປີດ server (App.ts → runAutoSync)
 autoSync(Users);

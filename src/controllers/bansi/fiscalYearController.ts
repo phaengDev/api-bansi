@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { maxid } from "../../utils";
 import FiscalYear from "../../models/fiscalYear";
 import OpeningBalance from "../../models/openingBalance";
+import Budget from "../../models/budget";
 import { actorOf, decodeId, pickFields, sendError, toDateOnly } from "./bansiHelpers";
 
 const FIELDS = ["fiscal_code", "fiscal_name", "start_date", "end_date", "description"] as const;
@@ -171,7 +172,7 @@ export const reopenFiscalYear = async (req: Request<{ id: string }>, res: Respon
   }
 };
 
-// ລຶບໄດ້ສະເພາະປີທີ່ບໍ່ແມ່ນປີປັດຈຸບັນ, ຍັງເປີດຢູ່ ແລະ ບໍ່ມີຍອດຍົກມາ
+// ລຶບໄດ້ສະເພາະປີທີ່ບໍ່ແມ່ນປີປັດຈຸບັນ, ຍັງເປີດຢູ່ ແລະ ບໍ່ມີຍອດຍົກມາ / ງົບປະມານ
 export const deleteFiscalYear = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = decodeId(req);
@@ -180,9 +181,9 @@ export const deleteFiscalYear = async (req: Request<{ id: string }>, res: Respon
       res.status(404).json({ message: "ບໍ່ພົບປີການເງິນ" });
       return;
     }
-    const used = await OpeningBalance.count({ where: { fiscal_id: id } });
+    const used = (await OpeningBalance.count({ where: { fiscal_id: id } })) + (await Budget.count({ where: { fiscal_id: id } }));
     if (row.is_current === 1 || row.status === 2 || used) {
-      res.status(400).json({ message: "ລຶບບໍ່ໄດ້ — ເປັນປີປັດຈຸບັນ, ປິດບັນຊີແລ້ວ ຫຼື ມີຍອດຍົກມາແລ້ວ" });
+      res.status(400).json({ message: "ລຶບບໍ່ໄດ້ — ເປັນປີປັດຈຸບັນ, ປິດບັນຊີແລ້ວ ຫຼື ມີຍອດຍົກມາ / ງົບປະມານແລ້ວ" });
       return;
     }
     await row.destroy();

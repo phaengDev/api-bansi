@@ -92,10 +92,14 @@ DocNumbering.init(
       defaultValue: DataTypes.NOW
     },
   },
-  { sequelize, modelName: "DocNumbering", tableName: "tbl_doc_numbering", timestamps: true }
+  { sequelize, 
+    modelName: "DocNumbering", 
+    tableName: "tbl_doc_numbering", 
+    timestamps: true }
 );
 
-DocNumbering.belongsTo(JournalType, { foreignKey: "journal_id", as: "journal" });
+DocNumbering.belongsTo(JournalType, { 
+  foreignKey: "journal_id", as: "journal" });
 
 autoSync(DocNumbering);
 export default DocNumbering;

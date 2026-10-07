@@ -11,6 +11,9 @@ dist/
 
 # ໄຟລ໌ທີ່ຜູ້ໃຊ້ upload (src/uploads ຕອນ dev, dist/uploads ຕອນ start)
 src/uploads/
+# ເອກະສານສ່ວນຕົວ (ເອກະສານພະນັກງານ) — ບໍ່ມີ URL ສາທາລະນະ
+src/private/
+dist/private/
 
 # ສຳຮອງຂໍ້ມູນ/ໂຄດເກົ່າ
 backup/

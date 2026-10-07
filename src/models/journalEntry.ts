@@ -28,21 +28,55 @@ class JournalEntry extends Model {
 
 JournalEntry.init(
   {
-    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    entry_number: { type: DataTypes.STRING(50), allowNull: false, unique: true },
-    entry_date: { type: DataTypes.DATEONLY, allowNull: false },
-    source_type: { type: DataTypes.STRING(30), allowNull: false },
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    entry_number: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      unique: true
+    },
+    entry_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: false
+    },
+    source_type: {
+      type: DataTypes.STRING(30),
+      allowNull: false
+    },
     source_id: DataTypes.STRING(50),
     reference: DataTypes.STRING(100),
     description: DataTypes.STRING(500),
-    total_debit: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
-    total_credit: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
+    total_debit: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false,
+      defaultValue: 0
+    },
+    total_credit: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false,
+      defaultValue: 0
+    },
     reversal_of: DataTypes.INTEGER,
     reversed_by: DataTypes.INTEGER,
-    status: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    status: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 1
+    },
     created_by: DataTypes.INTEGER,
-    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false, 
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false, 
+      defaultValue: DataTypes.NOW
+    },
   },
   {
     sequelize,
@@ -52,7 +86,10 @@ JournalEntry.init(
   }
 );
 
-JournalEntry.hasMany(JournalLine, { foreignKey: "entry_id", as: "lines", constraints: false });
+JournalEntry.hasMany(JournalLine, {
+  foreignKey: "entry_id", as: "lines",
+  constraints: false
+});
 
 autoSync(JournalEntry);
 export default JournalEntry;

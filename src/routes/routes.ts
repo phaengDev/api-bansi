@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createUpload, createUploadFile } from "../utils/uploadFile";
 import { verifyToken, login } from "../middleware/auth";
+import { requirePermission } from "../middleware/permission";
 import { getUsers, createUser, getUserById, updateUser, deleteUser, updatePassword, getTypeUser } from "../controllers/userController";
 import { getcurrency, updateCurrency, updateCurrencyMt } from "../controllers/currencyController";
 import { createBank, updateBank, deleteBank, fetchBank, getBankOption } from "../controllers/bankController";
@@ -55,6 +56,18 @@ import {
   getPartners, createPartner, updatePartner, getPartnerDocs, createPartnerDoc, cancelPartnerDoc,
   getPartnerPayments, createPartnerPayment, cancelPartnerPayment,
 } from "../controllers/bansi/arapController";
+import {
+  getBudgets, createBudget, updateBudget, deleteBudget, getBudgetExpenses, checkBudget,
+} from "../controllers/bansi/budgetController";
+// ======== ຂໍ້ມູນພື້ນຖານ (HR)
+import {
+  getDepartments, getDepartmentOption, createDepartment, updateDepartment, deleteDepartment, getProvinces,
+} from "../controllers/hr/departmentController";
+import {
+  getEmployees, getEmployeeOption, createEmployee, updateEmployee, deleteEmployee,
+  uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument,
+} from "../controllers/hr/employeeController";
+import { documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
 
 const router = Router();
 
@@ -72,13 +85,13 @@ router.get("/menu/main", getMainMenus);
 router.put("/currency/:id", updateCurrency);
 router.post("/currency/mt", updateCurrencyMt);
 
-// ========= User routes
-router.post("/user/create", createUser);
+// ========= ບັນຊີຜູ້ໃຊ້ — ສິດກວດຈາກ tbl_users (requirePermission); ປ່ຽນລະຫັດ: ຕົນເອງ (ໃສ່ລະຫັດເກົ່າ) ຫຼື ມີສິດແກ້ໄຂ
+router.post("/user/create", requirePermission("creates"), createUser);
 router.post("/user/fetch", getUsers);
 router.get("/user/:id", getUserById);
-router.put("/user/:id", updateUser);
 router.put("/user/password/:id", updatePassword);
-router.delete("/user/:id", deleteUser);
+router.put("/user/:id", requirePermission("updates"), updateUser);
+router.delete("/user/:id", requirePermission("deletes"), deleteUser);
 
 // ========= ທະນາຄານ — ໂລໂກ້ field "logo" ຫຼື "logos"
 router.post("/bank/create", createUpload('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), createBank);
@@ -215,5 +228,28 @@ router.put("/partner-doc/cancel/:id", cancelPartnerDoc);
 router.post("/partner-payment/fetch", getPartnerPayments);
 router.post("/partner-payment/create", createPartnerPayment);
 router.put("/partner-payment/cancel/:id", cancelPartnerPayment);
+// ========= ງົບປະມານລາຍຈ່າຍ (ຕາມໝວດລາຍຈ່າຍ ຕໍ່ປີການເງິນ) — ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍ; /check ໃຫ້ຟອມລາຍຈ່າຍເຕືອນເກີນງົບ
+router.post("/budget/fetch", getBudgets);
+router.post("/budget/expenses", getBudgetExpenses);
+router.post("/budget/check", checkBudget);
+router.post("/budget/create", createBudget);
+router.put("/budget/:id", updateBudget);
+router.delete("/budget/:id", deleteBudget);
+// ========= ຂໍ້ມູນພື້ນຖານ (HR): ແຂວງ/ເມືອງ, ພະແນກ + ຕຳແໜ່ງ, ພະນັກງານ + ເອກະສານ — ການແກ້ໄຂກວດສິດຂອງຜູ້ໃຊ້
+router.get("/address/province", getProvinces);
+router.get("/department/fetch", getDepartments);
+router.get("/department/option", getDepartmentOption);
+router.post("/department/create", requirePermission("creates"), createDepartment);
+router.put("/department/:id", requirePermission("updates"), updateDepartment);
+router.delete("/department/:id", requirePermission("deletes"), deleteDepartment);
+router.get("/employee/fetch", getEmployees);
+router.get("/employee/option", getEmployeeOption);
+router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
+// ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
+router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
+router.get("/employee/document/download/:id", downloadEmployeeDocument);
+router.delete("/employee/document/:id", requirePermission("updates"), deleteEmployeeDocument);
+router.put("/employee/:id", requirePermission("updates"), profileUpload, updateEmployee);
+router.delete("/employee/:id", requirePermission("deletes"), deleteEmployee);
 
 export default router;

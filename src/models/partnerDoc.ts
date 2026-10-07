@@ -19,14 +19,38 @@ export class PartnerDocLine extends Model {
 
 PartnerDocLine.init(
   {
-    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    doc_id: { type: DataTypes.INTEGER, allowNull: false },
-    line_no: { type: DataTypes.INTEGER, allowNull: false },
-    account_id: { type: DataTypes.INTEGER, allowNull: false },
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    doc_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    line_no: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
     description: DataTypes.STRING(255),
-    amount: { type: DataTypes.DECIMAL(18, 2), allowNull: false },
-    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    amount: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
   },
   { sequelize, modelName: "PartnerDocLine", tableName: "tbl_partner_doc_line", timestamps: true }
 );
@@ -62,7 +86,7 @@ PartnerDoc.init(
       autoIncrement: true
     },
     doc_kind: {
-      type: DataTypes.TINYINT, 
+      type: DataTypes.TINYINT,
       allowNull: false
     },
     doc_number: {
@@ -71,15 +95,15 @@ PartnerDoc.init(
       unique: true
     },
     partner_id: {
-      type: DataTypes.INTEGER, 
+      type: DataTypes.INTEGER,
       allowNull: false
     },
     doc_date: {
-      type: DataTypes.DATEONLY, 
+      type: DataTypes.DATEONLY,
       allowNull: false
     },
     due_date: {
-      type: DataTypes.DATEONLY, 
+      type: DataTypes.DATEONLY,
       allowNull: false
     },
     reference: DataTypes.STRING(100),

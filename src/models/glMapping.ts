@@ -18,12 +18,33 @@ class GlMapping extends Model {
 
 GlMapping.init(
   {
-    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    source_type: { type: DataTypes.STRING(30), allowNull: false },
-    source_key: { type: DataTypes.STRING(50), allowNull: false },
-    account_id: { type: DataTypes.INTEGER, allowNull: false },
-    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    source_type: {
+      type: DataTypes.STRING(30),
+      allowNull: false
+    },
+    source_key: {
+      type: DataTypes.STRING(50),
+      allowNull: false
+    },
+    account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
   },
   {
     sequelize,
