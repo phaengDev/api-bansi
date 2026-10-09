@@ -67,7 +67,8 @@ import {
   getEmployees, getEmployeeOption, createEmployee, updateEmployee, deleteEmployee,
   uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument,
 } from "../controllers/hr/employeeController";
-import { documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
+import { getCompany, saveCompany } from "../controllers/hr/companyController";
+import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
 
 const router = Router();
 
@@ -251,5 +252,8 @@ router.get("/employee/document/download/:id", downloadEmployeeDocument);
 router.delete("/employee/document/:id", requirePermission("updates"), deleteEmployeeDocument);
 router.put("/employee/:id", requirePermission("updates"), profileUpload, updateEmployee);
 router.delete("/employee/:id", requirePermission("deletes"), deleteEmployee);
+// ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
+router.get("/company", getCompany);
+router.put("/company", requirePermission("updates"), companyLogoUpload, saveCompany);
 
 export default router;

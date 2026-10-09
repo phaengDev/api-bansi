@@ -99,5 +99,4 @@ Users.hasMany(WorkPlan, { foreignKey: "userid", sourceKey: "user_uuid", as: "wor
 
 // ສ້າງ/ປັບຕາຕະລາງເອງຕອນເປີດ server (App.ts → runAutoSync)
 autoSync(WorkPlan);
-
 export default WorkPlan;

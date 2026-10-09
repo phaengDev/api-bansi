@@ -97,8 +97,6 @@ Users.init(
     }
 );
 
-
-// Users.belongsTo(TypeUser, { foreignKey: "type_user", as : "typeuser" });
 Users.belongsTo(TypeUser, {
   foreignKey: "type_user",
   as: "typeuser",   // must match include

@@ -6,11 +6,14 @@ import { url } from "../../utils";
 
 /** ຮູບພະນັກງານ — uploads/employee (ເປີດຜ່ານ /image ຄືໂລໂກ້ທະນາຄານ) */
 export const PROFILE_FOLDER = "employee";
+/** ໂລໂກ້ບໍລິສັດ — uploads/company */
+export const COMPANY_FOLDER = "company";
 
 /** ເອກະສານຄັດຕິດຂອງພະນັກງານ — ນອກ uploads (ບໍ່ມີ URL ສາທາລະນະ), ດາວໂຫຼດຜ່ານ API ທີ່ login ແລ້ວເທົ່ານັ້ນ */
 export const DOCUMENT_DIR = path.join(__dirname, "..", "..", "private", "employee-docs");
 
 export const profileUrl = (file: string | null | undefined) => (file ? `${url()}/${PROFILE_FOLDER}/${file}` : null);
+export const companyLogoUrl = (file: string | null | undefined) => (file ? `${url()}/${COMPANY_FOLDER}/${file}` : null);
 
 export const MAX_FILE = 5 * 1024 * 1024;
 const DOCUMENT_TYPES = /\.(jpe?g|png|webp|pdf|docx?|xlsx?)$/i;
@@ -35,15 +38,20 @@ const asJson = (handler: RequestHandler): RequestHandler => (req: Request, res: 
     res.status(400).json({ message: tooLarge ? "ໄຟລ໌ໃຫຍ່ເກີນ 5MB" : (error as Error).message || "ອັບໂຫຼດໄຟລ໌ບໍ່ສຳເລັດ" });
   });
 
-/** ຮູບພະນັກງານ 1 ໄຟລ໌ field "profile" — JPG, PNG, WEBP */
-export const profileUpload = asJson(
+/** ຮູບ 1 ໄຟລ໌ (JPG, PNG, WEBP) ລົງ uploads/<folder> */
+const imageUpload = (folder: string, field: string) => asJson(
   multer({
-    storage: storageIn(path.join(__dirname, "..", "..", "uploads", PROFILE_FOLDER)),
+    storage: storageIn(path.join(__dirname, "..", "..", "uploads", folder)),
     limits: { fileSize: MAX_FILE },
     fileFilter: (_req, file, cb) =>
       IMAGE_TYPES.test(file.originalname) ? cb(null, true) : cb(new Error("ຮູບຕ້ອງເປັນ JPG, PNG ຫຼື WEBP")),
-  }).single("profile")
+  }).single(field)
 );
+
+/** ຮູບພະນັກງານ field "profile" */
+export const profileUpload = imageUpload(PROFILE_FOLDER, "profile");
+/** ໂລໂກ້ບໍລິສັດ field "logo" */
+export const companyLogoUpload = imageUpload(COMPANY_FOLDER, "logo");
 
 /** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" — ຮູບ, PDF, Word, Excel */
 export const documentUpload = asJson(
