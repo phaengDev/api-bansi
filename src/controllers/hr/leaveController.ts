@@ -10,6 +10,7 @@ import Payroll from "../../models/payroll";
 import { actorOf, decodeId, sendError, toDateOnly } from "../bansi/bansiHelpers";
 import { profileUrl } from "./hrHelpers";
 import { selfEmployee } from "./attendanceController";
+import { notify } from "./notificationController";
 import {
   BY_HR, PAID_LEAVE, PRESENT, UNPAID_LEAVE, employedOn, findCompany, holidaysBetween, isWorkday, nowLao, workRulesOf,
 } from "./workCalendar";
@@ -103,6 +104,73 @@ const parseRange = (body: any): { start: string; end: string } | { error: string
   return { start, end };
 };
 
+/**
+ * ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງທີ່ເປັນພະນັກງານຢູ່ (ລວມມື້ທີ່ຍັງບໍ່ຮອດ) — ມື້ທີ່ສະແກນມາວຽກແລ້ວ ບໍ່ທັບ ແລະ ບໍ່ນັບ
+ */
+const writeLeaveDays = async (
+  employee: any, start: string, end: string, leaveType: number, reason: string, actor: number | null, t: Transaction,
+): Promise<{ applied: number; worked: string[] } | { error: string }> => {
+  const locked = await lockedPeriod(start, end, t);
+  if (locked) return { error: lockedMessage(locked) };
+  const dates = (await workdaysIn(start, end, t)).filter((d) => employedOn(employee, d));
+  if (!dates.length) return { error: "ບໍ່ມີມື້ເຮັດວຽກໃນຊ່ວງນີ້ໃຫ້ບັນທຶກລາພັກ" };
+
+  const existing = await Attendance.findAll({
+    where: { employee_id: employee._uuid, work_date: { [Op.in]: dates } },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+  const byDate = new Map(existing.map((a) => [String(a.work_date), a]));
+  const values = {
+    check_in: null, in_latitude: null, in_longitude: null, in_distance: null, in_accuracy: null,
+    check_out: null, out_latitude: null, out_longitude: null, out_distance: null, out_accuracy: null,
+    late_minutes: 0,
+    early_minutes: 0,
+    status: leaveType,
+    source: BY_HR,
+    note: `ລາພັກ: ${reason}`.slice(0, 255),
+    updatedbyid: actor,
+  };
+  const worked: string[] = [];
+  let applied = 0;
+  for (const date of dates) {
+    const current = byDate.get(date);
+    if (current && Number(current.status) === PRESENT && current.check_in) {
+      worked.push(date);
+      continue;
+    }
+    if (current) await current.update({ ...values, updatedAt: new Date() }, { transaction: t });
+    else await Attendance.create({ employee_id: employee._uuid, work_date: date, ...values }, { transaction: t });
+    applied++;
+  }
+  if (!applied) return { error: "ທຸກມື້ໃນຊ່ວງນີ້ພະນັກງານມາວຽກແລ້ວ — ບໍ່ມີມື້ໃຫ້ບັນທຶກລາພັກ" };
+  return { applied, worked };
+};
+
+/** ຄຳຂໍທີ່ລໍຖ້າ / ອະນຸມັດແລ້ວ ທີ່ຊ້ອນກັບຊ່ວງນີ້ */
+const overlappingLeave = (employeeId: number, start: string, end: string, t?: Transaction) => LeaveRequest.findOne({
+  where: {
+    employee_id: employeeId,
+    status: { [Op.in]: [PENDING, APPROVED] },
+    start_date: { [Op.lte]: end },
+    end_date: { [Op.gte]: start },
+  },
+  transaction: t,
+});
+
+/** ແຈ້ງເຕືອນພະນັກງານເລື່ອງການລາພັກ (ອະນຸມັດ / ປະຕິເສດ) */
+const notifyLeave = (row: LeaveRequest, title: string, lines: (string | null)[], actor: number | null) => notify([{
+  employee_id: Number(row.employee_id),
+  type: "leave",
+  title,
+  body: lines.filter(Boolean).join("\n") || null,
+  ref: `leave:${row._uuid}`,
+  createdbyid: actor,
+}]);
+
+const overlapMessage = (row: LeaveRequest) =>
+  `ຊ່ວງວັນທີນີ້ຊ້ຳກັບການລາພັກ ${dayText(row.start_date)} – ${dayText(row.end_date)} ທີ່ມີຢູ່ແລ້ວ`;
+
 // ================= ພະນັກງານ (app ມືຖື)
 
 /** GET /leave/me?year=YYYY — ຄຳຂໍຂອງຕົນເອງໃນປີ (ໃໝ່ສຸດກ່ອນ) + ສະຫຼຸບມື້ທີ່ອະນຸມັດແລ້ວ */
@@ -161,17 +229,8 @@ export const createMyLeave = async (req: Request, res: Response) => {
     const workdays = await workdaysIn(range.start, range.end);
     if (!workdays.length) return fail("ຊ່ວງວັນທີນີ້ເປັນວັນພັກທັງໝົດ — ບໍ່ຕ້ອງຂໍລາພັກ");
 
-    const overlap = await LeaveRequest.findOne({
-      where: {
-        employee_id: employee._uuid,
-        status: { [Op.in]: [PENDING, APPROVED] },
-        start_date: { [Op.lte]: range.end },
-        end_date: { [Op.gte]: range.start },
-      },
-    });
-    if (overlap) {
-      return fail(`ຊ່ວງວັນທີນີ້ຊ້ຳກັບຄຳຂໍລາພັກ ${dayText(overlap.start_date)} – ${dayText(overlap.end_date)} ທີ່ມີຢູ່ແລ້ວ`);
-    }
+    const overlap = await overlappingLeave(employee._uuid, range.start, range.end);
+    if (overlap) return fail(overlapMessage(overlap));
 
     const row = await LeaveRequest.create({
       employee_id: employee._uuid,
@@ -266,43 +325,10 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     const employee: any = await Employee.findByPk(row.employee_id, { transaction: t });
     if (!employee) return fail(400, "ບໍ່ພົບພະນັກງານ");
 
-    const start = String(row.start_date);
-    const end = String(row.end_date);
-    const locked = await lockedPeriod(start, end, t);
-    if (locked) return fail(400, lockedMessage(locked));
-    const dates = (await workdaysIn(start, end, t)).filter((d) => employedOn(employee, d));
-    if (!dates.length) return fail(400, "ບໍ່ມີມື້ເຮັດວຽກໃນຊ່ວງນີ້ໃຫ້ບັນທຶກລາພັກ");
-
-    const existing = await Attendance.findAll({
-      where: { employee_id: employee._uuid, work_date: { [Op.in]: dates } },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    const byDate = new Map(existing.map((a) => [String(a.work_date), a]));
     const actor = Number(actorOf(req)) || null;
-    const values = {
-      check_in: null, in_latitude: null, in_longitude: null, in_distance: null, in_accuracy: null,
-      check_out: null, out_latitude: null, out_longitude: null, out_distance: null, out_accuracy: null,
-      late_minutes: 0,
-      early_minutes: 0,
-      status: leaveType,
-      source: BY_HR,
-      note: `ລາພັກ: ${row.reason}`.slice(0, 255),
-      updatedbyid: actor,
-    };
-    const worked: string[] = [];
-    let applied = 0;
-    for (const date of dates) {
-      const current = byDate.get(date);
-      if (current && Number(current.status) === PRESENT && current.check_in) {
-        worked.push(date);
-        continue;
-      }
-      if (current) await current.update({ ...values, updatedAt: new Date() }, { transaction: t });
-      else await Attendance.create({ employee_id: employee._uuid, work_date: date, ...values }, { transaction: t });
-      applied++;
-    }
-    if (!applied) return fail(400, "ທຸກມື້ໃນຊ່ວງນີ້ພະນັກງານມາວຽກແລ້ວ — ບໍ່ມີມື້ໃຫ້ບັນທຶກລາພັກ");
+    const result = await writeLeaveDays(employee, String(row.start_date), String(row.end_date), leaveType, row.reason, actor, t);
+    if ("error" in result) return fail(400, result.error);
+    const { applied, worked } = result;
 
     await row.update({
       status: APPROVED,
@@ -315,6 +341,8 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     }, { transaction: t });
     await t.commit();
     done = true;
+
+    await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [`${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied} ມື້`, text(body.note)], actor);
 
     const saved = await findWithEmployee(row._uuid);
     res.status(200).json({
@@ -352,6 +380,7 @@ export const rejectLeave = async (req: Request<{ id: string }>, res: Response) =
       reviewedAt: new Date(),
       updatedAt: new Date(),
     });
+    await notifyLeave(row, "ຄຳຂໍລາພັກບໍ່ໄດ້ຮັບການອະນຸມັດ", [`${dayText(row.start_date)} – ${dayText(row.end_date)}`, text(req.body?.note)], Number(actorOf(req)) || null);
     const saved = await findWithEmployee(row._uuid);
     res.status(200).json({ message: "ປະຕິເສດຄຳຂໍລາພັກແລ້ວ", data: saved && present(saved) });
   } catch (error) {

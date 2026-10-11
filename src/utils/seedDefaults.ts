@@ -182,6 +182,7 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_attendance", "uq_attendance_employee_date", ["employee_id", "work_date"], true],
   ["tbl_attendance", "idx_attendance_date", ["work_date"], false],
   ["tbl_holiday", "uq_holiday_date", ["holiday_date"], true],
+  ["tbl_overtime", "idx_overtime_date", ["work_date", "employee_id"], false],
   ["tbl_payroll", "uq_payroll_period", ["period"], true],
   ["tbl_payroll_line", "uq_payroll_line_employee", ["payroll_id", "employee_id"], true],
 ];

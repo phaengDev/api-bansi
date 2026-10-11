@@ -17,8 +17,8 @@ import { MOVE_IN, MOVE_OUT, moveBalance } from "../bansi/accountMovement";
 import { isBaseCurrency, replyGlError, reverseSource } from "../bansi/glCore";
 import { postPayroll } from "../bansi/glPosting";
 import {
-  DEFAULT_SETTINGS, LINE_MODES, MODE_POLICY, computeLine, findPayrollSetting, loadPayrollSettings, parseBrackets,
-  presentSettings,
+  DEFAULT_SETTINGS, LINE_MODES, MODE_MANUAL, MODE_POLICY, NO_OVERTIME, computeLine, findPayrollSetting, loadPayrollSettings,
+  overtimeByEmployee, parseBrackets, presentSettings, type OvertimeTotals,
 } from "./payrollRules";
 import {
   PERIOD, RESIGNED, WORKING, attendanceByEmployee, currentPeriod, findCompany, holidaysBetween, isWorkday, monthOf,
@@ -26,6 +26,7 @@ import {
 } from "./workCalendar";
 import { selfEmployee } from "./attendanceController";
 import { companyLogoUrl } from "./hrHelpers";
+import { notify } from "./notificationController";
 
 /**
  * ເງິນເດືອນປະຈຳເດືອນ: ສ້າງໃບ (ຄິດຈາກເງິນເດືອນພື້ນຖານ + ການເຂົ້າວຽກ) → ແກ້ລາຍຄົນ (ເງິນເພີ່ມ / ຫັກ / ປກສ / ອາກອນ)
@@ -38,8 +39,8 @@ const PAID = 2;
 const MONEY_FIELDS = ["allowance", "overtime", "bonus", "other_deduction", "absence_deduction", "late_deduction", "sso_employee", "sso_employer", "tax"] as const;
 /** ນະໂຍບາຍສະເພາະຄົນຂອງແຕ່ລະກຸ່ມການຫັກ (MODE_* ໃນ payrollRules) */
 const MODE_FIELDS = ["deduction_mode", "sso_mode", "tax_mode"] as const;
-/** ຖັນທີ່ຜູ້ໃຊ້ປ້ອນ/ເລືອກເອງ — ຄິດໄລ່ໃໝ່ຈາກການເຂົ້າວຽກແລ້ວຍັງຢູ່ຄືເກົ່າ */
-const MANUAL_FIELDS = [...MONEY_FIELDS, ...MODE_FIELDS, "note"] as const;
+/** ຖັນທີ່ຜູ້ໃຊ້ປ້ອນ/ເລືອກເອງ — ຄິດໄລ່ໃໝ່ຈາກການເຂົ້າວຽກແລ້ວຍັງຢູ່ຄືເກົ່າ (overtime_mode: 1 ຈາກບັນທຶກ OT, 0 ປ້ອນເອງ) */
+const MANUAL_FIELDS = [...MONEY_FIELDS, ...MODE_FIELDS, "overtime_mode", "note"] as const;
 
 const periodText = (period: string) => moment(`${period}-01`).format("MM/YYYY");
 
@@ -51,7 +52,7 @@ const NUMBER_FIELDS = [
 ];
 const LINE_NUMBER_FIELDS = [
   "basic_salary", "base_pay", "absence_deduction", "late_deduction", "allowance", "overtime", "bonus", "gross",
-  "sso_base", "sso_employee", "sso_employer", "taxable", "tax", "other_deduction", "net",
+  "sso_base", "sso_employee", "sso_employer", "taxable", "tax", "other_deduction", "net", "ot_hours", "ot_weighted_hours", "ot_fixed_amount",
 ];
 
 const numbers = (r: any, fields: string[]) => Object.fromEntries(fields.map((f) => [f, Number(r[f]) || 0]));
@@ -119,13 +120,19 @@ type Context = Awaited<ReturnType<typeof contextOf>>;
 const workdaysOf = (ctx: Context) => ctx.dates.filter((d) => isWorkday(d, ctx.rules, ctx.holidays)).length;
 
 /**
- * ແຖວເງິນເດືອນຂອງພະນັກງານ: ສຳເນົາຂໍ້ມູນພະນັກງານ + ສະຖິຕິການເຂົ້າວຽກ + ຄ່າທີ່ປ້ອນເອງ (ຈາກແຖວເດີມ ຖ້າມີ) → ຄິດໃໝ່ທັງແຖວ
+ * ແຖວເງິນເດືອນຂອງພະນັກງານ: ສຳເນົາຂໍ້ມູນພະນັກງານ + ສະຖິຕິການເຂົ້າວຽກ + OT ຂອງເດືອນ + ຄ່າທີ່ປ້ອນເອງ (ຈາກແຖວເດີມ ຖ້າມີ)
+ * → ຄິດໃໝ່ທັງແຖວ
  */
-const buildLine = (emp: any, attendance: Map<string, any>, ctx: Context, existing?: any) => {
+const buildLine = (emp: any, attendance: Map<string, any>, ctx: Context, existing?: any, ot: OvertimeTotals = NO_OVERTIME) => {
   const { stats } = monthStatsOf(emp, attendance, ctx.dates, ctx.rules, ctx.holidays, ctx.today, ctx.settings.late_grace_minutes);
   const manual: Record<string, any> = existing
     ? Object.fromEntries(MANUAL_FIELDS.map((f) => [f, existing[f]]))
-    : { ...Object.fromEntries(MONEY_FIELDS.map((f) => [f, 0])), ...Object.fromEntries(MODE_FIELDS.map((f) => [f, MODE_POLICY])), note: null };
+    : {
+      ...Object.fromEntries(MONEY_FIELDS.map((f) => [f, 0])),
+      ...Object.fromEntries(MODE_FIELDS.map((f) => [f, MODE_POLICY])),
+      overtime_mode: MODE_POLICY,
+      note: null,
+    };
   const snapshot = {
     employee_id: emp._uuid,
     emp_code: emp.emp_code,
@@ -144,6 +151,9 @@ const buildLine = (emp: any, attendance: Map<string, any>, ctx: Context, existin
     absent_days: stats.absent_days,
     late_days: stats.late_days,
     late_minutes: stats.late_minutes + stats.early_minutes,
+    ot_hours: ot.hours,
+    ot_weighted_hours: ot.weighted,
+    ot_fixed_amount: ot.fixed,
   };
   return { ...snapshot, ...manual, ...computeLine({ ...snapshot, ...manual } as any, ctx.settings, ctx.rules.minutesPerDay) };
 };
@@ -192,7 +202,10 @@ export const getPayrollSetting = async (_req: Request, res: Response) => {
   }
 };
 
-/** PUT /payroll/setting — ເປີດ/ປິດ (1/0): sso_enabled, tax_enabled, deduct_absent, deduct_late; ອັດຕາ 0–100%, ເພດານ/ເງິນເດືອນ ≥ 0, ນາທີຜ່ອນຜັນ 0–120, ຂັ້ນອາກອນ (ເບິ່ງ parseBrackets) */
+/**
+ * PUT /payroll/setting — ເປີດ/ປິດ (1/0): sso_enabled, tax_enabled, deduct_absent, deduct_late; ອັດຕາ 0–100%, ເພດານ/ເງິນເດືອນ ≥ 0,
+ * ນາທີຜ່ອນຜັນ 0–120, ຂັ້ນອາກອນ (ເບິ່ງ parseBrackets), OT: ຊົ່ວໂມງຕໍ່ມື້ 1–24, ອັດຕາ ot_rate_* 0–1000%
+ */
 export const savePayrollSetting = async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
@@ -216,6 +229,19 @@ export const savePayrollSetting = async (req: Request, res: Response) => {
     if (otFree === null) return fail("ເງິນເດືອນທີ່ຄ່າລ່ວງເວລາບໍ່ເສຍອາກອນ ບໍ່ຖືກຕ້ອງ");
     if (!Number.isInteger(grace) || grace < 0 || grace > 120) return fail("ນາທີຜ່ອນຜັນຕ້ອງຢູ່ລະຫວ່າງ 0–120");
     if (!brackets) return fail("ຂັ້ນອາກອນບໍ່ຖືກຕ້ອງ — ແຕ່ລະຂັ້ນຕ້ອງສູງກວ່າຂັ້ນກ່ອນ ແລະ ອັດຕາ 0–100%");
+    const hoursPerDay = Number(body.ot_hours_per_day);
+    if (!Number.isFinite(hoursPerDay) || hoursPerDay < 1 || hoursPerDay > 24) return fail("ຊົ່ວໂມງເຮັດວຽກຕໍ່ມື້ຕ້ອງຢູ່ລະຫວ່າງ 1–24");
+    const otRate = (value: unknown) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 && n <= 1000 ? Math.round(n * 100) / 100 : null;
+    };
+    const otRates = {
+      ot_rate_normal: otRate(body.ot_rate_normal),
+      ot_rate_night: otRate(body.ot_rate_night),
+      ot_rate_dayoff: otRate(body.ot_rate_dayoff),
+      ot_rate_dayoff_night: otRate(body.ot_rate_dayoff_night),
+    };
+    if (Object.values(otRates).some((r) => r === null)) return fail("ອັດຕາຄ່າລ່ວງເວລາຕ້ອງຢູ່ລະຫວ່າງ 0–1000%");
 
     const flag = (value: unknown) => (Number(value) === 1 || value === true ? 1 : 0);
     const values = {
@@ -229,6 +255,8 @@ export const savePayrollSetting = async (req: Request, res: Response) => {
       late_grace_minutes: grace,
       deduct_absent: flag(body.deduct_absent),
       deduct_late: flag(body.deduct_late),
+      ot_hours_per_day: Math.round(hoursPerDay * 100) / 100,
+      ...otRates,
       updatedbyid: Number(actorOf(req)) || null,
     };
     const row = await findPayrollSetting();
@@ -313,10 +341,14 @@ export const getMyPayrollPreview = async (req: Request, res: Response) => {
       contextOf(period),
     ]);
     const existing: any = payroll ? await PayrollLine.findOne({ where: { payroll_id: payroll._uuid, employee_id: employeeId } }) : null;
-    const rows = (await attendanceByEmployee([employeeId], ctx.start, ctx.end)).get(employeeId) ?? new Map();
+    const [attendance, overtime] = await Promise.all([
+      attendanceByEmployee([employeeId], ctx.start, ctx.end),
+      overtimeByEmployee([employeeId], ctx.start, ctx.end, ctx.settings),
+    ]);
+    const rows = attendance.get(employeeId) ?? new Map();
     const { stats } = monthStatsOf(employee as any, rows, ctx.dates, ctx.rules, ctx.holidays, ctx.today, ctx.settings.late_grace_minutes);
     const paid = !!payroll && Number(payroll.status) === PAID && !!existing;
-    const line = paid ? existing : buildLine(employee, rows, ctx, existing ?? undefined);
+    const line = paid ? existing : buildLine(employee, rows, ctx, existing ?? undefined, overtime.get(employeeId));
     const { settings } = ctx;
     res.status(200).json({
       period,
@@ -370,7 +402,9 @@ export const createPayroll = async (req: Request, res: Response) => {
     const employees = await eligibleEmployees(period, t);
     if (!employees.length) return fail(`ບໍ່ມີພະນັກງານທີ່ຕ້ອງຈ່າຍເງິນເດືອນໃນເດືອນ ${periodText(period)}`);
     const ctx = await contextOf(period, t);
-    const attendance = await attendanceByEmployee(employees.map((e) => e._uuid), ctx.start, ctx.end, t);
+    const ids = employees.map((e) => e._uuid);
+    const attendance = await attendanceByEmployee(ids, ctx.start, ctx.end, t);
+    const overtime = await overtimeByEmployee(ids, ctx.start, ctx.end, ctx.settings, t);
 
     const payroll = await Payroll.create({
       period,
@@ -379,7 +413,7 @@ export const createPayroll = async (req: Request, res: Response) => {
       createdbyid: Number(actorOf(req)) || null,
     }, { transaction: t });
     await PayrollLine.bulkCreate(
-      employees.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx) })),
+      employees.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid)) })),
       { transaction: t }
     );
     await refreshTotals(payroll, t);
@@ -392,7 +426,7 @@ export const createPayroll = async (req: Request, res: Response) => {
 };
 
 /**
- * PUT /payroll/recalc/:id — ຄິດໄລ່ໃໝ່ (ໃບຮ່າງ): ດຶງເງິນເດືອນພື້ນຖານ/ບັນຊີທະນາຄານ/ການເຂົ້າວຽກ ແລະ ຕັ້ງຄ່າລ່າສຸດ,
+ * PUT /payroll/recalc/:id — ຄິດໄລ່ໃໝ່ (ໃບຮ່າງ): ດຶງເງິນເດືອນພື້ນຖານ/ບັນຊີທະນາຄານ/ການເຂົ້າວຽກ/OT ແລະ ຕັ້ງຄ່າລ່າສຸດ,
  * ເພີ່ມຄົນທີ່ຍັງບໍ່ມີ. ເງິນເພີ່ມ/ຫັກທີ່ປ້ອນເອງ ແລະ ຄ່າທີ່ກຳນົດເອງ ຢູ່ຄືເກົ່າ
  */
 export const recalcPayroll = async (req: Request<{ id: string }>, res: Response) => {
@@ -415,16 +449,20 @@ export const recalcPayroll = async (req: Request<{ id: string }>, res: Response)
     });
     const employees = new Map([...eligible, ...extra].map((e) => [e._uuid, e]));
     const attendance = await attendanceByEmployee([...employees.keys()], ctx.start, ctx.end, t);
+    const overtime = await overtimeByEmployee([...employees.keys()], ctx.start, ctx.end, ctx.settings, t);
 
     for (const line of lines) {
       const emp = employees.get(Number(line.employee_id));
       if (!emp) continue; // ພະນັກງານຖືກລຶບ — ແຖວຢູ່ຄືເກົ່າ
-      await line.update({ ...buildLine(emp, attendance.get(emp._uuid) ?? new Map(), ctx, line), updatedAt: new Date() }, { transaction: t });
+      await line.update({
+        ...buildLine(emp, attendance.get(emp._uuid) ?? new Map(), ctx, line, overtime.get(emp._uuid)),
+        updatedAt: new Date(),
+      }, { transaction: t });
     }
     const missing = eligible.filter((e) => !lineEmployeeIds.includes(e._uuid));
     if (missing.length) {
       await PayrollLine.bulkCreate(
-        missing.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx) })),
+        missing.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid)) })),
         { transaction: t }
       );
     }
@@ -453,14 +491,58 @@ const manualOf = (line: any, body: any): Record<string, any> | { error: string }
     if (!LINE_MODES.includes(mode)) return { error: "ວິທີຄິດບໍ່ຖືກຕ້ອງ" };
     manual[field] = mode;
   }
+  if (body.overtime_mode !== undefined) {
+    const mode = Number(body.overtime_mode);
+    if (mode !== MODE_MANUAL && mode !== MODE_POLICY) return { error: "ວິທີຄິດລ່ວງເວລາບໍ່ຖືກຕ້ອງ" };
+    manual.overtime_mode = mode;
+  }
   if (body.note !== undefined) manual.note = String(body.note ?? "").trim().slice(0, 255) || null;
   return manual;
 };
 
-/** ຄິດແຖວໃໝ່ດ້ວຍຕັ້ງຄ່າ ແລະ ເວລາເຮັດວຽກປັດຈຸບັນ */
+/** OT ຂອງຄົນໃນແຖວ ຕາມບັນທຶກ OT ປັດຈຸບັນຂອງເດືອນ → ຖັນ ot_* ຂອງແຖວ */
+const otFieldsOf = (ot: OvertimeTotals = NO_OVERTIME) => ({ ot_hours: ot.hours, ot_weighted_hours: ot.weighted, ot_fixed_amount: ot.fixed });
+
+/** ຄິດແຖວໃໝ່ດ້ວຍຕັ້ງຄ່າ, ເວລາເຮັດວຽກ ແລະ ບັນທຶກ OT ປັດຈຸບັນ (ບັນທຶກ OT ຫຼັງສ້າງໃບ ກໍ່ຂຶ້ນທັນທີ) */
 const recompute = async (line: any, manual: Record<string, any>, t?: Transaction) => {
-  const [settings, company] = await Promise.all([loadPayrollSettings(t), findCompany(t)]);
-  return computeLine({ ...line.get({ plain: true }), ...manual }, settings, workRulesOf(company).minutesPerDay);
+  const [settings, company, payroll] = await Promise.all([
+    loadPayrollSettings(t),
+    findCompany(t),
+    Payroll.findByPk(line.payroll_id, { attributes: ["period"], transaction: t }),
+  ]);
+  const month = payroll ? monthOf(payroll.period) : null;
+  const ot = otFieldsOf(month
+    ? (await overtimeByEmployee([Number(line.employee_id)], month.start, month.end, settings, t)).get(Number(line.employee_id))
+    : undefined);
+  return { ...ot, ...computeLine({ ...line.get({ plain: true }), ...manual, ...ot }, settings, workRulesOf(company).minutesPerDay) };
+};
+
+/**
+ * ຫຼັງບັນທຶກ / ແກ້ / ລຶບ OT — ໃບເງິນເດືອນຮ່າງຂອງເດືອນນັ້ນ ຄິດ OT ຂອງຄົນເຫຼົ່ານັ້ນໃໝ່ທັນທີ (ບໍ່ຕ້ອງກົດຄິດໄລ່ໃໝ່);
+ * ແຖວທີ່ປ້ອນ OT ເອງ ອັບເດດສະເພາະຊົ່ວໂມງ (ຍອດເງິນຄືເກົ່າ). ໃບທີ່ຈ່າຍແລ້ວບໍ່ປ່ຽນ
+ */
+export const syncDraftOvertime = async (period: string, employeeIds: number[]) => {
+  if (!employeeIds.length) return;
+  const t = await Payroll.sequelize!.transaction();
+  try {
+    const payroll = await Payroll.findOne({ where: { period, status: DRAFT }, transaction: t, lock: t.LOCK.UPDATE });
+    const lines = payroll
+      ? await PayrollLine.findAll({ where: { payroll_id: payroll._uuid, employee_id: { [Op.in]: employeeIds } }, transaction: t })
+      : [];
+    if (!payroll || !lines.length) {
+      await t.rollback();
+      return;
+    }
+    for (const line of lines) {
+      const values = await recompute(line, {}, t);
+      await line.update({ ...values, updatedAt: new Date() }, { transaction: t });
+    }
+    await refreshTotals(payroll, t);
+    await t.commit();
+  } catch (error) {
+    await t.rollback();
+    console.error("❌ syncDraftOvertime:", error);
+  }
 };
 
 const negativeNet = (net: number) => `ເງິນເດືອນສຸດທິຕິດລົບ (${net.toLocaleString("en-US")}) — ກວດຍອດຫັກ`;
@@ -609,6 +691,15 @@ export const payPayroll = async (req: Request<{ id: string }>, res: Response) =>
     // ລົງບັນຊີຄູ່ — ບໍ່ສຳເລັດ (ເຊັ່ນ ຍັງບໍ່ຜູກບັນຊີ, ປີປິດແລ້ວ) = ບໍ່ຈ່າຍ
     await postPayroll(payroll, t, actor);
     await t.commit();
+    // ແຈ້ງພະນັກງານແຕ່ລະຄົນວ່າໂອນເງິນເດືອນແລ້ວ (ຫຼັງ commit — ແຈ້ງບໍ່ສຳເລັດ ບໍ່ກະທົບການຈ່າຍ)
+    await notify(lines.map((l) => ({
+      employee_id: Number(l.employee_id),
+      type: "payroll",
+      title: `ເງິນເດືອນ ${periodText(payroll.period)} ໂອນແລ້ວ 💰`,
+      body: `ຍອດສຸດທິ ₭ ${Math.round(Number(l.net) || 0).toLocaleString("en-US")} — ເບິ່ງສະລິບເງິນເດືອນໄດ້ໃນແອັບ`,
+      ref: `payroll:${payroll.period}`,
+      createdbyid: actor,
+    })));
     await reply(res, payroll._uuid, "Successfully paid payroll");
   } catch (error) {
     await t.rollback();

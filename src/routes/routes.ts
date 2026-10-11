@@ -80,8 +80,10 @@ import {
 import {
   getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, approveLeave, rejectLeave,
 } from "../controllers/hr/leaveController";
+import { createOvertime, deleteOvertime, getOvertimes, updateOvertime } from "../controllers/hr/overtimeController";
 import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
-import { getMyBirthdays, getMyBirthdayWishes, sendBirthdayWish } from "../controllers/hr/birthdayController";
+import { getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
+import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications } from "../controllers/hr/notificationController";
 
 const router = Router();
 
@@ -298,10 +300,23 @@ router.get("/holiday/me", getMyHolidays);
 router.get("/holiday/fetch", getHolidays);
 router.post("/holiday/create", requirePermission("creates"), createHoliday);
 router.delete("/holiday/:id", requirePermission("deletes"), deleteHoliday);
+// ການເຮັດວຽກລ່ວງເວລາ (OT) — HR ບັນທຶກ; ເງິນເດືອນລວມໃຫ້ອັດຕະໂນມັດ
+router.post("/overtime/fetch", requirePermission("updates"), getOvertimes);
+router.post("/overtime/create", requirePermission("creates"), createOvertime);
+router.put("/overtime/:id", requirePermission("updates"), updateOvertime);
+router.delete("/overtime/:id", requirePermission("deletes"), deleteOvertime);
 // ========= ວັນເກີດ (app ມືຖື) — ເພື່ອນທີ່ມີວັນເກີດມື້ນີ້, ສົ່ງຄຳອວຍພອນ, ຄຳອວຍພອນທີ່ໄດ້ຮັບ
 router.get("/birthday/me", getMyBirthdays);
 router.post("/birthday/me/wish", sendBirthdayWish);
 router.get("/birthday/me/wishes", getMyBirthdayWishes);
+router.post("/birthday/me/wishes/:id/reply", replyBirthdayWish);
+router.get("/birthday/me/replies", getMyBirthdayReplies);
+// ========= ແຈ້ງເຕືອນ — /me ສຳລັບ app ມືຖື (ກະດິ່ງ); HR ແຈ້ງການໃຫ້ພະນັກງານທຸກຄົນ
+router.get("/notification/me", getMyNotifications);
+router.get("/notification/me/stream", streamMyNotifications);
+router.put("/notification/me/read", readAllMyNotifications);
+router.put("/notification/me/read/:id", readMyNotification);
+router.post("/notification/announce", requirePermission("creates"), announce);
 // ========= ຄຳຂໍລາພັກ — /me ສຳລັບ app ມືຖືຂອງພະນັກງານ; HR (ຕ້ອງມີສິດແກ້ໄຂ ທັງເບິ່ງລາຍການ) ອະນຸມັດ = ບັນທຶກລາພັກລົງການເຂົ້າວຽກ
 router.get("/leave/me", getMyLeaves);
 router.post("/leave/me", createMyLeave);

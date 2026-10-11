@@ -6,7 +6,8 @@ import { autoSync } from "../utils/autoSync";
  * ຕັ້ງຄ່າເງິນເດືອນ (ແຖວດຽວ) — ນະໂຍບາຍເປີດ/ປິດ (sso_enabled, tax_enabled, deduct_absent, deduct_late: 0 = ບໍ່ຫັກ),
  * ປະກັນສັງຄົມ (% ພະນັກງານ / % ບໍລິສັດ / ເພດານເງິນເດືອນ), ຂັ້ນອາກອນລາຍໄດ້ (JSON
  * [{ upto, rate }] ຂັ້ນສຸດທ້າຍ upto = null), ເງິນເດືອນສູງສຸດທີ່ຄ່າລ່ວງເວລາບໍ່ເສຍອາກອນ (0 = ເສຍທຸກຄົນ),
- * ນາທີຜ່ອນຜັນມາຊ້າ/ອອກກ່ອນ ແລະ ຫັກຂາດວຽກ/ມາຊ້າ ອັດຕະໂນມັດ ຫຼື ບໍ່. ຍັງບໍ່ມີແຖວ = ໃຊ້ຄ່າເລີ່ມຕົ້ນ (hr/payrollRules.ts)
+ * ນາທີຜ່ອນຜັນມາຊ້າ/ອອກກ່ອນ ແລະ ຫັກຂາດວຽກ/ມາຊ້າ ອັດຕະໂນມັດ ຫຼື ບໍ່; ຄ່າລ່ວງເວລາ (OT): ຊົ່ວໂມງເຮັດວຽກຕໍ່ມື້
+ * (ຄິດຄ່າແຮງຕໍ່ຊົ່ວໂມງ) ແລະ % ຂອງຄ່າແຮງຕໍ່ຊົ່ວໂມງ ຕາມປະເພດ OT (tbl_overtime.kind). ຍັງບໍ່ມີແຖວ = ໃຊ້ຄ່າເລີ່ມຕົ້ນ (hr/payrollRules.ts)
  */
 class PayrollSetting extends Model {
   public _uuid!: number;
@@ -20,6 +21,11 @@ class PayrollSetting extends Model {
   public late_grace_minutes!: number;
   public deduct_absent!: number;
   public deduct_late!: number;
+  public ot_hours_per_day!: string;
+  public ot_rate_normal!: string;
+  public ot_rate_night!: string;
+  public ot_rate_dayoff!: string;
+  public ot_rate_dayoff_night!: string;
   public updatedbyid!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
@@ -80,6 +86,31 @@ PayrollSetting.init(
       type: DataTypes.TINYINT,
       allowNull: false,
       defaultValue: 1
+    },
+    ot_hours_per_day: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: false,
+      defaultValue: 8
+    },
+    ot_rate_normal: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: false,
+      defaultValue: 150
+    },
+    ot_rate_night: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: false,
+      defaultValue: 200
+    },
+    ot_rate_dayoff: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: false,
+      defaultValue: 250
+    },
+    ot_rate_dayoff_night: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: false,
+      defaultValue: 300
     },
     updatedbyid: DataTypes.INTEGER,
     createdAt: {

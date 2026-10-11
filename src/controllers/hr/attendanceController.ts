@@ -14,6 +14,7 @@ import { profileUrl } from "./hrHelpers";
 import { EMPLOYEE_TOKEN } from "../../middleware/auth";
 import { QR_PREFIX } from "./companyController";
 import { loadPayrollSettings } from "./payrollRules";
+import { notifyAllWorking } from "./notificationController";
 import {
   ATTENDANCE_STATUSES, BY_HR, BY_SCAN, HHMM, PERIOD, PRESENT, WORKING,
   atLao, attendanceByEmployee, clockOf, currentPeriod, dayStateOf, distanceMeters, employedOn, findCompany,
@@ -571,8 +572,13 @@ export const getMyHolidays = async (req: Request, res: Response) => {
   }
 };
 
+/** ປະເພດວັນພັກ — 1 ທາງການ (ລັດຖະການ, ບັນທຶກມື້ລະລາຍການ), 2 ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ, ເລືອກເປັນຊ່ວງວັນທີ) */
+const HOLIDAY_OFFICIAL = 1;
+const HOLIDAY_COMPANY = 2;
+const HOLIDAY_KINDS = [HOLIDAY_OFFICIAL, HOLIDAY_COMPANY];
+
 /**
- * POST /holiday/create { items: [{ holiday_date, name }] } — ບັນທຶກຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ຄັດລອກວັນພັກຈາກປີກ່ອນ);
+ * POST /holiday/create { items: [{ holiday_date, name, kind }] } — ບັນທຶກຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ຄັດລອກວັນພັກຈາກປີກ່ອນ);
  * ວັນທີຕ້ອງບໍ່ຊ້ຳກັນ ແລະ ບໍ່ຊ້ຳກັບທີ່ມີແລ້ວ — ຜິດລາຍການດຽວ ບໍ່ບັນທຶກຈັກລາຍການ
  */
 export const createHoliday = async (req: Request, res: Response) => {
@@ -586,10 +592,15 @@ export const createHoliday = async (req: Request, res: Response) => {
       res.status(400).json({ message: "ບັນທຶກໄດ້ເທື່ອລະບໍ່ເກີນ 100 ວັນ" });
       return;
     }
-    const items: { holiday_date: string; name: string }[] = [];
+    const items: { holiday_date: string; name: string; kind: number }[] = [];
     for (const item of raw) {
       const date = toDateOnly(item?.holiday_date);
       const name = String(item?.name ?? "").trim().slice(0, 150);
+      const kind = Number(item?.kind ?? 1);
+      if (!HOLIDAY_KINDS.includes(kind)) {
+        res.status(400).json({ message: "ປະເພດວັນພັກບໍ່ຖືກຕ້ອງ" });
+        return;
+      }
       if (!date) {
         res.status(400).json({ message: "ວັນທີບໍ່ຖືກຕ້ອງ" });
         return;
@@ -602,7 +613,7 @@ export const createHoliday = async (req: Request, res: Response) => {
         res.status(400).json({ message: `ວັນທີ ${moment(date).format("DD/MM/YYYY")} ຊ້ຳກັນໃນລາຍການ` });
         return;
       }
-      items.push({ holiday_date: date, name });
+      items.push({ holiday_date: date, name, kind });
     }
     const taken = await Holiday.findOne({ where: { holiday_date: items.map((x) => x.holiday_date) } });
     if (taken) {
@@ -611,6 +622,45 @@ export const createHoliday = async (req: Request, res: Response) => {
     }
     const createdbyid = Number(actorOf(req)) || null;
     const data = await Holiday.bulkCreate(items.map((x) => ({ ...x, createdbyid })));
+    // ແຈ້ງພະນັກງານທຸກຄົນ — ສະເພາະວັນພັກທີ່ຍັງບໍ່ຮອດ
+    const today = todayLao();
+    const upcoming = items.filter((x) => x.holiday_date >= today).sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
+    const dayText = (d: string) => moment(d).format("DD/MM/YYYY");
+    // ທາງການ: ເພີ່ມຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ທັງປີ) ແຈ້ງເທື່ອດຽວ
+    const official = upcoming.filter((x) => x.kind === HOLIDAY_OFFICIAL);
+    if (official.length) {
+      await notifyAllWorking({
+        type: "holiday",
+        title: official.length === 1 ? `ວັນພັກ: ${official[0].name} 🏖️` : `ເພີ່ມວັນພັກໃໝ່ ${official.length} ວັນ 🏖️`,
+        body: official.length === 1
+          ? `ວັນທີ ${dayText(official[0].holiday_date)} ບໍລິສັດພັກວຽກ`
+          : official.slice(0, 5).map((x) => `${dayText(x.holiday_date)} ${x.name}`).join("\n") + (official.length > 5 ? "\n…" : ""),
+        ref: `holiday:${official[0].holiday_date.slice(0, 4)}`,
+        createdbyid,
+      });
+    }
+    // ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ): ແຈ້ງແຕ່ລະຊ່ວງ — ມື້ຕິດກັນ ຊື່ດຽວກັນ = ຊ່ວງດຽວ (ເຊັ່ນ ໄປທ່ຽວ 04–05/05)
+    const runs: { name: string; start: string; end: string; days: number }[] = [];
+    for (const x of upcoming.filter((h) => h.kind === HOLIDAY_COMPANY)) {
+      const last = runs[runs.length - 1];
+      if (last && last.name === x.name && moment(last.end).add(1, "day").format("YYYY-MM-DD") === x.holiday_date) {
+        last.end = x.holiday_date;
+        last.days++;
+      } else {
+        runs.push({ name: x.name, start: x.holiday_date, end: x.holiday_date, days: 1 });
+      }
+    }
+    for (const run of runs) {
+      await notifyAllWorking({
+        type: "holiday",
+        title: `ບໍລິສັດປະກາດພັກ: ${run.name} 🎉`,
+        body: run.days === 1
+          ? `ວັນທີ ${dayText(run.start)} ພະນັກງານທຸກຄົນພັກວຽກ`
+          : `ວັນທີ ${dayText(run.start)} – ${dayText(run.end)} (${run.days} ມື້) ພະນັກງານທຸກຄົນພັກວຽກ`,
+        ref: `holiday:${run.start}`,
+        createdbyid,
+      });
+    }
     res.status(200).json({ message: "Successfully created holidays", data });
   } catch (error) {
     sendError(res, error, "Error creating holiday");

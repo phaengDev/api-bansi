@@ -1,0 +1,74 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const sequelize_1 = require("sequelize");
+const database_1 = __importDefault(require("../config/database"));
+const autoSync_1 = require("../utils/autoSync");
+const employee_1 = __importDefault(require("./employee"));
+/**
+ * ຄຳຂໍລາພັກ — ພະນັກງານສົ່ງຜ່ານ app ມືຖື, HR ອະນຸມັດ/ປະຕິເສດ ຢູ່ໜ້າຕ່າງ ການເຂົ້າ-ອອກວຽກ.
+ * leave_type = status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກຕອນອະນຸມັດ: 2 ລາພັກ (ໄດ້ເງິນເດືອນ), 3 ລາພັກບໍ່ໄດ້ເງິນເດືອນ.
+ * status: 1 ລໍຖ້າ, 2 ອະນຸມັດ (ບັນທຶກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງແລ້ວ), 3 ປະຕິເສດ, 4 ພະນັກງານຍົກເລີກ.
+ * days = ມື້ເຮັດວຽກໃນຊ່ວງ (ຕອນຂໍ) / ມື້ທີ່ບັນທຶກລາພັກແທ້ (ຕອນອະນຸມັດ — ມື້ທີ່ມາວຽກແລ້ວບໍ່ນັບ)
+ */
+class LeaveRequest extends sequelize_1.Model {
+}
+LeaveRequest.init({
+    _uuid: {
+        type: sequelize_1.DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    employee_id: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false
+    },
+    leave_type: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 2
+    },
+    start_date: {
+        type: sequelize_1.DataTypes.DATEONLY,
+        allowNull: false
+    },
+    end_date: {
+        type: sequelize_1.DataTypes.DATEONLY,
+        allowNull: false
+    },
+    days: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
+    reason: {
+        type: sequelize_1.DataTypes.STRING(255),
+        allowNull: false
+    },
+    status: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 1
+    },
+    review_note: sequelize_1.DataTypes.STRING(255),
+    reviewedbyid: sequelize_1.DataTypes.INTEGER,
+    reviewedAt: sequelize_1.DataTypes.DATE,
+    createdAt: {
+        type: sequelize_1.DataTypes.DATE,
+        defaultValue: sequelize_1.DataTypes.NOW
+    },
+    updatedAt: {
+        type: sequelize_1.DataTypes.DATE,
+        defaultValue: sequelize_1.DataTypes.NOW
+    },
+}, {
+    sequelize: database_1.default,
+    modelName: "LeaveRequest",
+    tableName: "tbl_leave_request",
+    timestamps: true
+});
+LeaveRequest.belongsTo(employee_1.default, { foreignKey: "employee_id", as: "employee", constraints: false });
+(0, autoSync_1.autoSync)(LeaveRequest);
+exports.default = LeaveRequest;

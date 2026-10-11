@@ -7,7 +7,8 @@ import Payroll from "./payroll";
  * ເງິນເດືອນລາຍຄົນຂອງໃບເງິນເດືອນ (UNIQUE payroll_id + employee_id). ຊື່/ພະແນກ/ບັນຊີທະນາຄານ ເກັບເປັນສຳເນົາ
  * ຕອນສ້າງ/ຄິດໄລ່ໃໝ່ (ໃບທີ່ຈ່າຍແລ້ວບໍ່ປ່ຽນຕາມຂໍ້ມູນພະນັກງານ). ສູດຢູ່ controllers/hr/payrollRules.ts:
  * ເງິນເດືອນຕາມວັນເຮັດວຽກ (base_pay) − ຫັກຂາດວຽກ − ຫັກມາຊ້າ + ເງິນອຸດໜູນ + ລ່ວງເວລາ + ໂບນັດ = gross;
- * net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ. *_mode = ນະໂຍບາຍສະເພາະຄົນຂອງແຕ່ລະກຸ່ມການຫັກ:
+ * net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ. ລ່ວງເວລາ (overtime) ຄິດຈາກບັນທຶກ OT (overtime_mode 1) ຫຼື ປ້ອນເອງ (0).
+ * deduction_mode / sso_mode / tax_mode = ນະໂຍບາຍສະເພາະຄົນຂອງແຕ່ລະກຸ່ມການຫັກ:
  * 1 ຕາມບໍລິສັດ, 3 ຫັກສະເໝີ, 2 ບໍ່ຫັກ, 0 ປ້ອນເອງ (MODE_* ໃນ payrollRules.ts)
  */
 class PayrollLine extends Model {
@@ -35,6 +36,10 @@ class PayrollLine extends Model {
   public late_deduction!: string;
   public allowance!: string;
   public overtime!: string;
+  public ot_hours!: string;
+  public ot_weighted_hours!: string;
+  public ot_fixed_amount!: string;
+  public overtime_mode!: number;
   public bonus!: string;
   public gross!: string;
   public sso_base!: string;
@@ -99,6 +104,13 @@ PayrollLine.init(
     late_deduction: money(),
     allowance: money(),
     overtime: money(),
+    // ຊົ່ວໂມງ OT ຂອງເດືອນ (tbl_overtime) ແລະ ຊົ່ວໂມງຄູນອັດຕາ (Σ ຊົ່ວໂມງ × % ÷ 100) ຕອນສ້າງ/ຄິດໄລ່ໃໝ່
+    ot_hours: { type: DataTypes.DECIMAL(8, 2), allowNull: false, defaultValue: 0 },
+    ot_weighted_hours: { type: DataTypes.DECIMAL(8, 2), allowNull: false, defaultValue: 0 },
+    // OT ທີ່ກຳນົດເງິນເອງ (ຕໍ່ຊົ່ວໂມງ × ຊົ່ວໂມງ + ເໝົາຈ່າຍ) — ບວກເພີ່ມຈາກສ່ວນທີ່ຄິດຕາມອັດຕາ
+    ot_fixed_amount: { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    // 1 ຄິດຈາກບັນທຶກ OT, 0 ປ້ອນເອງ — ຄ່າເລີ່ມຕົ້ນຂອງຖັນ 0: ແຖວທີ່ມີກ່ອນມີບັນທຶກ OT ຍັງເປັນຈຳນວນທີ່ປ້ອນໄວ້; ແຖວໃໝ່ = 1
+    overtime_mode: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
     bonus: money(),
     gross: money(),
     sso_base: money(),

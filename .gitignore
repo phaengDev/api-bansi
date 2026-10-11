@@ -7,7 +7,7 @@ node_modules/
 .env.*.local
 
 # Build output (npm run build)
-dist/
+# dist/
 
 # ໄຟລ໌ທີ່ຜູ້ໃຊ້ upload (src/uploads ຕອນ dev, dist/uploads ຕອນ start)
 src/uploads/
