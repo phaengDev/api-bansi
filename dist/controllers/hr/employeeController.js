@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteEmployeeDocument = exports.downloadEmployeeDocument = exports.uploadEmployeeDocuments = exports.deleteEmployee = exports.updateEmployee = exports.resetAppPassword = exports.createEmployee = exports.getEmployeeOption = exports.getMyEmployee = exports.getEmployees = void 0;
+exports.deleteEmployeeDocument = exports.downloadEmployeeDocument = exports.uploadEmployeeDocuments = exports.deleteEmployee = exports.updateEmployee = exports.resetAppPassword = exports.createEmployee = exports.getEmployeeOption = exports.updateMyProfilePhoto = exports.getMyEmployee = exports.getEmployees = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const sequelize_1 = require("sequelize");
@@ -106,6 +106,36 @@ const getMyEmployee = async (req, res) => {
     }
 };
 exports.getMyEmployee = getMyEmployee;
+/**
+ * PUT /employee/me/profile (multipart "profile" — JPG/PNG/WEBP ບໍ່ເກີນ 5MB) — ພະນັກງານປ່ຽນຮູບໂປຣໄຟລ໌ຂອງຕົນເອງ (app ມືຖື).
+ * ລຶບຮູບເກົ່າອອກ, ຄືນ profile_url ໃໝ່
+ */
+const updateMyProfilePhoto = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            discardProfile(req);
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const uploaded = uploadedProfile(req);
+        if (!uploaded) {
+            res.status(400).json({ message: "ກະລຸນາເລືອກຮູບ" });
+            return;
+        }
+        const row = self.employee;
+        const oldProfile = row.profile;
+        await row.update({ profile: uploaded, updatedAt: new Date() });
+        if (oldProfile && oldProfile !== uploaded)
+            (0, uploadFile_1.deleteFile)(hrHelpers_1.PROFILE_FOLDER, oldProfile);
+        res.status(200).json({ message: "ປ່ຽນຮູບໂປຣໄຟລ໌ແລ້ວ", profile_url: (0, hrHelpers_1.profileUrl)(uploaded) });
+    }
+    catch (error) {
+        discardProfile(req);
+        (0, bansiHelpers_1.sendError)(res, error, "Error updating my profile photo");
+    }
+};
+exports.updateMyProfilePhoto = updateMyProfilePhoto;
 /** GET /employee/option — ຄົນທີ່ເຮັດວຽກຢູ່ (ຟອມຜູ້ໃຊ້) + user_id ຂອງບັນຊີທີ່ຜູກແລ້ວ */
 const getEmployeeOption = async (_req, res) => {
     try {

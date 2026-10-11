@@ -219,6 +219,7 @@ router.get("/employee/fetch", employeeController_1.getEmployees);
 router.get("/employee/option", employeeController_1.getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", employeeController_1.getMyEmployee);
+router.put("/employee/me/profile", hrHelpers_1.profileUpload, employeeController_1.updateMyProfilePhoto);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);

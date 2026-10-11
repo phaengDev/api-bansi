@@ -110,6 +110,34 @@ export const getMyEmployee = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * PUT /employee/me/profile (multipart "profile" — JPG/PNG/WEBP ບໍ່ເກີນ 5MB) — ພະນັກງານປ່ຽນຮູບໂປຣໄຟລ໌ຂອງຕົນເອງ (app ມືຖື).
+ * ລຶບຮູບເກົ່າອອກ, ຄືນ profile_url ໃໝ່
+ */
+export const updateMyProfilePhoto = async (req: Request, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      discardProfile(req);
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const uploaded = uploadedProfile(req);
+    if (!uploaded) {
+      res.status(400).json({ message: "ກະລຸນາເລືອກຮູບ" });
+      return;
+    }
+    const row = self.employee;
+    const oldProfile = row.profile;
+    await row.update({ profile: uploaded, updatedAt: new Date() });
+    if (oldProfile && oldProfile !== uploaded) deleteFile(PROFILE_FOLDER, oldProfile);
+    res.status(200).json({ message: "ປ່ຽນຮູບໂປຣໄຟລ໌ແລ້ວ", profile_url: profileUrl(uploaded) });
+  } catch (error) {
+    discardProfile(req);
+    sendError(res, error, "Error updating my profile photo");
+  }
+};
+
 /** GET /employee/option — ຄົນທີ່ເຮັດວຽກຢູ່ (ຟອມຜູ້ໃຊ້) + user_id ຂອງບັນຊີທີ່ຜູກແລ້ວ */
 export const getEmployeeOption = async (_req: Request, res: Response) => {
   try {

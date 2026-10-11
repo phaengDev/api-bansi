@@ -64,7 +64,7 @@ import {
   getDepartments, getDepartmentOption, createDepartment, updateDepartment, deleteDepartment, getProvinces,
 } from "../controllers/hr/departmentController";
 import {
-  getEmployees, getEmployeeOption, getMyEmployee, createEmployee, updateEmployee, deleteEmployee,
+  getEmployees, getEmployeeOption, getMyEmployee, updateMyProfilePhoto, createEmployee, updateEmployee, deleteEmployee,
   uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument, resetAppPassword,
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr } from "../controllers/hr/companyController";
@@ -271,6 +271,7 @@ router.get("/employee/fetch", getEmployees);
 router.get("/employee/option", getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", getMyEmployee);
+router.put("/employee/me/profile", profileUpload, updateMyProfilePhoto);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
