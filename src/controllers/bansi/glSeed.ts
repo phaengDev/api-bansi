@@ -7,7 +7,7 @@ import GlMapping from "../../models/glMapping";
  * ເອີ້ນຫຼັງ runAutoSync (App.ts) — ຕາຕະລາງບັນຊີຄູ່/ລູກໜີ້-ເຈົ້າໜີ້ ຖືກສ້າງດ້ວຍ autoSync ແຕ່ autoSync ບໍ່ສ້າງ index
  * ແລະ ບໍ່ໃສ່ຂໍ້ມູນ. ຢູ່ນີ້ໃສ່ສະເພາະສິ່ງທີ່ຍັງບໍ່ມີ (ແລ່ນທຸກເທື່ອທີ່ເປີດ server ກໍ່ບໍ່ທັບຂອງເກົ່າ):
  * - index ຂອງ sql/create_gl_accounting.sql ແລະ sql/create_gl_ar_ap.sql
- * - ຜັງບັນຊີເລີ່ມຕົ້ນ 5 ກຸ່ມ (ເມື່ອຜັງຍັງຫວ່າງ)
+ * - ຜັງບັນຊີເລີ່ມຕົ້ນ 5 ກຸ່ມ (ເມື່ອຜັງຍັງຫວ່າງ) + ບັນຊີທີ່ເພີ່ມພາຍຫຼັງ (LATER_ACCOUNTS)
  * - ບົດບາດຂອງລະບົບ → ບັນຊີເລີ່ມຕົ້ນ (ບົດບາດທີ່ຍັງບໍ່ໄດ້ຜູກ)
  * ຖ້າບໍ່ມີຜັງບັນຊີ ແລະ ບົດບາດ, ການບັນທຶກລາຍຮັບ-ລາຍຈ່າຍ ຈະລົງບັນຊີບໍ່ໄດ້
  */
@@ -91,6 +91,32 @@ const ROLE_CODES: Record<string, string> = {
   FX_GAIN: "4220",
   DEFAULT_EXPENSE: "5199",
   FX_LOSS: "5230",
+  SALARY_EXPENSE: "5110",
+  SSO_EXPENSE: "5110",
+  SSO_PAYABLE: "2145",
+  PIT_PAYABLE: "2140",
+  PAYROLL_DEDUCTION: "1170",
+};
+
+/**
+ * ບັນຊີທີ່ເພີ່ມພາຍຫຼັງ — ຜັງທີ່ສ້າງໄປແລ້ວບໍ່ມີ: ໃສ່ໃຕ້ບັນຊີຫົວ (parent) ເມື່ອຍັງບໍ່ມີລະຫັດນີ້ ແລະ ມີບັນຊີຫົວ
+ * [ລະຫັດ, ລາວ, ອັງກິດ, ຈີນ, ລະຫັດບັນຊີຫົວ, ກຸ່ມ, ໝວດ, ຝັ່ງ]
+ */
+const LATER_ACCOUNTS: [string, string, string, string, string, number, string, number][] = [
+  ["2145", "ເງິນປະກັນສັງຄົມຄ້າງຈ່າຍ", "Social security payable", "应付社会保险", "2100", 2, "CURRENT_LIABILITY", 2],
+];
+
+const ensureLaterAccounts = async () => {
+  for (const [code, la, en, cn, parentCode, group, type, side] of LATER_ACCOUNTS) {
+    if (await ChartAccount.count({ where: { account_code: code } })) continue;
+    const parent: any = await ChartAccount.findOne({ where: { account_code: parentCode } });
+    if (!parent) continue;
+    await ChartAccount.create({
+      account_code: code, name_la: la, name_en: en, name_cn: cn, parent_id: parent._uuid,
+      account_group: group, account_type: type, normal_side: side, is_postable: 1, is_system: 0, status: 1,
+    });
+    console.log(`🛠️  tbl_chart_account: ${code} ${la}`);
+  }
 };
 
 /** [ຕາຕະລາງ, ຊື່ index, ຖັນ, unique] — ຄືກັບໄຟລ໌ SQL */
@@ -137,6 +163,7 @@ export const seedGlDefaults = async () => {
     })));
     console.log(`🛠️  tbl_chart_account: seeded ${CHART.length} accounts`);
   }
+  await ensureLaterAccounts();
 
   for (const [role, code] of Object.entries(ROLE_CODES)) {
     if (await GlMapping.count({ where: { source_type: "ROLE", source_key: role } })) continue;

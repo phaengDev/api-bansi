@@ -5,6 +5,8 @@ import District from "./district";
 
 /**
  * ຂໍ້ມູນບໍລິສັດ — ມີແຖວດຽວ. ທີ່ຢູ່ເກັບແຕ່ district_id (ແຂວງເອົາຈາກ tbl_district.province_id). ພິກັດ + scan_radius (ແມັດ) = ຂອບເຂດທີ່ພະນັກງານສະແກນເຂົ້າ-ອອກວຽກໄດ້.
+ * QR ສະແກນເຂົ້າ-ອອກວຽກ: scan_token = ລະຫັດລັບໃນ QR ທີ່ຕິດໄວ້ບໍລິສັດ (ສ້າງໃໝ່ = QR ເກົ່າໃຊ້ບໍ່ໄດ້), scan_require_qr = 1
+ * ຕ້ອງສະແກນ QR ນຳ (ນອກຈາກ GPS). scan_token ບໍ່ສົ່ງອອກທາງ GET /company — ອ່ານໄດ້ສະເພາະ HR ຜ່ານ /company/scan-qr
  * work_start / work_end = "HH:mm", days_off = ວັນພັກປະຈຳອາທິດ "6,0" (0 ອາທິດ … 6 ເສົາ ຄື Date.getDay())
  */
 class Company extends Model {
@@ -19,6 +21,9 @@ class Company extends Model {
   public latitude!: string | null;
   public longitude!: string | null;
   public scan_radius!: number;
+  public scan_require_qr!: number;
+  public scan_token!: string | null;
+  public scan_token_at!: Date | null;
   public work_start!: string;
   public work_end!: string;
   public days_off!: string;
@@ -51,6 +56,13 @@ Company.init(
       allowNull: false,
       defaultValue: 50
     },
+    scan_require_qr: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 0
+    },
+    scan_token: DataTypes.STRING(64),
+    scan_token_at: DataTypes.DATE,
     work_start: {
       type: DataTypes.STRING(5),
       allowNull: false,

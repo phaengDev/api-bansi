@@ -24,10 +24,10 @@ const main = async () => {
     process.exit(1);
   }
 
-  // ປະເພດຜູ້ໃຊ້ "Admin" — ສ້າງໃຫ້ຖ້າຍັງບໍ່ມີ
+  // ລະດັບ 1 "ສູງສຸດ" — ສ້າງໃຫ້ຖ້າຍັງບໍ່ມີ (ຄືກັບ seedDefaults)
   const [typeUser] = await TypeUser.findOrCreate({
-    where: { names: "Admin" },
-    defaults: { names: "Admin", status: 1 },
+    where: { _uuid: 1 },
+    defaults: { _uuid: 1, names: "ສູງສຸດ", status: 1 },
   });
 
   const user = await Users.create({

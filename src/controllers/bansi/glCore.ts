@@ -46,6 +46,12 @@ export const ROLES: Record<string, { groups: number[]; label: string }> = {
   DEFAULT_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍ (ຄ່າເລີ່ມຕົ້ນ)" },
   FX_GAIN: { groups: [4], label: "ກຳໄລອັດຕາແລກປ່ຽນ" },
   FX_LOSS: { groups: [5], label: "ຂາດທຶນອັດຕາແລກປ່ຽນ" },
+  // ເງິນເດືອນ (hr/payrollController) — ຜູກໃຫ້ເອງຕອນເປີດ server (glSeed)
+  SALARY_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍເງິນເດືອນ" },
+  SSO_EXPENSE: { groups: [5], label: "ປະກັນສັງຄົມສ່ວນບໍລິສັດ" },
+  SSO_PAYABLE: { groups: [2], label: "ປະກັນສັງຄົມຄ້າງຈ່າຍ" },
+  PIT_PAYABLE: { groups: [2], label: "ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ" },
+  PAYROLL_DEDUCTION: { groups: [1, 2], label: "ຍອດຫັກອື່ນຈາກເງິນເດືອນ" },
 };
 
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */

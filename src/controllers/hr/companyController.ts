@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
+import { randomBytes } from "crypto";
 import Company from "../../models/company";
-import Province from "../../models/province";
 import District from "../../models/district";
 import { deleteFile } from "../../utils/uploadFile";
 import { actorOf, sendError } from "../bansi/bansiHelpers";
-import { COMPANY_FOLDER, companyLogoUrl } from "./hrHelpers";
+import { COMPANY_FOLDER, companyLogoUrl, districtInclude } from "./hrHelpers";
 
 /**
  * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
@@ -15,17 +15,11 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MIN_RADIUS = 10;
 const MAX_RADIUS = 1000;
 
-/** ເມືອງ + ແຂວງຂອງເມືອງ (ບໍລິສັດເກັບແຕ່ district_id) */
-const includeAddress = [{
-  model: District,
-  as: "district",
-  attributes: ["_uuid", "district_name", "province_id"],
-  include: [{ model: Province, as: "province", attributes: ["_uuid", "province_name"] }],
-}];
 
 const present = (row: Company | null) => {
   if (!row) return null;
-  const r: any = row.get({ plain: true });
+  // ລະຫັດລັບຂອງ QR ບໍ່ສົ່ງໃຫ້ທຸກຄົນ (ໃຜມີ token ກໍ່ສ້າງ QR ເອງໄດ້) — HR ອ່ານຜ່ານ GET /company/scan-qr
+  const { scan_token: _token, ...r }: any = row.get({ plain: true });
   return {
     ...r,
     latitude: r.latitude === null ? null : Number(r.latitude),
@@ -35,7 +29,7 @@ const present = (row: Company | null) => {
   };
 };
 
-const findCompany = () => Company.findOne({ include: includeAddress, order: [["_uuid", "ASC"]] });
+const findCompany = () => Company.findOne({ include: [districtInclude], order: [["_uuid", "ASC"]] });
 
 /** GET /company — null = ຍັງບໍ່ໄດ້ຕັ້ງ */
 export const getCompany = async (_req: Request, res: Response) => {
@@ -129,5 +123,56 @@ export const saveCompany = async (req: Request, res: Response) => {
   } catch (error) {
     discardLogo(req);
     sendError(res, error, "Error saving company");
+  }
+};
+
+// ================= QR ສະແກນເຂົ້າ-ອອກວຽກ
+
+/** ຂໍ້ຄວາມໃນ QR — app ມືຖືສົ່ງຂໍ້ຄວາມນີ້ທັງໝົດມາໃນ POST /attendance/scan { qr } */
+export const QR_PREFIX = "BANSI-ATT:";
+export const qrPayload = (token: string) => `${QR_PREFIX}${token}`;
+
+const newToken = () => randomBytes(16).toString("hex");
+
+const presentQr = (row: Company) => ({
+  payload: row.scan_token ? qrPayload(row.scan_token) : null,
+  require_qr: Number(row.scan_require_qr) === 1,
+  token_at: row.scan_token_at,
+});
+
+/** GET /company/scan-qr (HR) — ຂໍ້ຄວາມຂອງ QR + ຕ້ອງສະແກນ QR ຫຼືບໍ່; ຍັງບໍ່ເຄີຍສ້າງ = ສ້າງໃຫ້ເລີຍ */
+export const getScanQr = async (_req: Request, res: Response) => {
+  try {
+    const row = await Company.findOne({ order: [["_uuid", "ASC"]] });
+    if (!row) {
+      res.status(400).json({ message: "ກະລຸນາບັນທຶກຂໍ້ມູນບໍລິສັດກ່ອນ" });
+      return;
+    }
+    if (!row.scan_token) await row.update({ scan_token: newToken(), scan_token_at: new Date() });
+    res.status(200).json({ data: presentQr(row) });
+  } catch (error) {
+    sendError(res, error, "Error getting scan QR");
+  }
+};
+
+/**
+ * PUT /company/scan-qr { regenerate?: 1, require_qr?: 0 | 1 } (HR) — regenerate = ສ້າງ QR ໃໝ່ (QR ທີ່ພິມໄວ້ກ່ອນໃຊ້ບໍ່ໄດ້ອີກ),
+ * require_qr = ບັງຄັບໃຫ້ສະແກນ QR ທຸກຄັ້ງ (ນອກຈາກ GPS)
+ */
+export const saveScanQr = async (req: Request, res: Response) => {
+  try {
+    const row = await Company.findOne({ order: [["_uuid", "ASC"]] });
+    if (!row) {
+      res.status(400).json({ message: "ກະລຸນາບັນທຶກຂໍ້ມູນບໍລິສັດກ່ອນ" });
+      return;
+    }
+    const body = req.body || {};
+    const patch: Record<string, unknown> = {};
+    if (Number(body.regenerate) === 1 || !row.scan_token) Object.assign(patch, { scan_token: newToken(), scan_token_at: new Date() });
+    if (body.require_qr !== undefined) patch.scan_require_qr = Number(body.require_qr) === 1 || body.require_qr === true ? 1 : 0;
+    await row.update({ ...patch, updatedbyid: Number(actorOf(req)) || null });
+    res.status(200).json({ message: "Successfully saved scan QR", data: presentQr(row) });
+  } catch (error) {
+    sendError(res, error, "Error saving scan QR");
   }
 };

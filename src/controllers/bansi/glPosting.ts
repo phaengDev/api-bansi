@@ -3,6 +3,7 @@ import moment from "moment";
 import Incomes from "../../models/incomeModel";
 import Expenses from "../../models/expenseModel";
 import TransferMoney from "../../models/transferMoney";
+import Payroll from "../../models/payroll";
 import TreasuryAccount from "../../models/treasuryAcount";
 import TypeTreasury from "../../models/typeTreasury";
 import JournalEntry from "../../models/journalEntry";
@@ -19,6 +20,8 @@ import {
  * - EXPENSE:  ໜີ້ ລາຍຈ່າຍ (ຍອດກ່ອນອາກອນ) + ໜີ້ ອາກອນຂາເຂົ້າ / ມີ ເງິນສົດ/ທະນາຄານ (ຍອດຈ່າຍ)
  * - TRANSFER: ໜີ້ ບັນຊີຮັບ                             / ມີ ບັນຊີໂອນອອກ
  * - OPENING:  ໜີ້ ເງິນສົດ/ທະນາຄານ (ຍອດເລີ່ມຕົ້ນຕອນເປີດບັນຊີເງິນຄັງ) / ມີ ທຶນຍອດຍົກມາ — source_id "TA-{id}"
+ * - PAYROLL:  ໜີ້ ລາຍຈ່າຍເງິນເດືອນ (gross) + ໜີ້ ປກສ ສ່ວນບໍລິສັດ / ມີ ເງິນສົດ/ທະນາຄານ (ສຸດທິ) + ມີ ປກສ ຄ້າງຈ່າຍ
+ *             (ພະນັກງານ + ບໍລິສັດ) + ມີ ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ + ມີ ຍອດຫັກອື່ນ
  * ຍອດຍົກມາຕົ້ນປີ (tbl_opening_balance) ເປັນພຽງພາບຖ່າຍຂອງຍອດທີ່ຍົກມາຈາກປີກ່ອນ ຈຶ່ງບໍ່ລົງບັນຊີ (ລົງແລ້ວຈະນັບຊ້ຳ).
  * ທຸກຟັງຊັນບໍ່ເຮັດຫຍັງ ຖ້າຍັງບໍ່ໄດ້ສ້າງຕາຕະລາງ (glReady)
  */
@@ -94,6 +97,31 @@ export const postTransfer = async (row: any, t: Transaction, actorId?: number | 
       { accountId: from.accountId, side: CREDIT, amount, currencyId: from.currencyId, rate: from.rate, treasuryAccountId: Number(row.account_outid) },
     ],
     actorId,
+  }, t);
+};
+
+/** ເງິນເດືອນທີ່ຈ່າຍແລ້ວ (ບັນຊີສະກຸນກີບເທົ່ານັ້ນ) — ແຖວທີ່ເປັນ 0 ບໍ່ລົງ ແລະ ບໍ່ຕ້ອງຜູກບົດບາດຂອງມັນ */
+export const postPayroll = async (row: any, t: Transaction, actorId?: number | null) => {
+  if (!(await glReady(t))) return null;
+  const date = row.pay_date;
+  const cash = await treasurySide(Number(row.account_id), date, t);
+  const value = (field: string) => round2(Number(row[field]) || 0);
+  const employer = value("total_sso_employer");
+  const lines: DraftLine[] = [];
+  const add = async (role: string, side: typeof DEBIT | typeof CREDIT, amount: number) => {
+    if (amount) lines.push({ accountId: await roleAccountId(role, t), side, amount });
+  };
+  await add("SALARY_EXPENSE", DEBIT, value("total_gross"));
+  await add("SSO_EXPENSE", DEBIT, employer);
+  lines.push({
+    accountId: cash.accountId, side: CREDIT, amount: value("total_net"),
+    currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: Number(row.account_id),
+  });
+  await add("SSO_PAYABLE", CREDIT, round2(value("total_sso_employee") + employer));
+  await add("PIT_PAYABLE", CREDIT, value("total_tax"));
+  await add("PAYROLL_DEDUCTION", CREDIT, value("total_other_deduction"));
+  return postSource({
+    date, sourceType: "PAYROLL", sourceId: row._uuid, reference: row.number, description: row.description, lines, actorId,
   }, t);
 };
 
@@ -187,6 +215,9 @@ export const rebuildFromDocuments = async (actorId?: number | null) => {
 
   const transfers: any[] = await TransferMoney.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });
   for (const row of transfers) await run("TRANSFER", row._uuid, `TRANSFER #${row._uuid}`, (t) => postTransfer(row, t, actorId));
+
+  const payrolls: any[] = await Payroll.findAll({ where: { status: 2 }, order: [["_uuid", "ASC"]] });
+  for (const row of payrolls) await run("PAYROLL", row._uuid, row.number ?? `PAYROLL #${row._uuid}`, (t) => postPayroll(row, t, actorId));
 
   // ສຸດທ້າຍ: ຍອດເລີ່ມຕົ້ນຂອງແຕ່ລະບັນຊີເງິນຄັງ ໃຫ້ຍອດໃນສະໝຸດບັນຊີກົງກັບຍອດປັດຈຸບັນ (ຄິດໃໝ່ທຸກເທື່ອ)
   const accounts: any[] = await TreasuryAccount.findAll({ order: [["_uuid", "ASC"]] });

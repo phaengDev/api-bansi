@@ -27,7 +27,9 @@ export type MovementSource =
   | "AR_RECEIPT"
   | "AR_RECEIPT_CANCEL"
   | "AP_PAYMENT"
-  | "AP_PAYMENT_CANCEL";
+  | "AP_PAYMENT_CANCEL"
+  | "PAYROLL"
+  | "PAYROLL_CANCEL";
 
 type MoveOptions = {
   direction: typeof MOVE_IN | typeof MOVE_OUT;

@@ -2,18 +2,22 @@ import { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import { Op } from "sequelize";
+import bcrypt from "bcryptjs";
 import Employee from "../../models/employee";
 import EmployeeDocument from "../../models/employeeDocument";
 import Department from "../../models/department";
 import Position from "../../models/position";
-import Province from "../../models/province";
 import District from "../../models/district";
 import Users from "../../models/userModel";
 import Banks from "../../models/bankModel";
 import { url } from "../../utils";
 import { deleteFile } from "../../utils/uploadFile";
 import { actorOf, decodeId, sendError, toDateOnly } from "../bansi/bansiHelpers";
-import { DOCUMENT_DIR, PROFILE_FOLDER, originalNameOf, profileUrl, removeQuietly } from "./hrHelpers";
+import {
+  APP_PHONE, DEFAULT_APP_PASSWORD, DOCUMENT_DIR, PROFILE_FOLDER, districtInclude, originalNameOf, phoneDigits, profileUrl,
+  removeQuietly,
+} from "./hrHelpers";
+import { selfEmployee } from "./attendanceController";
 
 /**
  * ພະນັກງານ — ຂໍ້ມູນສ່ວນຕົວ, ວຽກ (ພະແນກ / ຕຳແໜ່ງ / ວັນເຂົ້າວຽກ / ເງິນເດືອນ), ທີ່ຢູ່, ຮູບ ແລະ ເອກະສານຄັດຕິດ.
@@ -30,8 +34,7 @@ const ACCOUNT_NO = /^\d[\d-]{3,48}\d$/;
 const includeAll = [
   { model: Department, as: "department", attributes: ["_uuid", "depart_code", "depart_name"] },
   { model: Position, as: "position", attributes: ["_uuid", "position_name"] },
-  { model: Province, as: "province", attributes: ["_uuid", "province_name"] },
-  { model: District, as: "district", attributes: ["_uuid", "district_name"] },
+  districtInclude,
   { model: Banks, as: "bank", attributes: ["_uuid", "abbr", "name_la", "logo"] },
   { model: EmployeeDocument, as: "documents", attributes: ["_uuid", "original_name", "mime_type", "file_size", "createdAt"] },
 ];
@@ -90,6 +93,20 @@ export const getEmployees = async (_req: Request, res: Response) => {
     res.status(200).json({ data, total: data.length, next_code: await nextCode() });
   } catch (error) {
     sendError(res, error, "Error getting employees");
+  }
+};
+
+/** GET /employee/me — ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖື, ບັນຊີຕ້ອງຜູກກັບພະນັກງານ) */
+export const getMyEmployee = async (req: Request, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    res.status(200).json({ data: await findFull(self.employee._uuid) });
+  } catch (error) {
+    sendError(res, error, "Error getting my employee profile");
   }
 };
 
@@ -152,7 +169,14 @@ const parseInput = async (body: any, existing?: Employee): Promise<EmployeeInput
     if (raw && !date) return { error: "ວັນທີບໍ່ຖືກຕ້ອງ" };
     input[key] = date;
   }
-  if (has("phone")) input.phone = text(body.phone, 30);
+  // ເບີໂທ = ຊື່ເຂົ້າ app ພະນັກງານ ແລະ ເບີຮັບ OTP — ບັງຄັບ 20 + 8 ຕົວເລກ, ບໍ່ຊ້ຳກັບພະນັກງານອື່ນ
+  if (has("phone") || !existing) {
+    const phone = phoneDigits(body.phone);
+    if (!APP_PHONE.test(phone)) return { error: "ເບີໂທຕ້ອງຂຶ້ນຕົ້ນດ້ວຍ 20 ແລ້ວຕາມດ້ວຍ 8 ຕົວເລກ (ເຊັ່ນ 2052160011)" };
+    const taken = await Employee.count({ where: { phone, ...(existing ? { _uuid: { [Op.ne]: existing._uuid } } : {}) } });
+    if (taken) return { error: `ເບີ ${phone} ມີພະນັກງານອື່ນໃຊ້ແລ້ວ` };
+    input.phone = phone;
+  }
   if (has("email")) {
     const email = text(body.email, 150);
     if (email && !EMAIL.test(email)) return { error: "ອີເມວບໍ່ຖືກຕ້ອງ" };
@@ -180,15 +204,10 @@ const parseInput = async (body: any, existing?: Employee): Promise<EmployeeInput
     input.basic_salary = salary;
   }
 
-  if (has("province_id") || has("district_id")) {
-    const provinceId = Number(merged("province_id")) || null;
-    const districtId = Number(merged("district_id")) || null;
-    if (provinceId && !(await Province.findByPk(provinceId))) return { error: "ບໍ່ພົບແຂວງທີ່ເລືອກ" };
-    if (districtId) {
-      const district = await District.findByPk(districtId);
-      if (!district || Number(district.province_id) !== provinceId) return { error: "ເມືອງບໍ່ຢູ່ໃນແຂວງທີ່ເລືອກ" };
-    }
-    input.province_id = provinceId;
+  // ທີ່ຢູ່ເກັບແຕ່ເມືອງ (ແຂວງມາກັບເມືອງ)
+  if (has("district_id")) {
+    const districtId = Number(body.district_id) || null;
+    if (districtId && !(await District.findByPk(districtId))) return { error: "ບໍ່ພົບເມືອງທີ່ເລືອກ" };
     input.district_id = districtId;
   }
   // ບັນຊີຮັບເງິນເດືອນ — ທະນາຄານ ແລະ ເລກບັນຊີ ຕ້ອງມີຄູ່ກັນ (ຫຼື ຫວ່າງທັງຄູ່)
@@ -236,6 +255,9 @@ export const createEmployee = async (req: Request, res: Response) => {
     const row = await Employee.create({
       ...input,
       emp_code: input.emp_code ?? (await nextCode()),
+      // ເຂົ້າ app ພະນັກງານໄດ້ທັນທີ ດ້ວຍເບີໂທ + ລະຫັດເລີ່ມຕົ້ນ (ບໍ່ຕ້ອງມີບັນຊີຜູ້ໃຊ້ລະບົບ)
+      app_password: bcrypt.hashSync(DEFAULT_APP_PASSWORD, 10),
+      must_change_password: 1,
       profile: uploadedProfile(req) ?? null,
       createdbyid: Number(actorOf(req)) || null,
     });
@@ -244,6 +266,21 @@ export const createEmployee = async (req: Request, res: Response) => {
   } catch (error) {
     discardProfile(req);
     sendError(res, error, "Error creating employee");
+  }
+};
+
+/** PUT /employee/app-password/:id — HR ຕັ້ງລະຫັດຜ່ານ app ຂອງພະນັກງານຄືນເປັນຄ່າເລີ່ມຕົ້ນ (ລືມລະຫັດ ແລະ ຍັງບໍ່ມີ OTP) */
+export const resetAppPassword = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const row = await Employee.findByPk(Number(decodeId(req)));
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບພະນັກງານ" });
+      return;
+    }
+    await row.update({ app_password: bcrypt.hashSync(DEFAULT_APP_PASSWORD, 10), must_change_password: 1, updatedAt: new Date() });
+    res.status(200).json({ message: "Successfully reset app password", data: await findFull(row._uuid) });
+  } catch (error) {
+    sendError(res, error, "Error resetting app password");
   }
 };
 

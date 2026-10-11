@@ -11,6 +11,9 @@ import TypeUser from "../models/typeUserModel";
 import Province from "../models/province";
 import District from "../models/district";
 import { LAO_DISTRICTS, LAO_PROVINCES } from "./laoAddress";
+import bcrypt from "bcryptjs";
+import Employee from "../models/employee";
+import { DEFAULT_APP_PASSWORD, phoneDigits } from "../controllers/hr/hrHelpers";
 
 /**
  * ເອີ້ນຫຼັງ runAutoSync (App.ts) — ໃສ່ສະເພາະສິ່ງທີ່ຍັງບໍ່ມີ, ແລ່ນທຸກເທື່ອທີ່ເປີດ server ກໍ່ບໍ່ທັບຂອງເກົ່າ:
@@ -83,15 +86,27 @@ const seedAccountingSettings = async () => {
   }
 };
 
-/** ປະເພດຜູ້ໃຊ້ (1 = ຜູ້ດູແລລະບົບ ຄືບັນຊີທຳອິດ) ແລະ ແຂວງ/ເມືອງ ຂອງລາວ — ສະເພາະຕອນຕາຕະລາງຍັງຫວ່າງ */
+/** ລະດັບຜູ້ໃຊ້ (tbl_typeuser) — 1 ສູງສຸດ (ຄືບັນຊີທຳອິດ), 2 ທຳມະດາ, 3 ທົ່ວໄປ */
+const USER_TYPES: [number, string][] = [
+  [1, "ສູງສຸດ"],
+  [2, "ທຳມະດາ"],
+  [3, "ທົ່ວໄປ"],
+];
+/** ຊື່ທີ່ seed ຮຸ່ນກ່ອນໃສ່ໄວ້ (2 ປະເພດ / createAdmin) — ປ່ຽນເປັນຊື່ລະດັບໃໝ່ ເທື່ອດຽວ; ຊື່ທີ່ແກ້ເອງບໍ່ແຕະ */
+const OLD_TYPE_NAMES = ["ຜູ້ດູແລລະບົບ", "ຜູ້ໃຊ້ທົ່ວໄປ", "Admin"];
+
+/** ລະດັບຜູ້ໃຊ້ທັງ 3 (ສ້າງອັນທີ່ຍັງບໍ່ມີ) ແລະ ແຂວງ/ເມືອງ ຂອງລາວ (ສະເພາະຕອນຕາຕະລາງຍັງຫວ່າງ) */
 const seedHrDefaults = async () => {
   const now = new Date();
-  if ((await TypeUser.count()) === 0) {
-    await TypeUser.bulkCreate([
-      { _uuid: 1, names: "ຜູ້ດູແລລະບົບ", status: 1, createdAt: now, updatedAt: now },
-      { _uuid: 2, names: "ຜູ້ໃຊ້ທົ່ວໄປ", status: 1, createdAt: now, updatedAt: now },
-    ]);
-    console.log("🌱 tbl_typeuser: 2 rows");
+  for (const [id, name] of USER_TYPES) {
+    const row = await TypeUser.findByPk(id);
+    if (!row) {
+      await TypeUser.create({ _uuid: id, names: name, status: 1, createdAt: now, updatedAt: now });
+      console.log(`🌱 tbl_typeuser: ${id} ${name}`);
+    } else if (OLD_TYPE_NAMES.includes(row.names) && row.names !== name) {
+      await row.update({ names: name, updatedAt: now });
+      console.log(`🛠️  tbl_typeuser: ${id} → ${name}`);
+    }
   }
   if ((await Province.count()) === 0) {
     await Province.bulkCreate(LAO_PROVINCES.map(([_uuid, province_name]) => ({ _uuid, province_name })));
@@ -101,6 +116,31 @@ const seedHrDefaults = async () => {
     await District.bulkCreate(LAO_DISTRICTS.map(([_uuid, province_id, district_name]) => ({ _uuid, province_id, district_name })));
     console.log(`🌱 tbl_district: ${LAO_DISTRICTS.length} rows`);
   }
+};
+
+/**
+ * ບັນຊີ app ຂອງພະນັກງານທີ່ສ້າງກ່ອນມີ app: ເບີ 8 ຕົວເລກ → ເຕີມ 20 ທາງໜ້າ (ເບີຮູບແບບອື່ນປະໄວ້ໃຫ້ HR ແກ້),
+ * ຍັງບໍ່ມີລະຫັດຜ່ານ → ລະຫັດເລີ່ມຕົ້ນ (ຕ້ອງປ່ຽນເມື່ອເຂົ້າ app)
+ */
+const seedEmployeeAppAccounts = async () => {
+  const rows = await Employee.scope("withPassword").findAll({ attributes: ["_uuid", "phone", "app_password"] });
+  let phones = 0;
+  let passwords = 0;
+  const hash = bcrypt.hashSync(DEFAULT_APP_PASSWORD, 10);
+  for (const row of rows) {
+    const patch: Record<string, unknown> = {};
+    const digits = phoneDigits(row.phone);
+    if (/^\d{8}$/.test(digits) && !(await Employee.count({ where: { phone: `20${digits}` } }))) {
+      patch.phone = `20${digits}`;
+      phones++;
+    }
+    if (!row.app_password) {
+      Object.assign(patch, { app_password: hash, must_change_password: 1 });
+      passwords++;
+    }
+    if (Object.keys(patch).length) await row.update(patch);
+  }
+  if (phones || passwords) console.log(`🛠️  tbl_employee: ${phones} ເບີ → 20XXXXXXXX, ${passwords} ລະຫັດ app ເລີ່ມຕົ້ນ`);
 };
 
 /** [ຕາຕະລາງ, ຊື່ index, ຖັນ, unique] */
@@ -135,8 +175,15 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_district", "idx_district_province", ["province_id"], false],
   ["tbl_employee", "uq_employee_code", ["emp_code"], true],
   ["tbl_employee", "idx_employee_department", ["department_id"], false],
+  ["tbl_employee", "uq_employee_phone", ["phone"], true],
   ["tbl_employee_document", "idx_employee_document_employee", ["employee_id"], false],
   ["tbl_users", "uq_users_employee", ["employee_id"], true],
+  // ການເຂົ້າ-ອອກວຽກ ແລະ ເງິນເດືອນ — controllers/hr/attendanceController.ts, payrollController.ts
+  ["tbl_attendance", "uq_attendance_employee_date", ["employee_id", "work_date"], true],
+  ["tbl_attendance", "idx_attendance_date", ["work_date"], false],
+  ["tbl_holiday", "uq_holiday_date", ["holiday_date"], true],
+  ["tbl_payroll", "uq_payroll_period", ["period"], true],
+  ["tbl_payroll_line", "uq_payroll_line_employee", ["payroll_id", "employee_id"], true],
 ];
 
 /** [ຕາຕະລາງ, ຊື່ constraint, ຖັນ, ຕາຕະລາງປາຍທາງ, ຖັນປາຍທາງ] — sql/fix_tbl_transfer_money_fk.sql */
@@ -197,6 +244,8 @@ const ACCOUNT_MENUS = [
   { name_la: "ລາຍງານການເງິນ", name_en: "Financial Statements", name_cn: "财务报表", icons: "fa-solid fa-chart-pie", path: "/account/statements" },
   { name_la: "ງົບປະມານ", name_en: "Budget", name_cn: "预算", icons: "fa-solid fa-bullseye", path: "/account/budget" },
   { name_la: "ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ", name_en: "Master Data (HR)", name_cn: "基础资料（人事）", icons: "fa-solid fa-users-gear", path: "/hr" },
+  { name_la: "ການເຂົ້າ-ອອກວຽກ", name_en: "Attendance", name_cn: "考勤", icons: "fa-solid fa-user-clock", path: "/hr/attendance" },
+  { name_la: "ເງິນເດືອນ", name_en: "Payroll", name_cn: "工资", icons: "fa-solid fa-money-check-dollar", path: "/hr/payroll" },
   { name_la: "ປະຕິທິນ", name_en: "Calendar", name_cn: "日历", icons: "fa-solid fa-calendar-days", path: "/calendar" },
   { name_la: "ຕັ້ງຄ່າບັນຊີ", name_en: "Accounting Settings", name_cn: "会计设置", icons: "fa-solid fa-gears", path: "/account/setting" },
 ];
@@ -229,4 +278,5 @@ export const seedDefaults = async () => {
 
   await seedAccountingSettings();
   await seedHrDefaults();
+  await seedEmployeeAppAccounts();
 };

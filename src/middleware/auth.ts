@@ -12,9 +12,10 @@ declare global {
   namespace Express {
     interface Request {
       user?: JwtPayload & {
-        sub?: string;         // standard subject
+        sub?: string;         // standard subject — user_uuid (ລະບົບ) ຫຼື employee _uuid (typ "employee")
         phones?: string;
         role?: string;
+        typ?: string;         // "employee" = token ຂອງ app ພະນັກງານ (appAuthController)
       };
     }
   }
@@ -75,6 +76,15 @@ export const login = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Error logging in" });
   }
 };
+/** typ ຂອງ token ທີ່ app ພະນັກງານໄດ້ຈາກ POST /app/login (sub = employee _uuid) */
+export const EMPLOYEE_TOKEN = "employee";
+
+/**
+ * route ທີ່ token ຂອງ app ພະນັກງານເຂົ້າໄດ້ — ຂໍ້ມູນຂອງຕົນເອງ (/…/me, /…/me/…), ສະແກນເຂົ້າ-ອອກວຽກ ແລະ /app/…;
+ * ນອກນັ້ນ (ຂໍ້ມູນພະນັກງານທຸກຄົນ, ບັນຊີ, ເງິນເດືອນ…) ສະເພາະຜູ້ໃຊ້ລະບົບ
+ */
+const SELF_SERVICE = /^\/(?:[\w-]+\/me(?:\/|$)|attendance\/scan$|app\/)/;
+
 /**
  * Middleware: verifies Bearer token, attaches decoded payload to req.user
  */
@@ -91,6 +101,10 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
   }
   try {
     const decoded = jwt.verify(token, adminJwtConfig.secret, { issuer: adminJwtConfig.issuer, }) as JwtPayload;
+    if (decoded.typ === EMPLOYEE_TOKEN && !SELF_SERVICE.test(req.path)) {
+      res.status(403).json({ message: "ບັນຊີ app ພະນັກງານ ໃຊ້ໄດ້ສະເພາະຂໍ້ມູນຂອງຕົນເອງ" });
+      return;
+    }
     req.user = decoded;
     next();
   } catch {

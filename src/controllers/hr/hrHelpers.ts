@@ -3,6 +3,8 @@ import fs from "fs";
 import multer from "multer";
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import { url } from "../../utils";
+import Province from "../../models/province";
+import District from "../../models/district";
 
 /** ຮູບພະນັກງານ — uploads/employee (ເປີດຜ່ານ /image ຄືໂລໂກ້ທະນາຄານ) */
 export const PROFILE_FOLDER = "employee";
@@ -11,6 +13,21 @@ export const COMPANY_FOLDER = "company";
 
 /** ເອກະສານຄັດຕິດຂອງພະນັກງານ — ນອກ uploads (ບໍ່ມີ URL ສາທາລະນະ), ດາວໂຫຼດຜ່ານ API ທີ່ login ແລ້ວເທົ່ານັ້ນ */
 export const DOCUMENT_DIR = path.join(__dirname, "..", "..", "private", "employee-docs");
+
+/** ລະຫັດຜ່ານ app ພະນັກງານ ຕອນສ້າງພະນັກງານ / HR ຕັ້ງຄືນ — ເຂົ້າ app ຄັ້ງທຳອິດແລ້ວຄວນປ່ຽນ (must_change_password) */
+export const DEFAULT_APP_PASSWORD = "123";
+/** ເບີໂທພະນັກງານ = ຊື່ເຂົ້າ app ແລະ ເບີຮັບ OTP — ບັງຄັບ 20 + 8 ຕົວເລກ (ເຊັ່ນ 2052160011) */
+export const APP_PHONE = /^20\d{8}$/;
+/** ເອົາສະເພາະຕົວເລກ (ຕັດຍະຫວ່າງ, ຂີດ) */
+export const phoneDigits = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+
+/** ເມືອງ + ແຂວງຂອງເມືອງ — ບໍລິສັດ ແລະ ພະນັກງານເກັບແຕ່ district_id (ແຂວງມາກັບເມືອງ) */
+export const districtInclude = {
+  model: District,
+  as: "district",
+  attributes: ["_uuid", "district_name", "province_id"],
+  include: [{ model: Province, as: "province", attributes: ["_uuid", "province_name"] }],
+};
 
 export const profileUrl = (file: string | null | undefined) => (file ? `${url()}/${PROFILE_FOLDER}/${file}` : null);
 export const companyLogoUrl = (file: string | null | undefined) => (file ? `${url()}/${COMPANY_FOLDER}/${file}` : null);

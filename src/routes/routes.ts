@@ -64,20 +64,42 @@ import {
   getDepartments, getDepartmentOption, createDepartment, updateDepartment, deleteDepartment, getProvinces,
 } from "../controllers/hr/departmentController";
 import {
-  getEmployees, getEmployeeOption, createEmployee, updateEmployee, deleteEmployee,
-  uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument,
+  getEmployees, getEmployeeOption, getMyEmployee, createEmployee, updateEmployee, deleteEmployee,
+  uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument, resetAppPassword,
 } from "../controllers/hr/employeeController";
-import { getCompany, saveCompany } from "../controllers/hr/companyController";
+import { getCompany, saveCompany, getScanQr, saveScanQr } from "../controllers/hr/companyController";
+import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
+import {
+  scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
+  saveAttendance, deleteAttendance, getHolidays, getMyHolidays, createHoliday, deleteHoliday,
+} from "../controllers/hr/attendanceController";
+import {
+  getPayrollSetting, savePayrollSetting, getPayrolls, getPayroll, getMyPayslips, getMyPayrollPreview, createPayroll, recalcPayroll,
+  previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll,
+} from "../controllers/hr/payrollController";
+import {
+  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, approveLeave, rejectLeave,
+} from "../controllers/hr/leaveController";
 import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
+import { getMyBirthdays, getMyBirthdayWishes, sendBirthdayWish } from "../controllers/hr/birthdayController";
 
 const router = Router();
 
 // ================= public — ທຸກ route ທີ່ຢູ່ເທິງ router.use(verifyToken) ບໍ່ຕ້ອງ login
 router.post("/user/login", login);
+// app ພະນັກງານ — ເຂົ້າດ້ວຍເບີໂທ (20XXXXXXXX) + ລະຫັດຜ່ານ; token ໃຊ້ໄດ້ສະເພາະ route ຂໍ້ມູນຂອງຕົນເອງ (/…/me, /attendance/scan, /app/…)
+router.post("/app/login", appLogin);
+// ລືມລະຫັດຜ່ານ — OTP ທາງ SMS ແລ້ວອອກລະຫັດຜ່ານໃໝ່
+router.post("/app/otp/request", requestAppOtp);
+router.post("/app/otp/verify", verifyAppOtp);
 router.get("/user/type", getTypeUser);
 router.get("/currency", getcurrency);
 
 router.use(verifyToken);
+
+router.put("/app/password", changeAppPassword);
+// ຂໍ້ມູນບໍລິສັດສຳລັບ app (token ພະນັກງານເຂົ້າ /company ບໍ່ໄດ້ — ໃຊ້ຂໍ້ມູນດຽວກັນ, ບໍ່ມີລະຫັດ QR)
+router.get("/app/company", getCompany);
 
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
 router.get("/menu/main", getMainMenus);
@@ -245,15 +267,64 @@ router.put("/department/:id", requirePermission("updates"), updateDepartment);
 router.delete("/department/:id", requirePermission("deletes"), deleteDepartment);
 router.get("/employee/fetch", getEmployees);
 router.get("/employee/option", getEmployeeOption);
+// ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
+router.get("/employee/me", getMyEmployee);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
 router.get("/employee/document/download/:id", downloadEmployeeDocument);
 router.delete("/employee/document/:id", requirePermission("updates"), deleteEmployeeDocument);
+// ຕັ້ງລະຫັດຜ່ານ app ຂອງພະນັກງານຄືນເປັນຄ່າເລີ່ມຕົ້ນ (ກ່ອນ /employee/:id)
+router.put("/employee/app-password/:id", requirePermission("updates"), resetAppPassword);
 router.put("/employee/:id", requirePermission("updates"), profileUpload, updateEmployee);
 router.delete("/employee/:id", requirePermission("deletes"), deleteEmployee);
 // ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
 router.get("/company", getCompany);
 router.put("/company", requirePermission("updates"), companyLogoUpload, saveCompany);
+// QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company
+router.get("/company/scan-qr", requirePermission("updates"), getScanQr);
+router.put("/company/scan-qr", requirePermission("updates"), saveScanQr);
+// ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
+router.post("/attendance/scan", scanAttendance);
+router.get("/attendance/me", getMyAttendance);
+router.post("/attendance/daily", getDailyAttendance);
+router.post("/attendance/monthly", getMonthlyAttendance);
+router.post("/attendance/records", getEmployeeAttendance);
+router.post("/attendance/save", requirePermission("updates"), saveAttendance);
+router.delete("/attendance/:id", requirePermission("deletes"), deleteAttendance);
+// ວັນພັກລັດຖະການ (ນອກຈາກວັນພັກປະຈຳອາທິດ) — ບໍ່ນັບເປັນມື້ເຮັດວຽກ
+// ວັນພັກຂອງປີ + ຈຳນວນວັນພັກແຕ່ລະປີ ສຳລັບ app ມືຖື
+router.get("/holiday/me", getMyHolidays);
+router.get("/holiday/fetch", getHolidays);
+router.post("/holiday/create", requirePermission("creates"), createHoliday);
+router.delete("/holiday/:id", requirePermission("deletes"), deleteHoliday);
+// ========= ວັນເກີດ (app ມືຖື) — ເພື່ອນທີ່ມີວັນເກີດມື້ນີ້, ສົ່ງຄຳອວຍພອນ, ຄຳອວຍພອນທີ່ໄດ້ຮັບ
+router.get("/birthday/me", getMyBirthdays);
+router.post("/birthday/me/wish", sendBirthdayWish);
+router.get("/birthday/me/wishes", getMyBirthdayWishes);
+// ========= ຄຳຂໍລາພັກ — /me ສຳລັບ app ມືຖືຂອງພະນັກງານ; HR (ຕ້ອງມີສິດແກ້ໄຂ ທັງເບິ່ງລາຍການ) ອະນຸມັດ = ບັນທຶກລາພັກລົງການເຂົ້າວຽກ
+router.get("/leave/me", getMyLeaves);
+router.post("/leave/me", createMyLeave);
+router.put("/leave/me/cancel/:id", cancelMyLeave);
+router.post("/leave/fetch", requirePermission("updates"), getLeaves);
+router.put("/leave/approve/:id", requirePermission("updates"), approveLeave);
+router.put("/leave/reject/:id", requirePermission("updates"), rejectLeave);
+// ========= ເງິນເດືອນ — /setting ແລະ /line/:id ກ່ອນ /:id; ຈ່າຍ = ເງິນອອກຈາກບັນຊີເງິນຄັງ + ລົງບັນຊີຄູ່
+router.get("/payroll/setting", getPayrollSetting);
+router.put("/payroll/setting", requirePermission("updates"), savePayrollSetting);
+router.post("/payroll/fetch", getPayrolls);
+router.post("/payroll/create", requirePermission("creates"), createPayroll);
+router.put("/payroll/recalc/:id", requirePermission("updates"), recalcPayroll);
+router.post("/payroll/line/preview/:id", previewPayrollLine);
+router.put("/payroll/line/:id", requirePermission("updates"), updatePayrollLine);
+router.delete("/payroll/line/:id", requirePermission("deletes"), deletePayrollLine);
+router.put("/payroll/pay/:id", requirePermission("updates"), payPayroll);
+router.put("/payroll/unpay/:id", requirePermission("updates"), unpayPayroll);
+// ສະລິບເງິນເດືອນຂອງຕົນເອງ (app ມືຖື) — ກ່ອນ /payroll/:id
+router.get("/payroll/me", getMyPayslips);
+// ກວດເງິນເດືອນຫຼວງໜ້າ (ເດືອນທີ່ຍັງບໍ່ຈ່າຍ) — ຄິດຈາກການເຂົ້າວຽກເຖິງມື້ນີ້ + ເງິນເພີ່ມ/ຫັກໃນໃບຮ່າງ
+router.get("/payroll/me/preview", getMyPayrollPreview);
+router.get("/payroll/:id", getPayroll);
+router.delete("/payroll/:id", requirePermission("deletes"), deletePayroll);
 
 export default router;
