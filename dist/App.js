@@ -8,6 +8,7 @@ const database_1 = __importDefault(require("./config/database"));
 const autoSync_1 = require("./utils/autoSync");
 const seedDefaults_1 = require("./utils/seedDefaults");
 const glSeed_1 = require("./controllers/bansi/glSeed");
+const notificationController_1 = require("./controllers/hr/notificationController");
 const os_1 = require("os");
 const PORT = process.env.PORT || 8888;
 const getPositiveNumber = (value, fallback) => {
@@ -49,6 +50,8 @@ async function startServer() {
     await (0, seedDefaults_1.seedDefaults)().catch((error) => console.error("❌ seedDefaults:", error?.parent?.sqlMessage ?? error));
     // ຜັງບັນຊີ + ບົດບາດເລີ່ມຕົ້ນ + index ຂອງບັນຊີຄູ່ (ສະເພາະທີ່ຍັງບໍ່ມີ) — ລົ້ມເຫຼວກໍ່ເປີດ server ຕໍ່
     await (0, glSeed_1.seedGlDefaults)().catch((error) => console.error("❌ seedGlDefaults:", error?.parent?.sqlMessage ?? error));
+    // ແຈ້ງວັນເກີດທຸກມື້ 08:00 (ເດັ້ງຂຶ້ນຈໍມືຖື)
+    (0, notificationController_1.scheduleBirthdayNotifications)();
     server_1.default.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);

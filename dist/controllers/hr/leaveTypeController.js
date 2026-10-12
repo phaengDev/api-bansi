@@ -10,7 +10,7 @@ const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 /**
  * ປະເພດການລາພັກ (HR) — GET /leave-type/fetch, POST /leave-type/create, PUT /leave-type/:id, DELETE /leave-type/:id.
- * ຂີດຈຳກັດ (ມື້ເຮັດວຽກ) ຕໍ່ປີ / ຕໍ່ຄັ້ງ ຖືກກວດໃນ leaveController ຕອນຂໍ ແລະ ຕອນອະນຸມັດ
+ * ຂີດຈຳກັດ (ມື້ເຮັດວຽກ) ຕໍ່ປີ / ຕໍ່ຄັ້ງ — ເກີນ = ພະນັກງານຍັງຂໍໄດ້ (app ແຈ້ງເຕືອນ), HR ຕັດສິນ ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ ຕອນອະນຸມັດ
  */
 /** ລາໄດ້ສູງສຸດທີ່ຕັ້ງໄດ້ (ມື້) — ກົງກັບ MAX_RANGE_DAYS ຂອງ leaveController ຕໍ່ຄັ້ງ, ທັງປີ ≤ 366 */
 const MAX_LIMIT = 366;

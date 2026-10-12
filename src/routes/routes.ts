@@ -89,7 +89,7 @@ import {
 } from "../controllers/hr/correctionController";
 import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
 import { getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
-import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications } from "../controllers/hr/notificationController";
+import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
 
 const router = Router();
 
@@ -329,6 +329,8 @@ router.get("/notification/me", getMyNotifications);
 router.get("/notification/me/stream", streamMyNotifications);
 router.put("/notification/me/read", readAllMyNotifications);
 router.put("/notification/me/read/:id", readMyNotification);
+// ເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (Firebase) ຂອງ app ພະນັກງານ
+router.post("/app/device-token", registerDeviceToken);
 router.post("/notification/announce", requirePermission("creates"), announce);
 // ========= ຄຳຂໍລາພັກ — /me ສຳລັບ app ມືຖືຂອງພະນັກງານ; HR (ຕ້ອງມີສິດແກ້ໄຂ ທັງເບິ່ງລາຍການ) ອະນຸມັດ = ບັນທຶກລາພັກລົງການເຂົ້າວຽກ
 router.get("/leave/me", getMyLeaves);

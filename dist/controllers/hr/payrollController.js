@@ -704,6 +704,7 @@ const payPayroll = async (req, res) => {
             body: `ຍອດສຸດທິ ₭ ${Math.round(Number(l.net) || 0).toLocaleString("en-US")} — ເບິ່ງສະລິບເງິນເດືອນໄດ້ໃນແອັບ`,
             ref: `payroll:${payroll.period}`,
             createdbyid: actor,
+            push: true,
         })));
         await reply(res, payroll._uuid, "Successfully paid payroll");
     }

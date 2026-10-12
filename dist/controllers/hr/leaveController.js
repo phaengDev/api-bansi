@@ -24,7 +24,8 @@ const workCalendar_1 = require("./workCalendar");
  * - HR: POST /leave/fetch, POST /leave/balance, PUT /leave/approve/:id (ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງ),
  *   PUT /leave/reject/:id
  * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ).
- * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ — ກວດຕອນຂໍ ແລະ ຕອນອະນຸມັດ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ)
+ * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ) — ເກີນ = ຍັງຂໍໄດ້ ແລະ ແຈ້ງພະນັກງານ;
+ * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid)
  */
 const PENDING = 1;
 const APPROVED = 2;
@@ -260,6 +261,7 @@ const notifyLeave = (row, title, lines, actor) => (0, notificationController_1.n
         body: lines.filter(Boolean).join("\n") || null,
         ref: `leave:${row._uuid}`,
         createdbyid: actor,
+        push: true,
     }]);
 const overlapMessage = (row) => `ຊ່ວງວັນທີນີ້ຊ້ຳກັບການລາພັກ ${dayText(row.start_date)} – ${dayText(row.end_date)} ທີ່ມີຢູ່ແລ້ວ`;
 // ================= ພະນັກງານ (app ມືຖື)
@@ -337,9 +339,8 @@ const createMyLeave = async (req, res) => {
         const overlap = await overlappingLeave(employee._uuid, range.start, range.end);
         if (overlap)
             return fail(overlapMessage(overlap));
+        // ເກີນຂີດຈຳກັດຂອງປະເພດ = ຍັງຂໍໄດ້ (ແຈ້ງພະນັກງານ) — HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ / ບໍ່ໄດ້ເງິນເດືອນ
         const overQuota = await quotaError(employee._uuid, resolved.type, workdays);
-        if (overQuota)
-            return fail(overQuota);
         const row = await leaveRequest_1.default.create({
             employee_id: employee._uuid,
             leave_type_id: resolved.type?._uuid ?? null,
@@ -351,7 +352,13 @@ const createMyLeave = async (req, res) => {
             status: PENDING,
         });
         const saved = await leaveRequest_1.default.findByPk(row._uuid, { include: [typeInclude] });
-        res.status(200).json({ message: "ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ລໍຖ້າ HR ອະນຸມັດ", data: present(saved ?? row) });
+        res.status(200).json({
+            message: overQuota
+                ? `ສົ່ງຄຳຂໍລາພັກແລ້ວ — ${resolved.type?.name ?? "ປະເພດນີ້"} ລາຄົບສິດແລ້ວ, HR ຈະພິຈາລະນາວ່າໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ`
+                : "ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ລໍຖ້າ HR ອະນຸມັດ",
+            over_quota: !!overQuota,
+            data: present(saved ?? row),
+        });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error creating leave request");
@@ -435,9 +442,9 @@ const getLeaveBalance = async (req, res) => {
 };
 exports.getLeaveBalance = getLeaveBalance;
 /**
- * PUT /leave/approve/:id { leave_type_id?, note? } — ອະນຸມັດ: ບັນທຶກ status ລາພັກ (HR ປ່ຽນປະເພດໄດ້) ລົງ tbl_attendance
+ * PUT /leave/approve/:id { leave_type_id?, paid?, note? } — ອະນຸມັດ: ບັນທຶກ status ລາພັກ (HR ປ່ຽນປະເພດໄດ້) ລົງ tbl_attendance
  * ທຸກມື້ເຮັດວຽກໃນຊ່ວງທີ່ເປັນພະນັກງານຢູ່ (ລວມມື້ທີ່ຍັງບໍ່ຮອດ). ມື້ທີ່ສະແກນມາວຽກແລ້ວ ບໍ່ທັບ ແລະ ບໍ່ນັບ.
- * ກວດຂີດຈຳກັດຂອງປະເພດອີກຄັ້ງກັບມື້ທີ່ບັນທຶກແທ້ — ເກີນ = ຍົກເລີກທັງໝົດ (HR ປະຕິເສດ ຫຼື ປ່ຽນປະເພດ)
+ * paid (1 ໄດ້ເງິນເດືອນ / 0 ຕັດເງິນ) = HR ຕັດສິນເອງ — ບໍ່ສົ່ງ = ຕາມປະເພດ. ເກີນຂີດຈຳກັດຂອງປະເພດ ບໍ່ບລັອກ (HR ເຫັນຄຳເຕືອນໃນໜ້າເວັບ)
  */
 const approveLeave = async (req, res) => {
     const t = await leaveRequest_1.default.sequelize.transaction();
@@ -461,7 +468,13 @@ const approveLeave = async (req, res) => {
             : row.leave_type_id ? await leaveType_1.default.findByPk(row.leave_type_id, { transaction: t }) : null;
         if (changed && !type)
             return fail(400, "ບໍ່ພົບປະເພດການລາພັກ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ");
-        const leaveType = type ? statusOfType(type) : Number(row.leave_type);
+        // HR ເລືອກ ໄດ້ / ບໍ່ໄດ້ເງິນເດືອນ ເອງ (ເຊັ່ນ ລາເກີນສິດ = ຕັດເງິນ) — ບໍ່ສົ່ງ = ຕາມປະເພດ
+        const paidChoice = body.paid === undefined || body.paid === null || body.paid === ""
+            ? null
+            : Number(body.paid) === 1 || body.paid === true;
+        const leaveType = paidChoice === null
+            ? (type ? statusOfType(type) : Number(row.leave_type))
+            : (paidChoice ? workCalendar_1.PAID_LEAVE : workCalendar_1.UNPAID_LEAVE);
         if (!LEAVE_TYPES.includes(leaveType))
             return fail(400, "ປະເພດການລາພັກບໍ່ຖືກຕ້ອງ");
         const employee = await employee_1.default.findByPk(row.employee_id, { transaction: t });
@@ -472,9 +485,6 @@ const approveLeave = async (req, res) => {
         if ("error" in result)
             return fail(400, result.error);
         const { applied, worked } = result;
-        const overQuota = await quotaError(Number(row.employee_id), type, applied, row._uuid, t);
-        if (overQuota)
-            return fail(400, overQuota);
         await row.update({
             status: APPROVED,
             leave_type_id: type?._uuid ?? null,
@@ -487,7 +497,11 @@ const approveLeave = async (req, res) => {
         }, { transaction: t });
         await t.commit();
         done = true;
-        await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [[type?.name, `${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied.length} ມື້`].filter(Boolean).join(" · "), text(body.note)], actor);
+        await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [
+            [type?.name, `${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied.length} ມື້`].filter(Boolean).join(" · "),
+            leaveType === workCalendar_1.PAID_LEAVE ? "ໄດ້ເງິນເດືອນ" : "ບໍ່ໄດ້ເງິນເດືອນ (ຫັກເງິນເດືອນ)",
+            text(body.note),
+        ], actor);
         const saved = await findWithEmployee(row._uuid);
         res.status(200).json({
             message: worked.length ? `ອະນຸມັດແລ້ວ ${applied.length} ມື້ (ບໍ່ນັບ ${worked.length} ມື້ທີ່ມາວຽກແລ້ວ)` : `ອະນຸມັດແລ້ວ ${applied.length} ມື້`,

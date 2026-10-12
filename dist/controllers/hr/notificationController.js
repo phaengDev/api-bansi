@@ -3,12 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.announce = exports.readMyNotification = exports.readAllMyNotifications = exports.streamMyNotifications = exports.getMyNotifications = exports.notifyAllWorking = exports.notify = void 0;
+exports.registerDeviceToken = exports.announce = exports.readMyNotification = exports.readAllMyNotifications = exports.streamMyNotifications = exports.getMyNotifications = exports.scheduleBirthdayNotifications = exports.notifyAllWorking = exports.notify = void 0;
 const events_1 = require("events");
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const notification_1 = __importDefault(require("../../models/notification"));
 const employee_1 = __importDefault(require("../../models/employee"));
+const deviceToken_1 = __importDefault(require("../../models/deviceToken"));
+const push_1 = require("../../utils/push");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const attendanceController_1 = require("./attendanceController");
 const workCalendar_1 = require("./workCalendar");
@@ -18,7 +20,10 @@ const workCalendar_1 = require("./workCalendar");
  * - GET /notification/me/stream — Server-Sent Events: ສົ່ງແຈ້ງເຕືອນໃໝ່ໃຫ້ app ທັນທີທີ່ສ້າງ (ບໍ່ຕ້ອງລໍຖ້າ app ກວດເອງ)
  * - PUT /notification/me/read — ໝາຍວ່າອ່ານແລ້ວທັງໝົດ; PUT /notification/me/read/:id — ອ່ານແລ້ວອັນດຽວ
  * - POST /notification/announce { title, body } — HR ແຈ້ງການໃຫ້ພະນັກງານທຸກຄົນ (ເຊັ່ນ ແຈ້ງພັກແບບບໍ່ເປັນທາງການ)
- * ສ່ວນອື່ນຂອງລະບົບເອີ້ນ notify() / notifyAllWorking() ເມື່ອມີເຫດການ (ໂອນເງິນເດືອນ, ອະນຸມັດລາພັກ, ວັນພັກໃໝ່, ອວຍພອນ)
+ * - POST /app/device-token { token, platform } — ເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM); ອອກຈາກລະບົບ app ລຶບ token ໃນເຄື່ອງ
+ *   → FCM ຕອບວ່າ token ໃຊ້ບໍ່ໄດ້ ແລ້ວ utils/push ລຶບອອກເອງ
+ * ສ່ວນອື່ນຂອງລະບົບເອີ້ນ notify() / notifyAllWorking() ເມື່ອມີເຫດການ (ໂອນເງິນເດືອນ, ອະນຸມັດລາພັກ, ວັນພັກໃໝ່, ອວຍພອນ).
+ * push: true = ສົ່ງເດັ້ງຂຶ້ນຈໍມືຖືນຳ (ແອັບປິດຢູ່ກໍ່ເຫັນ): ເງິນເດືອນ, ຜົນຄຳຂໍລາ, ພັກບໍ່ເປັນທາງການ, ວັນເກີດ
  */
 const MAX_LIST = 100;
 /** ສົ່ງ comment ທຸກ 25 ວິ ກັນ proxy / ເຄືອຂ່າຍມືຖືຕັດການເຊື່ອມຕໍ່ທີ່ງຽບ */
@@ -48,6 +53,13 @@ const notify = async (items) => {
         })));
         for (const row of rows)
             hub.emit(String(row.employee_id), presentOf(row));
+        // ບໍ່ await — ການສົ່ງຫາ Firebase ບໍ່ໃຫ້ວຽກຫຼັກ (ເຊັ່ນ ຈ່າຍເງິນເດືອນ) ລໍຖ້າ; bulkCreate ຄືນແຖວຕາມລຳດັບ items
+        void (0, push_1.sendPush)(rows.flatMap((row, index) => (items[index].push ? [{
+                employee_id: Number(row.employee_id),
+                title: row.title,
+                body: row.body,
+                data: { id: String(row._uuid), type: row.type, ref: row.ref ?? "" },
+            }] : [])));
     }
     catch (error) {
         console.error("❌ notify:", error);
@@ -76,10 +88,13 @@ const birthdayKeys = (today) => {
     return key === "02-28" && !day.isLeapYear() ? [key, "02-29"] : [key];
 };
 /**
- * ແຈ້ງເຕືອນວັນເກີດຂອງມື້ນີ້ — ສ້າງຕອນພະນັກງານເປີດເບິ່ງ (ບໍ່ຕ້ອງມີ cron). ref ກັນສ້າງຊ້ຳ:
+ * ແຈ້ງເຕືອນວັນເກີດຂອງມື້ນີ້ໃຫ້ recipients — ເອີ້ນຈາກ scheduleBirthdayNotifications (ທຸກຄົນ ທຸກມື້ 08:00, ເດັ້ງຂຶ້ນຈໍ)
+ * ແລະ ຕອນພະນັກງານເປີດເບິ່ງແຈ້ງເຕືອນ (ກໍລະນີເປີດກ່ອນ 08:00 / server ປິດຢູ່). ref ກັນສ້າງຊ້ຳ:
  * ວັນເກີດເພື່ອນ "birthday:<id>:<date>", ວັນເກີດຕົນເອງ "birthday:me:<date>"
  */
-const ensureBirthdayNotifications = async (me) => {
+const notifyBirthdays = async (recipients) => {
+    if (!recipients.length)
+        return;
     const today = (0, workCalendar_1.todayLao)();
     const people = await employee_1.default.findAll({
         attributes: ["_uuid", "first_name", "last_name", "start_date", "end_date", "work_status"],
@@ -88,25 +103,56 @@ const ensureBirthdayNotifications = async (me) => {
             [sequelize_1.Op.and]: [(0, sequelize_1.where)((0, sequelize_1.fn)("DATE_FORMAT", (0, sequelize_1.col)("Employee.birthday"), "%m-%d"), { [sequelize_1.Op.in]: birthdayKeys(today) })],
         },
     });
-    const wanted = people
-        .filter((e) => (0, workCalendar_1.employedOn)(e, today))
-        .map((e) => e._uuid === me._uuid
-        ? { ref: `birthday:me:${today}`, title: "ສຸກສັນວັນເກີດ 🎂", body: "ຂໍໃຫ້ມີສຸຂະພາບແຂງແຮງ ແລະ ມີຄວາມສຸກຫຼາຍໆໃນວັນພິເສດນີ້" }
-        : {
-            ref: `birthday:${e._uuid}:${today}`,
-            title: `ມື້ນີ້ວັນເກີດຂອງ ${[e.first_name, e.last_name].filter(Boolean).join(" ")} 🎉`,
-            body: "ສົ່ງຄຳອວຍພອນໃຫ້ເພື່ອນຮ່ວມງານໄດ້ທີ່ໜ້າຫຼັກ",
-        });
-    if (!wanted.length)
+    const born = people.filter((e) => (0, workCalendar_1.employedOn)(e, today));
+    if (!born.length)
         return;
+    const wanted = recipients.flatMap((me) => born.map((e) => ({
+        employee_id: me._uuid,
+        ...(e._uuid === me._uuid
+            ? { ref: `birthday:me:${today}`, title: "ສຸກສັນວັນເກີດ 🎂", body: "ຂໍໃຫ້ມີສຸຂະພາບແຂງແຮງ ແລະ ມີຄວາມສຸກຫຼາຍໆໃນວັນພິເສດນີ້" }
+            : {
+                ref: `birthday:${e._uuid}:${today}`,
+                title: `ມື້ນີ້ວັນເກີດຂອງ ${[e.first_name, e.last_name].filter(Boolean).join(" ")} 🎉`,
+                body: "ສົ່ງຄຳອວຍພອນໃຫ້ເພື່ອນຮ່ວມງານໄດ້ທີ່ໜ້າຫຼັກ",
+            }),
+    })));
     const have = await notification_1.default.findAll({
-        where: { employee_id: me._uuid, ref: { [sequelize_1.Op.in]: wanted.map((w) => w.ref) } },
-        attributes: ["ref"],
+        where: { employee_id: { [sequelize_1.Op.in]: recipients.map((r) => r._uuid) }, ref: { [sequelize_1.Op.in]: [...new Set(wanted.map((w) => w.ref))] } },
+        attributes: ["employee_id", "ref"],
         raw: true,
     });
-    const exists = new Set(have.map((n) => String(n.ref)));
-    await (0, exports.notify)(wanted.filter((w) => !exists.has(w.ref)).map((w) => ({ ...w, employee_id: me._uuid, type: "birthday" })));
+    const exists = new Set(have.map((n) => `${n.employee_id}|${n.ref}`));
+    await (0, exports.notify)(wanted.filter((w) => !exists.has(`${w.employee_id}|${w.ref}`)).map((w) => ({ ...w, type: "birthday", push: true })));
 };
+/** ເວລາແຈ້ງວັນເກີດປະຈຳວັນ (ເວລາລາວ) */
+const BIRTHDAY_HOUR = 8;
+/** ແຈ້ງວັນເກີດຂອງມື້ນີ້ໃຫ້ພະນັກງານທຸກຄົນທີ່ຍັງເຮັດວຽກຢູ່ */
+const notifyTodaysBirthdays = async () => {
+    const today = (0, workCalendar_1.todayLao)();
+    const people = await employee_1.default.findAll({ attributes: ["_uuid", "start_date", "end_date", "work_status"], where: { work_status: workCalendar_1.WORKING } });
+    await notifyBirthdays(people.filter((e) => (0, workCalendar_1.employedOn)(e, today)));
+};
+/**
+ * ຕັ້ງເວລາແຈ້ງວັນເກີດທຸກມື້ 08:00 (ເວລາລາວ) — ເອີ້ນເທື່ອດຽວຕອນເປີດ server (App.ts). ເປີດ server ຫຼັງ 08:00
+ * = ແຈ້ງຂອງມື້ນີ້ທັນທີ (ref ກັນຊ້ຳ ເປີດຄືນຫຼາຍເທື່ອກໍ່ບໍ່ສົ່ງຊ້ຳ)
+ */
+const scheduleBirthdayNotifications = () => {
+    const run = () => notifyTodaysBirthdays().catch((error) => console.error("❌ birthday notifications:", error));
+    const next = () => {
+        const now = (0, workCalendar_1.nowLao)();
+        const at = now.clone().startOf("day").hour(BIRTHDAY_HOUR);
+        if (!at.isAfter(now))
+            at.add(1, "day");
+        setTimeout(() => {
+            run();
+            next();
+        }, at.diff(now));
+    };
+    if ((0, workCalendar_1.nowLao)().hour() >= BIRTHDAY_HOUR)
+        run();
+    next();
+};
+exports.scheduleBirthdayNotifications = scheduleBirthdayNotifications;
 /** GET /notification/me — data (ໃໝ່ສຸດກ່ອນ ບໍ່ເກີນ 100) + unread */
 const getMyNotifications = async (req, res) => {
     try {
@@ -116,7 +162,7 @@ const getMyNotifications = async (req, res) => {
             return;
         }
         const me = self.employee;
-        await ensureBirthdayNotifications(me);
+        await notifyBirthdays([me]);
         const [rows, unread] = await Promise.all([
             notification_1.default.findAll({
                 where: { employee_id: me._uuid },
@@ -226,3 +272,30 @@ const announce = async (req, res) => {
     }
 };
 exports.announce = announce;
+/**
+ * POST /app/device-token { token, platform: "android" | "ios" } — ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM token).
+ * app ເອີ້ນທຸກເທື່ອທີ່ເຂົ້າລະບົບ / ເປີດແອັບ / token ປ່ຽນ; token ຂອງຄົນອື່ນ (ເຄື່ອງດຽວກັນ ປ່ຽນຄົນເຂົ້າລະບົບ) = ຍ້າຍມາຫາຄົນນີ້
+ */
+const registerDeviceToken = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const token = String(req.body?.token ?? "").trim();
+        if (!token || token.length > 255) {
+            res.status(400).json({ message: "token ບໍ່ຖືກຕ້ອງ" });
+            return;
+        }
+        const platform = ["android", "ios"].includes(String(req.body?.platform)) ? String(req.body.platform) : null;
+        const [row, created] = await deviceToken_1.default.findOrCreate({ where: { token }, defaults: { employee_id: self.employee._uuid, platform } });
+        if (!created)
+            await row.update({ employee_id: self.employee._uuid, platform, updatedAt: new Date() });
+        res.status(200).json({ message: "ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນແລ້ວ" });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error registering device token");
+    }
+};
+exports.registerDeviceToken = registerDeviceToken;

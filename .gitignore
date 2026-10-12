@@ -5,6 +5,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# ກະແຈ Firebase (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ) — utils/push.ts
+firebase-service-account.json
 
 # Build output (npm run build)
 # dist/

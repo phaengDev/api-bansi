@@ -3,6 +3,7 @@ import sequelize from "./config/database";
 import { runAutoSync } from "./utils/autoSync";
 import { seedDefaults } from "./utils/seedDefaults";
 import { seedGlDefaults } from "./controllers/bansi/glSeed";
+import { scheduleBirthdayNotifications } from "./controllers/hr/notificationController";
 import { networkInterfaces } from "os";
 
 const PORT = process.env.PORT || 8888;
@@ -53,6 +54,8 @@ async function startServer() {
     await seedDefaults().catch((error) => console.error("❌ seedDefaults:", (error as any)?.parent?.sqlMessage ?? error));
     // ຜັງບັນຊີ + ບົດບາດເລີ່ມຕົ້ນ + index ຂອງບັນຊີຄູ່ (ສະເພາະທີ່ຍັງບໍ່ມີ) — ລົ້ມເຫຼວກໍ່ເປີດ server ຕໍ່
     await seedGlDefaults().catch((error) => console.error("❌ seedGlDefaults:", (error as any)?.parent?.sqlMessage ?? error));
+    // ແຈ້ງວັນເກີດທຸກມື້ 08:00 (ເດັ້ງຂຶ້ນຈໍມືຖື)
+    scheduleBirthdayNotifications();
     app.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);

@@ -668,6 +668,7 @@ const createHoliday = async (req, res) => {
                     : `ວັນທີ ${dayText(run.start)} – ${dayText(run.end)} (${run.days} ມື້) ພະນັກງານທຸກຄົນພັກວຽກ`,
                 ref: `holiday:${run.start}`,
                 createdbyid,
+                push: true,
             });
         }
         res.status(200).json({ message: "Successfully created holidays", data });
