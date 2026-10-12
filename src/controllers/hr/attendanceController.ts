@@ -538,7 +538,7 @@ export const getMyHolidays = async (req: Request, res: Response) => {
     const [rows, years, company] = await Promise.all([
       Holiday.findAll({
         where: { holiday_date: { [Op.between]: [`${year}-01-01`, `${year}-12-31`] } },
-        attributes: ["_uuid", "holiday_date", "name"],
+        attributes: ["_uuid", "holiday_date", "name", "kind"],
         order: [["holiday_date", "ASC"]],
         raw: true,
       }),
@@ -553,7 +553,13 @@ export const getMyHolidays = async (req: Request, res: Response) => {
     const rules = workRulesOf(company);
     const data = (rows as any[]).map((r) => {
       const date = String(r.holiday_date);
-      return { _uuid: r._uuid, holiday_date: date, name: r.name, workday: !rules.daysOff.includes(moment(date, "YYYY-MM-DD").day()) };
+      return {
+        _uuid: r._uuid,
+        holiday_date: date,
+        name: r.name,
+        kind: Number(r.kind) || 1, // 1 ທາງການ, 2 ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດພັກເອງ)
+        workday: !rules.daysOff.includes(moment(date, "YYYY-MM-DD").day()),
+      };
     });
     res.status(200).json({
       year,

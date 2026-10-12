@@ -39,6 +39,9 @@ const attendanceController_1 = require("../controllers/hr/attendanceController")
 const payrollController_1 = require("../controllers/hr/payrollController");
 const leaveController_1 = require("../controllers/hr/leaveController");
 const overtimeController_1 = require("../controllers/hr/overtimeController");
+const historyController_1 = require("../controllers/hr/historyController");
+const teamController_1 = require("../controllers/hr/teamController");
+const correctionController_1 = require("../controllers/hr/correctionController");
 const hrHelpers_1 = require("../controllers/hr/hrHelpers");
 const birthdayController_1 = require("../controllers/hr/birthdayController");
 const notificationController_1 = require("../controllers/hr/notificationController");
@@ -220,6 +223,8 @@ router.get("/employee/option", employeeController_1.getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", employeeController_1.getMyEmployee);
 router.put("/employee/me/profile", hrHelpers_1.profileUpload, employeeController_1.updateMyProfilePhoto);
+router.get("/employee/me/history", historyController_1.getMyWorkHistory);
+router.get("/employee/me/colleagues", teamController_1.getMyColleagues);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);
@@ -235,6 +240,8 @@ router.put("/company", (0, permission_1.requirePermission)("updates"), hrHelpers
 // QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company
 router.get("/company/scan-qr", (0, permission_1.requirePermission)("updates"), companyController_1.getScanQr);
 router.put("/company/scan-qr", (0, permission_1.requirePermission)("updates"), companyController_1.saveScanQr);
+// ລິ້ງສັ້ນ Google Maps → ລິ້ງເຕັມ (ມີພິກັດ) ສຳລັບຊ່ອງວາງພິກັດໃນ modal ທີ່ຕັ້ງບໍລິສັດ
+router.post("/company/map-link", (0, permission_1.requirePermission)("updates"), companyController_1.resolveMapLink);
 // ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
 router.post("/attendance/scan", attendanceController_1.scanAttendance);
 router.get("/attendance/me", attendanceController_1.getMyAttendance);
@@ -250,6 +257,8 @@ router.get("/holiday/fetch", attendanceController_1.getHolidays);
 router.post("/holiday/create", (0, permission_1.requirePermission)("creates"), attendanceController_1.createHoliday);
 router.delete("/holiday/:id", (0, permission_1.requirePermission)("deletes"), attendanceController_1.deleteHoliday);
 // ການເຮັດວຽກລ່ວງເວລາ (OT) — HR ບັນທຶກ; ເງິນເດືອນລວມໃຫ້ອັດຕະໂນມັດ
+// OT ຂອງຕົນເອງ (app ມືຖື)
+router.get("/overtime/me", overtimeController_1.getMyOvertime);
 router.post("/overtime/fetch", (0, permission_1.requirePermission)("updates"), overtimeController_1.getOvertimes);
 router.post("/overtime/create", (0, permission_1.requirePermission)("creates"), overtimeController_1.createOvertime);
 router.put("/overtime/:id", (0, permission_1.requirePermission)("updates"), overtimeController_1.updateOvertime);
@@ -273,6 +282,13 @@ router.put("/leave/me/cancel/:id", leaveController_1.cancelMyLeave);
 router.post("/leave/fetch", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaves);
 router.put("/leave/approve/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.approveLeave);
 router.put("/leave/reject/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.rejectLeave);
+// ========= ແຈ້ງລືມສະແກນ / ຂໍແກ້ເວລາ — /me ສຳລັບ app ມືຖື; HR ອະນຸມັດ = ບັນທຶກເວລາລົງການເຂົ້າວຽກ
+router.get("/correction/me", correctionController_1.getMyCorrections);
+router.post("/correction/me", correctionController_1.createMyCorrection);
+router.put("/correction/me/cancel/:id", correctionController_1.cancelMyCorrection);
+router.post("/correction/fetch", (0, permission_1.requirePermission)("updates"), correctionController_1.getCorrections);
+router.put("/correction/approve/:id", (0, permission_1.requirePermission)("updates"), correctionController_1.approveCorrection);
+router.put("/correction/reject/:id", (0, permission_1.requirePermission)("updates"), correctionController_1.rejectCorrection);
 // ========= ເງິນເດືອນ — /setting ແລະ /line/:id ກ່ອນ /:id; ຈ່າຍ = ເງິນອອກຈາກບັນຊີເງິນຄັງ + ລົງບັນຊີຄູ່
 router.get("/payroll/setting", payrollController_1.getPayrollSetting);
 router.put("/payroll/setting", (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);

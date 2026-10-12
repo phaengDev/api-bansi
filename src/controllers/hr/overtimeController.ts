@@ -11,6 +11,7 @@ import {
   OT_KINDS, OT_PAY_RATE, OT_PAY_TYPES, loadPayrollSettings, otFixedOf, otRateOf, otTotals,
 } from "./payrollRules";
 import { syncDraftOvertime } from "./payrollController";
+import { selfEmployee } from "./attendanceController";
 import {
   HHMM, PERIOD, currentPeriod, employedOn, findCompany, holidaysBetween, isWorkday, monthOf, workRulesOf,
 } from "./workCalendar";
@@ -176,6 +177,68 @@ export const getOvertimes = async (req: Request, res: Response) => {
     });
   } catch (error) {
     sendError(res, error, "Error getting overtime");
+  }
+};
+
+/**
+ * GET /overtime/me?period=YYYY-MM — OT ຂອງຕົນເອງ (app ມືຖື): ລາຍການ (ວັນທີ, ເວລາ, ຊົ່ວໂມງ, ປະເພດ, ເງິນໂດຍປະມານ) + ສະຫຼຸບເດືອນ.
+ * ເງິນເດືອນພື້ນຖານໃຊ້ຄິດປະມານເທົ່ານັ້ນ ບໍ່ສົ່ງອອກ; paid = ເດືອນນີ້ຈ່າຍເງິນເດືອນແລ້ວ (ຍອດແທ້ຢູ່ສະລິບ)
+ */
+export const getMyOvertime = async (req: Request, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const me: any = self.employee;
+    const raw = String(req.query.period ?? "");
+    const period = PERIOD.test(raw) ? raw : currentPeriod();
+    const { start, end, dates } = monthOf(period);
+    const [rows, settings, company, holidays, paid] = await Promise.all([
+      Overtime.findAll({
+        where: { employee_id: me._uuid, work_date: { [Op.between]: [start, end] } },
+        order: [["work_date", "DESC"], ["start_time", "ASC"], ["_uuid", "ASC"]],
+      }),
+      loadPayrollSettings(),
+      findCompany(),
+      holidaysBetween(start, end),
+      payrollPaidFor(start),
+    ]);
+    const rules = workRulesOf(company);
+    const workdays = dates.filter((date) => isWorkday(date, rules, holidays)).length;
+    // ຄ່າແຮງຕໍ່ຊົ່ວໂມງ = ເງິນເດືອນ ÷ ມື້ເຮັດວຽກ ÷ ຊົ່ວໂມງຕໍ່ມື້ (ຄືກັບ POST /overtime/fetch)
+    const hourly = workdays > 0 ? (Number(me.basic_salary) || 0) / workdays / Math.max(1, settings.ot_hours_per_day) : 0;
+    const payOf = (row: Overtime) =>
+      Number(row.pay_type) !== OT_PAY_RATE
+        ? otFixedOf(row)
+        : Math.round((hourly * (Number(row.hours) || 0) * otRateOf(Number(row.kind), settings)) / 100);
+    const totals = otTotals(rows, settings);
+    res.status(200).json({
+      period,
+      paid,
+      data: rows.map((row) => ({
+        _uuid: row._uuid,
+        work_date: row.work_date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        hours: Number(row.hours) || 0,
+        kind: Number(row.kind),
+        pay_type: Number(row.pay_type),
+        note: row.note,
+        pay: payOf(row),
+      })),
+      summary: {
+        records: rows.length,
+        hours: totals.hours,
+        weighted_hours: totals.weighted,
+        by_kind: Object.fromEntries(KINDS.map((k) => [k, rows.filter((r) => Number(r.kind) === k).reduce((n, r) => n + (Number(r.hours) || 0), 0)])),
+        estimate: Math.round(hourly * totals.weighted) + totals.fixed,
+      },
+      rates: Object.fromEntries(KINDS.map((k) => [k, otRateOf(k, settings)])),
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting my overtime");
   }
 };
 

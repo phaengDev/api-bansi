@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteOvertime = exports.updateOvertime = exports.createOvertime = exports.getOvertimes = void 0;
+exports.deleteOvertime = exports.updateOvertime = exports.createOvertime = exports.getMyOvertime = exports.getOvertimes = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const overtime_1 = __importDefault(require("../../models/overtime"));
@@ -14,6 +14,7 @@ const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const payrollRules_1 = require("./payrollRules");
 const payrollController_1 = require("./payrollController");
+const attendanceController_1 = require("./attendanceController");
 const workCalendar_1 = require("./workCalendar");
 /**
  * ການເຮັດວຽກລ່ວງເວລາ (OT) — HR ບັນທຶກມື້ທີ່ພະນັກງານເຮັດ OT (ຫຼາຍຄົນພ້ອມກັນໄດ້): ເວລາເລີ່ມ–ເລີກ (ຂ້າມທ່ຽງຄືນໄດ້) ຫຼື
@@ -174,6 +175,68 @@ const getOvertimes = async (req, res) => {
     }
 };
 exports.getOvertimes = getOvertimes;
+/**
+ * GET /overtime/me?period=YYYY-MM — OT ຂອງຕົນເອງ (app ມືຖື): ລາຍການ (ວັນທີ, ເວລາ, ຊົ່ວໂມງ, ປະເພດ, ເງິນໂດຍປະມານ) + ສະຫຼຸບເດືອນ.
+ * ເງິນເດືອນພື້ນຖານໃຊ້ຄິດປະມານເທົ່ານັ້ນ ບໍ່ສົ່ງອອກ; paid = ເດືອນນີ້ຈ່າຍເງິນເດືອນແລ້ວ (ຍອດແທ້ຢູ່ສະລິບ)
+ */
+const getMyOvertime = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const me = self.employee;
+        const raw = String(req.query.period ?? "");
+        const period = workCalendar_1.PERIOD.test(raw) ? raw : (0, workCalendar_1.currentPeriod)();
+        const { start, end, dates } = (0, workCalendar_1.monthOf)(period);
+        const [rows, settings, company, holidays, paid] = await Promise.all([
+            overtime_1.default.findAll({
+                where: { employee_id: me._uuid, work_date: { [sequelize_1.Op.between]: [start, end] } },
+                order: [["work_date", "DESC"], ["start_time", "ASC"], ["_uuid", "ASC"]],
+            }),
+            (0, payrollRules_1.loadPayrollSettings)(),
+            (0, workCalendar_1.findCompany)(),
+            (0, workCalendar_1.holidaysBetween)(start, end),
+            payrollPaidFor(start),
+        ]);
+        const rules = (0, workCalendar_1.workRulesOf)(company);
+        const workdays = dates.filter((date) => (0, workCalendar_1.isWorkday)(date, rules, holidays)).length;
+        // ຄ່າແຮງຕໍ່ຊົ່ວໂມງ = ເງິນເດືອນ ÷ ມື້ເຮັດວຽກ ÷ ຊົ່ວໂມງຕໍ່ມື້ (ຄືກັບ POST /overtime/fetch)
+        const hourly = workdays > 0 ? (Number(me.basic_salary) || 0) / workdays / Math.max(1, settings.ot_hours_per_day) : 0;
+        const payOf = (row) => Number(row.pay_type) !== payrollRules_1.OT_PAY_RATE
+            ? (0, payrollRules_1.otFixedOf)(row)
+            : Math.round((hourly * (Number(row.hours) || 0) * (0, payrollRules_1.otRateOf)(Number(row.kind), settings)) / 100);
+        const totals = (0, payrollRules_1.otTotals)(rows, settings);
+        res.status(200).json({
+            period,
+            paid,
+            data: rows.map((row) => ({
+                _uuid: row._uuid,
+                work_date: row.work_date,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                hours: Number(row.hours) || 0,
+                kind: Number(row.kind),
+                pay_type: Number(row.pay_type),
+                note: row.note,
+                pay: payOf(row),
+            })),
+            summary: {
+                records: rows.length,
+                hours: totals.hours,
+                weighted_hours: totals.weighted,
+                by_kind: Object.fromEntries(KINDS.map((k) => [k, rows.filter((r) => Number(r.kind) === k).reduce((n, r) => n + (Number(r.hours) || 0), 0)])),
+                estimate: Math.round(hourly * totals.weighted) + totals.fixed,
+            },
+            rates: Object.fromEntries(KINDS.map((k) => [k, (0, payrollRules_1.otRateOf)(k, settings)])),
+        });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting my overtime");
+    }
+};
+exports.getMyOvertime = getMyOvertime;
 /**
  * POST /overtime/create { work_date, employee_ids: number[], start_time?, end_time?, hours?, kind, pay_type, amount?, note? } —
  * ບັນທຶກ OT ໃຫ້ຫຼາຍຄົນພ້ອມກັນ (ເວລາດຽວກັນ); ຜິດຄົນດຽວ ບໍ່ບັນທຶກຈັກຄົນ

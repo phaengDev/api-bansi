@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveScanQr = exports.getScanQr = exports.qrPayload = exports.QR_PREFIX = exports.saveCompany = exports.getCompany = void 0;
+exports.resolveMapLink = exports.saveScanQr = exports.getScanQr = exports.qrPayload = exports.QR_PREFIX = exports.saveCompany = exports.getCompany = void 0;
 const crypto_1 = require("crypto");
 const company_1 = __importDefault(require("../../models/company"));
 const district_1 = __importDefault(require("../../models/district"));
@@ -183,3 +183,38 @@ const saveScanQr = async (req, res) => {
     }
 };
 exports.saveScanQr = saveScanQr;
+// ລິ້ງສັ້ນ Google Maps (ແຊຣ໌ຈາກມືຖື) ບໍ່ມີພິກັດໃນຕົວ — ຕ້ອງຕາມ redirect ໄປຫາລິ້ງເຕັມ; browser ເຮັດບໍ່ໄດ້ (CORS).
+// ຮັບສະເພາະໂດເມນຂອງ Google ທຸກຂັ້ນ — ກັນບໍ່ໃຫ້ໃຊ້ endpoint ນີ້ເອີ້ນ URL ອື່ນ (SSRF)
+const MAP_SHORT_LINK = /https:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\/[A-Za-z0-9_-]+/;
+const GOOGLE_HOST = /^(?:[a-z0-9-]+\.)*(?:google\.[a-z.]+|goo\.gl)$/;
+const MAX_HOPS = 5;
+/** POST /company/map-link { url } — ລິ້ງສັ້ນ (ຫຼື ຂໍ້ຄວາມແຊຣ໌ທີ່ມີລິ້ງ) → { url: ລິ້ງເຕັມ } ໃຫ້ໜ້າເວັບແຍກພິກັດເອງ */
+const resolveMapLink = async (req, res) => {
+    try {
+        const short = String(req.body?.url ?? "").match(MAP_SHORT_LINK)?.[0];
+        if (!short) {
+            res.status(400).json({ message: "ບໍ່ແມ່ນລິ້ງ Google Maps (maps.app.goo.gl)" });
+            return;
+        }
+        let url = short;
+        for (let hop = 0; hop < MAX_HOPS; hop++) {
+            const next = await fetch(url, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(8000) });
+            const location = next.headers.get("location");
+            if (next.status < 300 || next.status >= 400 || !location)
+                break;
+            const target = new URL(location, url);
+            if (target.protocol !== "https:" || !GOOGLE_HOST.test(target.hostname))
+                break;
+            url = target.href;
+        }
+        if (url === short) {
+            res.status(400).json({ message: "ເປີດລິ້ງ Google Maps ບໍ່ໄດ້ — ລອງສຳເນົາພິກັດແທນ" });
+            return;
+        }
+        res.status(200).json({ data: { url } });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error resolving map link");
+    }
+};
+exports.resolveMapLink = resolveMapLink;
