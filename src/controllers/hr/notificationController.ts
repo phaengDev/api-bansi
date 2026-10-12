@@ -63,7 +63,8 @@ export const notify = async (items: NotifyInput[]) => {
         createdbyid: x.createdbyid ?? null,
       })),
     );
-    for (const row of rows) hub.emit(String(row.employee_id), presentOf(row));
+    // push: app ທີ່ເປີດຢູ່ສະແດງແຈ້ງເຕືອນນີ້ເດັ້ງຂຶ້ນຈໍແລ້ວ (Firebase) — ບໍ່ຕ້ອງ toast ຊ້ຳ
+    rows.forEach((row, index) => hub.emit(String(row.employee_id), { ...presentOf(row), push: !!items[index].push }));
     // ບໍ່ await — ການສົ່ງຫາ Firebase ບໍ່ໃຫ້ວຽກຫຼັກ (ເຊັ່ນ ຈ່າຍເງິນເດືອນ) ລໍຖ້າ; bulkCreate ຄືນແຖວຕາມລຳດັບ items
     void sendPush(rows.flatMap((row, index) => (items[index].push ? [{
       employee_id: Number(row.employee_id),
@@ -189,7 +190,7 @@ export const getMyNotifications = async (req: Request, res: Response) => {
 
 /**
  * GET /notification/me/stream — Server-Sent Events. ແຕ່ລະແຈ້ງເຕືອນໃໝ່ = `event: notification` + data ເປັນ JSON
- * (ໂຄງດຽວກັບແຖວຂອງ GET /notification/me). app ເຊື່ອມຕໍ່ໃໝ່ເອງເມື່ອຫຼຸດ
+ * (ໂຄງດຽວກັບແຖວຂອງ GET /notification/me + push = ສົ່ງເດັ້ງຂຶ້ນຈໍນຳ). app ເຊື່ອມຕໍ່ໃໝ່ເອງເມື່ອຫຼຸດ
  */
 export const streamMyNotifications = async (req: Request, res: Response) => {
   try {

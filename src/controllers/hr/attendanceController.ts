@@ -163,7 +163,10 @@ export const scanAttendance = async (req: Request, res: Response) => {
     const distance = distanceMeters(companyLat, companyLng, lat, lng);
     const radius = Number(company.scan_radius) || 0;
     if (distance > radius) {
-      res.status(400).json({ message: `ທ່ານຢູ່ຫ່າງຈາກບໍລິສັດ ${distance} ແມັດ (ສະແກນໄດ້ພາຍໃນ ${radius} ແມັດ)`, distance, radius });
+      res.status(400).json({ 
+        message: `ທ່ານຢູ່ຫ່າງຈາກບໍລິສັດ ${distance} ແມັດ (ສະແກນໄດ້ພາຍໃນ ${radius} ແມັດ)`, 
+        distance, 
+        radius });
       return;
     }
 
@@ -628,12 +631,12 @@ export const createHoliday = async (req: Request, res: Response) => {
     }
     const createdbyid = Number(actorOf(req)) || null;
     const data = await Holiday.bulkCreate(items.map((x) => ({ ...x, createdbyid })));
-    // ແຈ້ງພະນັກງານທຸກຄົນ — ສະເພາະວັນພັກທີ່ຍັງບໍ່ຮອດ
+    // ແຈ້ງພະນັກງານທຸກຄົນ
     const today = todayLao();
-    const upcoming = items.filter((x) => x.holiday_date >= today).sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
+    const sorted = [...items].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
     const dayText = (d: string) => moment(d).format("DD/MM/YYYY");
-    // ທາງການ: ເພີ່ມຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ທັງປີ) ແຈ້ງເທື່ອດຽວ
-    const official = upcoming.filter((x) => x.kind === HOLIDAY_OFFICIAL);
+    // ທາງການ: ສະເພາະວັນທີ່ຍັງບໍ່ຮອດ, ເພີ່ມຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ທັງປີ) ແຈ້ງເທື່ອດຽວ
+    const official = sorted.filter((x) => x.kind === HOLIDAY_OFFICIAL && x.holiday_date >= today);
     if (official.length) {
       await notifyAllWorking({
         type: "holiday",
@@ -645,9 +648,10 @@ export const createHoliday = async (req: Request, res: Response) => {
         createdbyid,
       });
     }
-    // ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ): ແຈ້ງແຕ່ລະຊ່ວງ — ມື້ຕິດກັນ ຊື່ດຽວກັນ = ຊ່ວງດຽວ (ເຊັ່ນ ໄປທ່ຽວ 04–05/05)
+    // ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ): ແຈ້ງທັນທີທີ່ບັນທຶກ ທຸກວັນທີ (ເດັ້ງຂຶ້ນຈໍມືຖື) — ແຕ່ລະຊ່ວງ:
+    // ມື້ຕິດກັນ ຊື່ດຽວກັນ = ຊ່ວງດຽວ (ເຊັ່ນ ໄປທ່ຽວ 04–05/05)
     const runs: { name: string; start: string; end: string; days: number }[] = [];
-    for (const x of upcoming.filter((h) => h.kind === HOLIDAY_COMPANY)) {
+    for (const x of sorted.filter((h) => h.kind === HOLIDAY_COMPANY)) {
       const last = runs[runs.length - 1];
       if (last && last.name === x.name && moment(last.end).add(1, "day").format("YYYY-MM-DD") === x.holiday_date) {
         last.end = x.holiday_date;

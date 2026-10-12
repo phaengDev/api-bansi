@@ -155,7 +155,11 @@ const scanAttendance = async (req, res) => {
         const distance = (0, workCalendar_1.distanceMeters)(companyLat, companyLng, lat, lng);
         const radius = Number(company.scan_radius) || 0;
         if (distance > radius) {
-            res.status(400).json({ message: `ທ່ານຢູ່ຫ່າງຈາກບໍລິສັດ ${distance} ແມັດ (ສະແກນໄດ້ພາຍໃນ ${radius} ແມັດ)`, distance, radius });
+            res.status(400).json({
+                message: `ທ່ານຢູ່ຫ່າງຈາກບໍລິສັດ ${distance} ແມັດ (ສະແກນໄດ້ພາຍໃນ ${radius} ແມັດ)`,
+                distance,
+                radius
+            });
             return;
         }
         const type = body.type === "in" || body.type === "out" ? body.type : null;
@@ -630,12 +634,12 @@ const createHoliday = async (req, res) => {
         }
         const createdbyid = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const data = await holiday_1.default.bulkCreate(items.map((x) => ({ ...x, createdbyid })));
-        // ແຈ້ງພະນັກງານທຸກຄົນ — ສະເພາະວັນພັກທີ່ຍັງບໍ່ຮອດ
+        // ແຈ້ງພະນັກງານທຸກຄົນ
         const today = (0, workCalendar_1.todayLao)();
-        const upcoming = items.filter((x) => x.holiday_date >= today).sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
+        const sorted = [...items].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
         const dayText = (d) => (0, moment_1.default)(d).format("DD/MM/YYYY");
-        // ທາງການ: ເພີ່ມຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ທັງປີ) ແຈ້ງເທື່ອດຽວ
-        const official = upcoming.filter((x) => x.kind === HOLIDAY_OFFICIAL);
+        // ທາງການ: ສະເພາະວັນທີ່ຍັງບໍ່ຮອດ, ເພີ່ມຫຼາຍວັນພ້ອມກັນ (ເຊັ່ນ ທັງປີ) ແຈ້ງເທື່ອດຽວ
+        const official = sorted.filter((x) => x.kind === HOLIDAY_OFFICIAL && x.holiday_date >= today);
         if (official.length) {
             await (0, notificationController_1.notifyAllWorking)({
                 type: "holiday",
@@ -647,9 +651,10 @@ const createHoliday = async (req, res) => {
                 createdbyid,
             });
         }
-        // ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ): ແຈ້ງແຕ່ລະຊ່ວງ — ມື້ຕິດກັນ ຊື່ດຽວກັນ = ຊ່ວງດຽວ (ເຊັ່ນ ໄປທ່ຽວ 04–05/05)
+        // ບໍ່ເປັນທາງການ (ບໍລິສັດປະກາດເອງ): ແຈ້ງທັນທີທີ່ບັນທຶກ ທຸກວັນທີ (ເດັ້ງຂຶ້ນຈໍມືຖື) — ແຕ່ລະຊ່ວງ:
+        // ມື້ຕິດກັນ ຊື່ດຽວກັນ = ຊ່ວງດຽວ (ເຊັ່ນ ໄປທ່ຽວ 04–05/05)
         const runs = [];
-        for (const x of upcoming.filter((h) => h.kind === HOLIDAY_COMPANY)) {
+        for (const x of sorted.filter((h) => h.kind === HOLIDAY_COMPANY)) {
             const last = runs[runs.length - 1];
             if (last && last.name === x.name && (0, moment_1.default)(last.end).add(1, "day").format("YYYY-MM-DD") === x.holiday_date) {
                 last.end = x.holiday_date;

@@ -14,8 +14,7 @@ export const adminJwtConfig: JwtConfig = {
     issuer: process.env.ADMIN_JWT_ISSUER ?? process.env.JWT_ISSUER ?? "Bansi-OAC",
 };
 
-export const appJwtConfig: JwtConfig = {
-    secret: (process.env.APP_JWT_SECRET ?? process.env.JWT_SECRET ?? "4h@fT9*R1xOAC!2026").trim(),
-    expiresIn: process.env.APP_JWT_EXPIRES_IN ?? process.env.JWT_EXPIRES_IN ?? "1d",
-    issuer: process.env.APP_JWT_ISSUER ?? process.env.JWT_ISSUER ?? "4h@fT9*R1xOAC!2026",
-};
+// secret ສັ້ນ = ເດົາໄດ້ ແລ້ວປອມ token ເຂົ້າລະບົບໄດ້ — ຕ້ອງຍາວຢ່າງໜ້ອຍ 32 ຕົວ (ສ້າງ: openssl rand -hex 32)
+if (adminJwtConfig.secret && adminJwtConfig.secret.length < 32) {
+    console.warn("⚠️ JWT_SECRET ສັ້ນເກີນໄປ (< 32 ຕົວ) — ສ້າງໃໝ່ດ້ວຍ `openssl rand -hex 32` ແລ້ວໃສ່ໃນ .env");
+}
