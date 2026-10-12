@@ -1,8 +1,20 @@
+import { AsyncLocalStorage } from "async_hooks";
+import { RequestHandler } from "express";
 import { Model, ModelStatic, Op } from "sequelize";
 
-/** URL ຂອງໄຟລ໌ທີ່ upload (server.ts ເປີດ /image → src/uploads) — ຕັ້ງ IMAGE_URL ໃນ .env ຕອນ deploy */
+/** ທີ່ຢູ່ /image ຂອງ request ປັດຈຸບັນ — ຕັ້ງໂດຍ withImageBase */
+const imageBase = new AsyncLocalStorage<string>();
+
+/**
+ * Middleware: ຈື່ host ທີ່ client ເອີ້ນມາ (ຜ່ານ Cloudflare ໄດ້ https + ໂດເມນແທ້ຈາກ X-Forwarded-*, ຕ້ອງ trust proxy)
+ * → URL ຮູບກົງກັບ server ທີ່ເອີ້ນສະເໝີ: localhost ຕອນ dev, ໂດເມນຕອນ deploy, IP ວົງ LAN ສຳລັບ app ມືຖື
+ */
+export const withImageBase: RequestHandler = (req, _res, next) =>
+  imageBase.run(`${req.protocol}://${req.get("x-forwarded-host") ?? req.get("host")}/image`, next);
+
+/** URL ຂອງໄຟລ໌ທີ່ upload (server.ts ເປີດ /image → src/uploads) */
 export function url() {
-  return process.env.IMAGE_URL || `http://localhost:${process.env.PORT || 8888}/image`;
+  return imageBase.getStore() ?? `http://localhost:${process.env.PORT || 8888}/image`;
 }
 
 export async function maxid(model: ModelStatic<any>, column: string): Promise<number> {

@@ -7,9 +7,12 @@ const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
 const employee_1 = __importDefault(require("./employee"));
+const leaveType_1 = __importDefault(require("./leaveType"));
 /**
  * ຄຳຂໍລາພັກ — ພະນັກງານສົ່ງຜ່ານ app ມືຖື, HR ອະນຸມັດ/ປະຕິເສດ ຢູ່ໜ້າຕ່າງ ການເຂົ້າ-ອອກວຽກ.
- * leave_type = status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກຕອນອະນຸມັດ: 2 ລາພັກ (ໄດ້ເງິນເດືອນ), 3 ລາພັກບໍ່ໄດ້ເງິນເດືອນ.
+ * leave_type_id = ປະເພດທີ່ HR ກຳນົດ (tbl_leave_type: ຊື່ + ຂີດຈຳກັດມື້); null = ຄຳຂໍເກົ່າກ່ອນມີປະເພດ.
+ * leave_type = status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກຕອນອະນຸມັດ: 2 ລາພັກ (ໄດ້ເງິນເດືອນ), 3 ລາພັກບໍ່ໄດ້ເງິນເດືອນ
+ * (ຕາມ paid ຂອງປະເພດ).
  * status: 1 ລໍຖ້າ, 2 ອະນຸມັດ (ບັນທຶກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງແລ້ວ), 3 ປະຕິເສດ, 4 ພະນັກງານຍົກເລີກ.
  * days = ມື້ເຮັດວຽກໃນຊ່ວງ (ຕອນຂໍ) / ມື້ທີ່ບັນທຶກລາພັກແທ້ (ຕອນອະນຸມັດ — ມື້ທີ່ມາວຽກແລ້ວບໍ່ນັບ)
  */
@@ -25,6 +28,7 @@ LeaveRequest.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false
     },
+    leave_type_id: sequelize_1.DataTypes.INTEGER,
     leave_type: {
         type: sequelize_1.DataTypes.TINYINT,
         allowNull: false,
@@ -70,5 +74,6 @@ LeaveRequest.init({
     timestamps: true
 });
 LeaveRequest.belongsTo(employee_1.default, { foreignKey: "employee_id", as: "employee", constraints: false });
+LeaveRequest.belongsTo(leaveType_1.default, { foreignKey: "leave_type_id", as: "type", constraints: false });
 (0, autoSync_1.autoSync)(LeaveRequest);
 exports.default = LeaveRequest;

@@ -1,12 +1,21 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.codeType = void 0;
+exports.codeType = exports.withImageBase = void 0;
 exports.url = url;
 exports.maxid = maxid;
+const async_hooks_1 = require("async_hooks");
 const sequelize_1 = require("sequelize");
-/** URL ຂອງໄຟລ໌ທີ່ upload (server.ts ເປີດ /image → src/uploads) — ຕັ້ງ IMAGE_URL ໃນ .env ຕອນ deploy */
+/** ທີ່ຢູ່ /image ຂອງ request ປັດຈຸບັນ — ຕັ້ງໂດຍ withImageBase */
+const imageBase = new async_hooks_1.AsyncLocalStorage();
+/**
+ * Middleware: ຈື່ host ທີ່ client ເອີ້ນມາ (ຜ່ານ Cloudflare ໄດ້ https + ໂດເມນແທ້ຈາກ X-Forwarded-*, ຕ້ອງ trust proxy)
+ * → URL ຮູບກົງກັບ server ທີ່ເອີ້ນສະເໝີ: localhost ຕອນ dev, ໂດເມນຕອນ deploy, IP ວົງ LAN ສຳລັບ app ມືຖື
+ */
+const withImageBase = (req, _res, next) => imageBase.run(`${req.protocol}://${req.get("x-forwarded-host") ?? req.get("host")}/image`, next);
+exports.withImageBase = withImageBase;
+/** URL ຂອງໄຟລ໌ທີ່ upload (server.ts ເປີດ /image → src/uploads) */
 function url() {
-    return process.env.IMAGE_URL || `http://localhost:${process.env.PORT || 8888}/image`;
+    return imageBase.getStore() ?? `http://localhost:${process.env.PORT || 8888}/image`;
 }
 async function maxid(model, column) {
     const maxResult = await model.max(column);

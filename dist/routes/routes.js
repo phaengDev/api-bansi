@@ -38,6 +38,7 @@ const appAuthController_1 = require("../controllers/hr/appAuthController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
 const payrollController_1 = require("../controllers/hr/payrollController");
 const leaveController_1 = require("../controllers/hr/leaveController");
+const leaveTypeController_1 = require("../controllers/hr/leaveTypeController");
 const overtimeController_1 = require("../controllers/hr/overtimeController");
 const historyController_1 = require("../controllers/hr/historyController");
 const teamController_1 = require("../controllers/hr/teamController");
@@ -280,8 +281,14 @@ router.get("/leave/me", leaveController_1.getMyLeaves);
 router.post("/leave/me", leaveController_1.createMyLeave);
 router.put("/leave/me/cancel/:id", leaveController_1.cancelMyLeave);
 router.post("/leave/fetch", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaves);
+router.post("/leave/balance", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaveBalance);
 router.put("/leave/approve/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.approveLeave);
 router.put("/leave/reject/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.rejectLeave);
+// ປະເພດການລາພັກ (HR) — ຊື່, ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ, ຂີດຈຳກັດມື້ຕໍ່ປີ / ຕໍ່ຄັ້ງ
+router.get("/leave-type/fetch", leaveTypeController_1.getLeaveTypes);
+router.post("/leave-type/create", (0, permission_1.requirePermission)("creates"), leaveTypeController_1.createLeaveType);
+router.put("/leave-type/:id", (0, permission_1.requirePermission)("updates"), leaveTypeController_1.updateLeaveType);
+router.delete("/leave-type/:id", (0, permission_1.requirePermission)("deletes"), leaveTypeController_1.deleteLeaveType);
 // ========= ແຈ້ງລືມສະແກນ / ຂໍແກ້ເວລາ — /me ສຳລັບ app ມືຖື; HR ອະນຸມັດ = ບັນທຶກເວລາລົງການເຂົ້າວຽກ
 router.get("/correction/me", correctionController_1.getMyCorrections);
 router.post("/correction/me", correctionController_1.createMyCorrection);

@@ -78,8 +78,9 @@ import {
   previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll,
 } from "../controllers/hr/payrollController";
 import {
-  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, approveLeave, rejectLeave,
+  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave,
 } from "../controllers/hr/leaveController";
+import { getLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType } from "../controllers/hr/leaveTypeController";
 import { createOvertime, deleteOvertime, getMyOvertime, getOvertimes, updateOvertime } from "../controllers/hr/overtimeController";
 import { getMyWorkHistory } from "../controllers/hr/historyController";
 import { getMyColleagues } from "../controllers/hr/teamController";
@@ -334,8 +335,14 @@ router.get("/leave/me", getMyLeaves);
 router.post("/leave/me", createMyLeave);
 router.put("/leave/me/cancel/:id", cancelMyLeave);
 router.post("/leave/fetch", requirePermission("updates"), getLeaves);
+router.post("/leave/balance", requirePermission("updates"), getLeaveBalance);
 router.put("/leave/approve/:id", requirePermission("updates"), approveLeave);
 router.put("/leave/reject/:id", requirePermission("updates"), rejectLeave);
+// ປະເພດການລາພັກ (HR) — ຊື່, ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ, ຂີດຈຳກັດມື້ຕໍ່ປີ / ຕໍ່ຄັ້ງ
+router.get("/leave-type/fetch", getLeaveTypes);
+router.post("/leave-type/create", requirePermission("creates"), createLeaveType);
+router.put("/leave-type/:id", requirePermission("updates"), updateLeaveType);
+router.delete("/leave-type/:id", requirePermission("deletes"), deleteLeaveType);
 // ========= ແຈ້ງລືມສະແກນ / ຂໍແກ້ເວລາ — /me ສຳລັບ app ມືຖື; HR ອະນຸມັດ = ບັນທຶກເວລາລົງການເຂົ້າວຽກ
 router.get("/correction/me", getMyCorrections);
 router.post("/correction/me", createMyCorrection);

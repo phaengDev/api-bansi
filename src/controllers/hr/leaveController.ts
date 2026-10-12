@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import moment from "moment";
 import { Op, Transaction, UniqueConstraintError, col, fn } from "sequelize";
 import LeaveRequest from "../../models/leaveRequest";
+import LeaveType from "../../models/leaveType";
 import Attendance from "../../models/attendance";
 import Employee from "../../models/employee";
 import Department from "../../models/department";
@@ -18,8 +19,10 @@ import {
 /**
  * ຄຳຂໍລາພັກ:
  * - ພະນັກງານ (app ມືຖື): GET/POST /leave/me, PUT /leave/me/cancel/:id — ສະເພາະຄຳຂໍຂອງຕົນເອງ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
- * - HR: POST /leave/fetch, PUT /leave/approve/:id (ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງ), PUT /leave/reject/:id
- * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ)
+ * - HR: POST /leave/fetch, POST /leave/balance, PUT /leave/approve/:id (ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງ),
+ *   PUT /leave/reject/:id
+ * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ).
+ * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ — ກວດຕອນຂໍ ແລະ ຕອນອະນຸມັດ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ)
  */
 
 const PENDING = 1;
@@ -27,8 +30,9 @@ const APPROVED = 2;
 const REJECTED = 3;
 const CANCELLED = 4;
 const STATUSES = [PENDING, APPROVED, REJECTED, CANCELLED];
-/** ປະເພດ = status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກ */
+/** status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກ (leave_type) — app ລຸ້ນເກົ່າສົ່ງຄ່ານີ້ແທນ leave_type_id */
 const LEAVE_TYPES = [PAID_LEAVE, UNPAID_LEAVE];
+const TYPE_ORDER: [string, string][] = [["sort", "ASC"], ["_uuid", "ASC"]];
 /** ຂໍໄດ້ສູງສຸດຕໍ່ຄັ້ງ (ວັນປະຕິທິນ) */
 const MAX_RANGE_DAYS = 60;
 /** status ຂອງ tbl_payroll — ຈ່າຍແລ້ວ */
@@ -44,12 +48,14 @@ const employeeInclude = {
   ],
 };
 
+const typeInclude = { model: LeaveType, as: "type", attributes: ["_uuid", "name", "paid", "max_per_year", "max_per_request"] };
+
 const present = (row: LeaveRequest) => {
   const { employee, ...r }: any = row.get({ plain: true });
   return { ...r, employee: employee ? { ...employee, profile_url: profileUrl(employee.profile) } : null };
 };
 
-const findWithEmployee = (id: number) => LeaveRequest.findByPk(id, { include: [employeeInclude] });
+const findWithEmployee = (id: number) => LeaveRequest.findByPk(id, { include: [employeeInclude, typeInclude] });
 
 const dayText = (date: string) => moment(date, "YYYY-MM-DD").format("DD/MM/YYYY");
 const text = (value: unknown) => String(value ?? "").trim().slice(0, 255) || null;
@@ -109,7 +115,7 @@ const parseRange = (body: any): { start: string; end: string } | { error: string
  */
 const writeLeaveDays = async (
   employee: any, start: string, end: string, leaveType: number, reason: string, actor: number | null, t: Transaction,
-): Promise<{ applied: number; worked: string[] } | { error: string }> => {
+): Promise<{ applied: string[]; worked: string[] } | { error: string }> => {
   const locked = await lockedPeriod(start, end, t);
   if (locked) return { error: lockedMessage(locked) };
   const dates = (await workdaysIn(start, end, t)).filter((d) => employedOn(employee, d));
@@ -132,7 +138,7 @@ const writeLeaveDays = async (
     updatedbyid: actor,
   };
   const worked: string[] = [];
-  let applied = 0;
+  const applied: string[] = [];
   for (const date of dates) {
     const current = byDate.get(date);
     if (current && Number(current.status) === PRESENT && current.check_in) {
@@ -141,10 +147,105 @@ const writeLeaveDays = async (
     }
     if (current) await current.update({ ...values, updatedAt: new Date() }, { transaction: t });
     else await Attendance.create({ employee_id: employee._uuid, work_date: date, ...values }, { transaction: t });
-    applied++;
+    applied.push(date);
   }
-  if (!applied) return { error: "ທຸກມື້ໃນຊ່ວງນີ້ພະນັກງານມາວຽກແລ້ວ — ບໍ່ມີມື້ໃຫ້ບັນທຶກລາພັກ" };
+  if (!applied.length) return { error: "ທຸກມື້ໃນຊ່ວງນີ້ພະນັກງານມາວຽກແລ້ວ — ບໍ່ມີມື້ໃຫ້ບັນທຶກລາພັກ" };
   return { applied, worked };
+};
+
+const statusOfType = (type: LeaveType) => (Number(type.paid) === 1 ? PAID_LEAVE : UNPAID_LEAVE);
+
+/**
+ * ປະເພດທີ່ພະນັກງານເລືອກ: leave_type_id (ຕ້ອງໃຊ້ງານຢູ່). app ລຸ້ນເກົ່າສົ່ງແຕ່ leave_type 2 | 3 → ປະເພດທຳອິດທີ່ paid ກົງກັນ;
+ * ຍັງບໍ່ໄດ້ຕັ້ງປະເພດຈັກອັນ = ແບບເກົ່າ (ບໍ່ມີປະເພດ, ບໍ່ມີຂີດຈຳກັດ)
+ */
+const resolveType = async (body: any): Promise<{ type: LeaveType | null; status: number } | { error: string }> => {
+  if (body.leave_type_id !== undefined && body.leave_type_id !== null && body.leave_type_id !== "") {
+    const type = await LeaveType.findOne({ where: { _uuid: Number(body.leave_type_id) || 0, status: 1 } });
+    return type ? { type, status: statusOfType(type) } : { error: "ບໍ່ພົບປະເພດການລາພັກ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ" };
+  }
+  const legacy = Number(body.leave_type);
+  if (!LEAVE_TYPES.includes(legacy)) return { error: "ກະລຸນາເລືອກປະເພດການລາພັກ" };
+  const type = await LeaveType.findOne({ where: { status: 1, paid: legacy === PAID_LEAVE ? 1 : 0 }, order: TYPE_ORDER });
+  if (type) return { type, status: legacy };
+  if (await LeaveType.count({ where: { status: 1 } })) return { error: "ກະລຸນາອັບເດດ app ແລ້ວເລືອກປະເພດການລາພັກ" };
+  return { type: null, status: legacy };
+};
+
+/** ມື້ເຮັດວຽກຂອງຄຳຂໍທີ່ຕົກໃນປີ — ຢູ່ໃນປີທັງໝົດ = days ທີ່ບັນທຶກໄວ້, ຂ້າມປີ = ນັບມື້ເຮັດວຽກສ່ວນທີ່ຢູ່ໃນປີນັ້ນ */
+const daysInYear = async (row: LeaveRequest, year: string, t?: Transaction) => {
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
+  const start = String(row.start_date);
+  const end = String(row.end_date);
+  if (start >= from && end <= to) return Number(row.days) || 0;
+  return (await workdaysIn(start > from ? start : from, end < to ? end : to, t)).length;
+};
+
+/** ມື້ຂອງປະເພດໃນປີ: used = ອະນຸມັດແລ້ວ, pending = ລໍຖ້າ — exceptId = ຄຳຂໍທີ່ກຳລັງກວດ (ບໍ່ນັບຕົວເອງ) */
+const usageOf = async (employeeId: number, typeId: number, year: string, exceptId?: number, t?: Transaction) => {
+  const rows = await LeaveRequest.findAll({
+    where: {
+      employee_id: employeeId,
+      leave_type_id: typeId,
+      status: { [Op.in]: [PENDING, APPROVED] },
+      ...overlapsYear(year),
+      ...(exceptId ? { _uuid: { [Op.ne]: exceptId } } : {}),
+    },
+    transaction: t,
+  });
+  let used = 0;
+  let pending = 0;
+  for (const row of rows) {
+    const days = await daysInYear(row, year, t);
+    if (Number(row.status) === APPROVED) used += days;
+    else pending += days;
+  }
+  return { used, pending };
+};
+
+/**
+ * ກວດຂີດຈຳກັດຂອງປະເພດ — ຕໍ່ຄັ້ງ: ມື້ເຮັດວຽກທັງໝົດຂອງຄຳຂໍ; ຕໍ່ປີ: ອະນຸມັດ + ລໍຖ້າ + ຄຳຂໍນີ້ (ແຍກຕາມປີເມື່ອຂ້າມປີ).
+ * ຜ່ານ = null, ບໍ່ຜ່ານ = ຂໍ້ຄວາມບອກມື້ທີ່ເຫຼືອ
+ */
+const quotaError = async (employeeId: number, type: LeaveType | null, dates: string[], exceptId?: number, t?: Transaction) => {
+  if (!type) return null;
+  const perRequest = Number(type.max_per_request) || 0;
+  if (perRequest && dates.length > perRequest) {
+    return `${type.name} ລາໄດ້ບໍ່ເກີນ ${perRequest} ມື້ຕໍ່ຄັ້ງ (ຄຳຂໍນີ້ ${dates.length} ມື້ເຮັດວຽກ)`;
+  }
+  const perYear = Number(type.max_per_year) || 0;
+  if (!perYear) return null;
+  const byYear = new Map<string, number>();
+  dates.forEach((d) => byYear.set(d.slice(0, 4), (byYear.get(d.slice(0, 4)) ?? 0) + 1));
+  for (const [year, count] of byYear) {
+    const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId, t);
+    const left = Math.max(0, perYear - used - pending);
+    if (count > left) {
+      return `${type.name} ປີ ${year} ລາໄດ້ ${perYear} ມື້ — ໃຊ້ແລ້ວ ${used} ມື້${pending ? `, ລໍຖ້າອະນຸມັດ ${pending} ມື້` : ""}, ເຫຼືອ ${left} ມື້ (ຄຳຂໍນີ້ ${count} ມື້)`;
+    }
+  }
+  return null;
+};
+
+/** ທຸກປະເພດທີ່ໃຊ້ງານ + ມື້ທີ່ໃຊ້/ລໍຖ້າ/ເຫຼືອ ຂອງພະນັກງານໃນປີ (remaining null = ບໍ່ຈຳກັດ) */
+const balancesOf = async (employeeId: number, year: string, exceptId?: number) => {
+  const types = await LeaveType.findAll({ where: { status: 1 }, order: TYPE_ORDER });
+  return Promise.all(types.map(async (type) => {
+    const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId);
+    const perYear = Number(type.max_per_year) || 0;
+    return {
+      _uuid: type._uuid,
+      name: type.name,
+      paid: Number(type.paid),
+      description: type.description,
+      max_per_year: type.max_per_year,
+      max_per_request: type.max_per_request,
+      used,
+      pending,
+      remaining: perYear ? Math.max(0, perYear - used - pending) : null,
+    };
+  }));
 };
 
 /** ຄຳຂໍທີ່ລໍຖ້າ / ອະນຸມັດແລ້ວ ທີ່ຊ້ອນກັບຊ່ວງນີ້ */
@@ -173,7 +274,10 @@ const overlapMessage = (row: LeaveRequest) =>
 
 // ================= ພະນັກງານ (app ມືຖື)
 
-/** GET /leave/me?year=YYYY — ຄຳຂໍຂອງຕົນເອງໃນປີ (ໃໝ່ສຸດກ່ອນ) + ສະຫຼຸບມື້ທີ່ອະນຸມັດແລ້ວ */
+/**
+ * GET /leave/me?year=YYYY — ຄຳຂໍຂອງຕົນເອງໃນປີ (ໃໝ່ສຸດກ່ອນ) + ສະຫຼຸບມື້ທີ່ອະນຸມັດແລ້ວ
+ * + types: ປະເພດທີ່ເລືອກໄດ້ ພ້ອມມື້ທີ່ເຫຼືອຂອງປີ (ສຳລັບຟອມຂໍລາໃນ app)
+ */
 export const getMyLeaves = async (req: Request, res: Response) => {
   try {
     const self = await selfEmployee(req);
@@ -182,10 +286,14 @@ export const getMyLeaves = async (req: Request, res: Response) => {
       return;
     }
     const year = yearOf(req.query.year);
-    const rows = await LeaveRequest.findAll({
-      where: { employee_id: self.employee._uuid, ...overlapsYear(year) },
-      order: [["start_date", "DESC"], ["_uuid", "DESC"]],
-    });
+    const [rows, types] = await Promise.all([
+      LeaveRequest.findAll({
+        where: { employee_id: self.employee._uuid, ...overlapsYear(year) },
+        include: [typeInclude],
+        order: [["start_date", "DESC"], ["_uuid", "DESC"]],
+      }),
+      balancesOf(self.employee._uuid, year),
+    ]);
     const data = rows.map(present);
     const approvedDays = (type: number) => data
       .filter((r) => Number(r.status) === APPROVED && Number(r.leave_type) === type)
@@ -193,6 +301,7 @@ export const getMyLeaves = async (req: Request, res: Response) => {
     res.status(200).json({
       year,
       data,
+      types,
       summary: {
         pending: data.filter((r) => Number(r.status) === PENDING).length,
         paid_days: approvedDays(PAID_LEAVE),
@@ -204,7 +313,10 @@ export const getMyLeaves = async (req: Request, res: Response) => {
   }
 };
 
-/** POST /leave/me { leave_type: 2 | 3, start_date, end_date?, reason } — ສົ່ງຄຳຂໍລາພັກ (ລໍຖ້າ HR ອະນຸມັດ) */
+/**
+ * POST /leave/me { leave_type_id, start_date, end_date?, reason } — ສົ່ງຄຳຂໍລາພັກ (ລໍຖ້າ HR ອະນຸມັດ);
+ * app ລຸ້ນເກົ່າສົ່ງ leave_type: 2 | 3 ແທນ leave_type_id ໄດ້ (ເບິ່ງ resolveType)
+ */
 export const createMyLeave = async (req: Request, res: Response) => {
   try {
     const self = await selfEmployee(req);
@@ -216,8 +328,8 @@ export const createMyLeave = async (req: Request, res: Response) => {
     const body = req.body || {};
     const fail = (message: string) => res.status(400).json({ message });
 
-    const leaveType = Number(body.leave_type);
-    if (!LEAVE_TYPES.includes(leaveType)) return fail("ກະລຸນາເລືອກປະເພດການລາພັກ");
+    const resolved = await resolveType(body);
+    if ("error" in resolved) return fail(resolved.error);
     const range = parseRange(body);
     if ("error" in range) return fail(range.error);
     const reason = text(body.reason);
@@ -231,17 +343,21 @@ export const createMyLeave = async (req: Request, res: Response) => {
 
     const overlap = await overlappingLeave(employee._uuid, range.start, range.end);
     if (overlap) return fail(overlapMessage(overlap));
+    const overQuota = await quotaError(employee._uuid, resolved.type, workdays);
+    if (overQuota) return fail(overQuota);
 
     const row = await LeaveRequest.create({
       employee_id: employee._uuid,
-      leave_type: leaveType,
+      leave_type_id: resolved.type?._uuid ?? null,
+      leave_type: resolved.status,
       start_date: range.start,
       end_date: range.end,
       days: workdays.length,
       reason,
       status: PENDING,
     });
-    res.status(200).json({ message: "ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ລໍຖ້າ HR ອະນຸມັດ", data: present(row) });
+    const saved = await LeaveRequest.findByPk(row._uuid, { include: [typeInclude] });
+    res.status(200).json({ message: "ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ລໍຖ້າ HR ອະນຸມັດ", data: present(saved ?? row) });
   } catch (error) {
     sendError(res, error, "Error creating leave request");
   }
@@ -282,7 +398,7 @@ export const getLeaves = async (req: Request, res: Response) => {
     const [rows, counts] = await Promise.all([
       LeaveRequest.findAll({
         where: { ...overlapsYear(year), ...(STATUSES.includes(status) ? { status } : {}) },
-        include: [employeeInclude],
+        include: [employeeInclude, typeInclude],
         order: [["status", "ASC"], ["start_date", "DESC"], ["_uuid", "DESC"]],
       }),
       LeaveRequest.findAll({
@@ -304,8 +420,27 @@ export const getLeaves = async (req: Request, res: Response) => {
 };
 
 /**
- * PUT /leave/approve/:id { leave_type?, note? } — ອະນຸມັດ: ບັນທຶກ status ລາພັກ (HR ປ່ຽນປະເພດໄດ້) ລົງ tbl_attendance
- * ທຸກມື້ເຮັດວຽກໃນຊ່ວງທີ່ເປັນພະນັກງານຢູ່ (ລວມມື້ທີ່ຍັງບໍ່ຮອດ). ມື້ທີ່ສະແກນມາວຽກແລ້ວ ບໍ່ທັບ ແລະ ບໍ່ນັບ
+ * POST /leave/balance { leave_id } (HR) — ມື້ທີ່ເຫຼືອຂອງແຕ່ລະປະເພດ ສຳລັບພະນັກງານຂອງຄຳຂໍ ໃນປີຂອງວັນທີເລີ່ມ
+ * (ບໍ່ນັບຄຳຂໍນີ້ເອງ — ເບິ່ງວ່າອະນຸມັດໄດ້ຫຼືບໍ່)
+ */
+export const getLeaveBalance = async (req: Request, res: Response) => {
+  try {
+    const row = await LeaveRequest.findByPk(Number(req.body?.leave_id) || 0);
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບຄຳຂໍລາພັກ" });
+      return;
+    }
+    const year = String(row.start_date).slice(0, 4);
+    res.status(200).json({ year, data: await balancesOf(Number(row.employee_id), year, row._uuid) });
+  } catch (error) {
+    sendError(res, error, "Error getting leave balance");
+  }
+};
+
+/**
+ * PUT /leave/approve/:id { leave_type_id?, note? } — ອະນຸມັດ: ບັນທຶກ status ລາພັກ (HR ປ່ຽນປະເພດໄດ້) ລົງ tbl_attendance
+ * ທຸກມື້ເຮັດວຽກໃນຊ່ວງທີ່ເປັນພະນັກງານຢູ່ (ລວມມື້ທີ່ຍັງບໍ່ຮອດ). ມື້ທີ່ສະແກນມາວຽກແລ້ວ ບໍ່ທັບ ແລະ ບໍ່ນັບ.
+ * ກວດຂີດຈຳກັດຂອງປະເພດອີກຄັ້ງກັບມື້ທີ່ບັນທຶກແທ້ — ເກີນ = ຍົກເລີກທັງໝົດ (HR ປະຕິເສດ ຫຼື ປ່ຽນປະເພດ)
  */
 export const approveLeave = async (req: Request<{ id: string }>, res: Response) => {
   const t = await LeaveRequest.sequelize!.transaction();
@@ -320,7 +455,13 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     if (!row) return fail(404, "ບໍ່ພົບຄຳຂໍລາພັກ");
     if (Number(row.status) !== PENDING) return fail(400, "ຄຳຂໍນີ້ບໍ່ໄດ້ລໍຖ້າອະນຸມັດແລ້ວ");
     const body = req.body || {};
-    const leaveType = body.leave_type === undefined || body.leave_type === null ? Number(row.leave_type) : Number(body.leave_type);
+    // ປະເພດໃໝ່ທີ່ HR ເລືອກ (ຕ້ອງໃຊ້ງານຢູ່) ຫຼື ປະເພດເດີມຂອງຄຳຂໍ (ປິດໃຊ້ງານພາຍຫຼັງກໍ່ຍັງອະນຸມັດໄດ້); ຄຳຂໍເກົ່າບໍ່ມີປະເພດ = null
+    const changed = body.leave_type_id !== undefined && body.leave_type_id !== null && body.leave_type_id !== "";
+    const type = changed
+      ? await LeaveType.findOne({ where: { _uuid: Number(body.leave_type_id) || 0, status: 1 }, transaction: t })
+      : row.leave_type_id ? await LeaveType.findByPk(row.leave_type_id, { transaction: t }) : null;
+    if (changed && !type) return fail(400, "ບໍ່ພົບປະເພດການລາພັກ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ");
+    const leaveType = type ? statusOfType(type) : Number(row.leave_type);
     if (!LEAVE_TYPES.includes(leaveType)) return fail(400, "ປະເພດການລາພັກບໍ່ຖືກຕ້ອງ");
     const employee: any = await Employee.findByPk(row.employee_id, { transaction: t });
     if (!employee) return fail(400, "ບໍ່ພົບພະນັກງານ");
@@ -329,11 +470,14 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     const result = await writeLeaveDays(employee, String(row.start_date), String(row.end_date), leaveType, row.reason, actor, t);
     if ("error" in result) return fail(400, result.error);
     const { applied, worked } = result;
+    const overQuota = await quotaError(Number(row.employee_id), type, applied, row._uuid, t);
+    if (overQuota) return fail(400, overQuota);
 
     await row.update({
       status: APPROVED,
+      leave_type_id: type?._uuid ?? null,
       leave_type: leaveType,
-      days: applied,
+      days: applied.length,
       review_note: text(body.note),
       reviewedbyid: actor,
       reviewedAt: new Date(),
@@ -342,11 +486,11 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     await t.commit();
     done = true;
 
-    await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [`${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied} ມື້`, text(body.note)], actor);
+    await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [[type?.name, `${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied.length} ມື້`].filter(Boolean).join(" · "), text(body.note)], actor);
 
     const saved = await findWithEmployee(row._uuid);
     res.status(200).json({
-      message: worked.length ? `ອະນຸມັດແລ້ວ ${applied} ມື້ (ບໍ່ນັບ ${worked.length} ມື້ທີ່ມາວຽກແລ້ວ)` : `ອະນຸມັດແລ້ວ ${applied} ມື້`,
+      message: worked.length ? `ອະນຸມັດແລ້ວ ${applied.length} ມື້ (ບໍ່ນັບ ${worked.length} ມື້ທີ່ມາວຽກແລ້ວ)` : `ອະນຸມັດແລ້ວ ${applied.length} ມື້`,
       data: saved && present(saved),
       worked,
     });

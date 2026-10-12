@@ -8,8 +8,11 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const cors_1 = __importDefault(require("cors"));
 const path_1 = __importDefault(require("path"));
 const routes_1 = __importDefault(require("./routes/routes"));
+const utils_1 = require("./utils");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
+// ຢູ່ຫຼັງ Cloudflare — req.protocol ອ່ານ X-Forwarded-Proto (https) ແທນ http ຂອງ tunnel
+app.set("trust proxy", true);
 app.use((0, cors_1.default)({
     origin: "*",
     credentials: true,
@@ -23,6 +26,7 @@ app.use((req, _res, next) => {
     req.body ?? (req.body = {});
     next();
 });
+app.use(utils_1.withImageBase);
 // Routes
 app.use("/api", routes_1.default);
 app.use("/image", express_1.default.static(path_1.default.resolve(__dirname, "uploads/")));

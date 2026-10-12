@@ -3,8 +3,11 @@ import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
 import routes from "./routes/routes";
+import { withImageBase } from "./utils";
 dotenv.config();
 const app = express();
+// ຢູ່ຫຼັງ Cloudflare — req.protocol ອ່ານ X-Forwarded-Proto (https) ແທນ http ຂອງ tunnel
+app.set("trust proxy", true);
 app.use(
   cors({
     origin: "*",
@@ -21,6 +24,7 @@ app.use((req, _res, next) => {
   req.body ??= {};
   next();
 });
+app.use(withImageBase);
 // Routes
 app.use("/api", routes);
 app.use("/image", express.static(path.resolve(__dirname, "uploads/")));
