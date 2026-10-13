@@ -23,6 +23,11 @@ WorkPlan.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    employee_id: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: null,
+    },
     title: {
         type: sequelize_1.DataTypes.STRING(255),
         allowNull: false,
@@ -44,6 +49,19 @@ WorkPlan.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
+    },
+    progress: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+    },
+    progress_log: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+    },
+    done_at: {
+        type: sequelize_1.DataTypes.DATE,
+        allowNull: true,
     },
     status: {
         type: sequelize_1.DataTypes.INTEGER,

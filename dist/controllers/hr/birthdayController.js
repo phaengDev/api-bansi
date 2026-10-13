@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyBirthdayReplies = exports.replyBirthdayWish = exports.getMyBirthdayWishes = exports.sendBirthdayWish = exports.getMyBirthdays = void 0;
+exports.getMyBirthdayReplies = exports.replyBirthdayWish = exports.getMyBirthdayWishes = exports.sendBirthdayWish = exports.getBirthdayWall = exports.getMyBirthdays = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const birthdayWish_1 = __importDefault(require("../../models/birthdayWish"));
@@ -22,6 +22,7 @@ const workCalendar_1 = require("./workCalendar");
  * - GET /birthday/me/wishes — ຄຳອວຍພອນທີ່ຕົນເອງໄດ້ຮັບ (ເປີດເບິ່ງ = ໝາຍວ່າອ່ານແລ້ວ)
  * - POST /birthday/me/wishes/:id/reply — ເຈົ້າຂອງວັນເກີດຕອບກັບຄຳອວຍພອນ (ຕອບຊ້ຳ = ແກ້ຂໍ້ຄວາມ)
  * - GET /birthday/me/replies — ຄຳຕອບກັບທີ່ຕົນເອງໄດ້ຮັບ ຈາກຄົນທີ່ເຄີຍອວຍພອນ (ເປີດເບິ່ງ = ໝາຍວ່າອ່ານແລ້ວ)
+ * - GET /birthday/me/wall?date= — ຄຳອວຍພອນຂອງທີມງານ ຕໍ່ຄົນທີ່ມີວັນເກີດມື້ນັ້ນ (ມື້ນີ້ ຫຼື 7 ມື້ຫຼ້າສຸດ)
  * ວັນທີທັງໝົດເປັນເວລາລາວ
  */
 const MAX_MESSAGE = 500;
@@ -147,6 +148,75 @@ const getMyBirthdays = async (req, res) => {
     }
 };
 exports.getMyBirthdays = getMyBirthdays;
+/** ເບິ່ງຄຳອວຍພອນຍ້ອນຫຼັງໄດ້ກີ່ມື້ — ສະເພາະວັນເກີດທີ່ແຈ້ງທຸກຄົນແລ້ວ (ບໍ່ໃຫ້ໄລ່ຫາວັນເກີດຂອງທຸກຄົນທີລະມື້) */
+const WALL_DAYS = 7;
+/**
+ * GET /birthday/me/wall?date=YYYY-MM-DD (ບໍ່ສົ່ງ = ມື້ນີ້) — ເພື່ອນທີ່ມີວັນເກີດມື້ນັ້ນ (ລວມຕົນເອງ is_me) ພ້ອມຄຳອວຍພອນ
+ * ທັງໝົດຈາກທີມງານ (ຜູ້ສົ່ງ + ຂໍ້ຄວາມ); ຄຳຕອບກັບຂອງເຈົ້າຂອງວັນເກີດ ເຫັນສະເພາະອັນທີ່ຕອບຂ້ອຍ. ໄດ້ສະເພາະ WALL_DAYS ມື້ຫຼ້າສຸດ
+ */
+const getBirthdayWall = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const me = self.employee;
+        const today = (0, workCalendar_1.todayLao)();
+        const date = String(req.query.date ?? "").trim() || today;
+        const oldest = (0, moment_1.default)(today, "YYYY-MM-DD").subtract(WALL_DAYS, "days").format("YYYY-MM-DD");
+        if (!(0, moment_1.default)(date, "YYYY-MM-DD", true).isValid() || date > today || date < oldest) {
+            res.status(400).json({ message: `ເບິ່ງໄດ້ສະເພາະວັນເກີດ ${WALL_DAYS} ມື້ຫຼ້າສຸດ` });
+            return;
+        }
+        const people = await birthdaysOn(date);
+        const ids = people.map((e) => e._uuid);
+        const wishes = ids.length
+            ? await birthdayWish_1.default.findAll({
+                where: { wish_date: date, employee_id: { [sequelize_1.Op.in]: ids } },
+                include: [{ model: employee_1.default, as: "sender", attributes: personAttributes, include: personInclude }],
+                order: [["createdAt", "ASC"]],
+                limit: MAX_WISHES,
+            })
+            : [];
+        const wishesOf = new Map();
+        for (const row of wishes) {
+            const w = row.get({ plain: true });
+            const list = wishesOf.get(Number(w.employee_id)) ?? [];
+            list.push(w);
+            wishesOf.set(Number(w.employee_id), list);
+        }
+        res.status(200).json({
+            date,
+            today,
+            data: people.map((e) => {
+                const list = wishesOf.get(e._uuid) ?? [];
+                const mine = list.find((w) => w.sender_id === me._uuid);
+                return {
+                    ...personOf(e),
+                    is_me: e._uuid === me._uuid,
+                    wished: !!mine,
+                    my_message: mine?.message ?? null,
+                    reply: mine?.reply ?? null,
+                    wish_count: list.length,
+                    wishes: list.map((w) => ({
+                        _uuid: w._uuid,
+                        message: w.message,
+                        createdAt: w.createdAt,
+                        updatedAt: w.updatedAt,
+                        is_mine: w.sender_id === me._uuid,
+                        reply: w.sender_id === me._uuid ? w.reply ?? null : null,
+                        sender: personOf(w.sender),
+                    })),
+                };
+            }),
+        });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting birthday wall");
+    }
+};
+exports.getBirthdayWall = getBirthdayWall;
 /** POST /birthday/me/wish { employee_id, message } — ອວຍພອນເພື່ອນທີ່ມີວັນເກີດມື້ນີ້ (ສົ່ງຊ້ຳ = ແກ້ຂໍ້ຄວາມ, ແຈ້ງເຈົ້າຂອງວັນເກີດຄືນໃໝ່) */
 const sendBirthdayWish = async (req, res) => {
     try {

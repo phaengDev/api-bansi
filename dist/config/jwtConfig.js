@@ -7,9 +7,10 @@ exports.adminJwtConfig = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 // ADMIN_JWT_* ມາກ່ອນ ແລ້ວຈຶ່ງ JWT_* — ບໍ່ມີ secret ໃນ .env = login ຕອບ 500 (ບໍ່ໃຊ້ secret ຄ່າຕັ້ງຕົ້ນ)
+// expiresIn: token ຂອງຜູ້ໃຊ້ລະບົບ (ເວັບ bansi) ໃຊ້ໄດ້ 1 ມື້ ຕາຍຕົວ — ບໍ່ອ່ານຈາກ .env (app ພະນັກງານມີອາຍຸຂອງຕົນເອງ: APP_TOKEN_TTL)
 exports.adminJwtConfig = {
     secret: (process.env.ADMIN_JWT_SECRET ?? process.env.JWT_SECRET ?? "").trim(),
-    expiresIn: process.env.ADMIN_JWT_EXPIRES_IN ?? process.env.JWT_EXPIRES_IN ?? "1d",
+    expiresIn: "1d",
     issuer: process.env.ADMIN_JWT_ISSUER ?? process.env.JWT_ISSUER ?? "Bansi-OAC",
 };
 // secret ສັ້ນ = ເດົາໄດ້ ແລ້ວປອມ token ເຂົ້າລະບົບໄດ້ — ຕ້ອງຍາວຢ່າງໜ້ອຍ 32 ຕົວ (ສ້າງ: openssl rand -hex 32)

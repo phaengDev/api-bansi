@@ -8,9 +8,10 @@ type JwtConfig = {
 };
 
 // ADMIN_JWT_* ມາກ່ອນ ແລ້ວຈຶ່ງ JWT_* — ບໍ່ມີ secret ໃນ .env = login ຕອບ 500 (ບໍ່ໃຊ້ secret ຄ່າຕັ້ງຕົ້ນ)
+// expiresIn: token ຂອງຜູ້ໃຊ້ລະບົບ (ເວັບ bansi) ໃຊ້ໄດ້ 1 ມື້ ຕາຍຕົວ — ບໍ່ອ່ານຈາກ .env (app ພະນັກງານມີອາຍຸຂອງຕົນເອງ: APP_TOKEN_TTL)
 export const adminJwtConfig: JwtConfig = {
     secret: (process.env.ADMIN_JWT_SECRET ?? process.env.JWT_SECRET ?? "").trim(),
-    expiresIn: process.env.ADMIN_JWT_EXPIRES_IN ?? process.env.JWT_EXPIRES_IN ?? "1d",
+    expiresIn: "1d",
     issuer: process.env.ADMIN_JWT_ISSUER ?? process.env.JWT_ISSUER ?? "Bansi-OAC",
 };
 

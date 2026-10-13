@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyToken = exports.EMPLOYEE_TOKEN = exports.login = void 0;
+exports.verifyToken = exports.EMPLOYEE_TOKEN = exports.checkSession = exports.login = void 0;
 const userModel_1 = __importDefault(require("../models/userModel"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -67,6 +67,25 @@ const login = async (req, res) => {
     }
 };
 exports.login = login;
+/**
+ * GET /user/session — ເວັບ bansi ກວດ token ທຸກເທື່ອທີ່ເປີດເວັບ ກ່ອນສະແດງໜ້າໃດໆ: verifyToken ກວດລາຍເຊັນ / ອາຍຸແລ້ວ
+ * (token ຂອງ app ພະນັກງານ = 403), ບ່ອນນີ້ກວດຕື່ມວ່າບັນຊີຍັງເປີດໃຊ້ຢູ່ (ຖືກລຶບ / ປິດ = 401 ກັບໄປ login)
+ */
+const checkSession = async (req, res) => {
+    try {
+        const user = await userModel_1.default.findOne({ where: { user_uuid: Number(req.user?.sub), status: 1 }, attributes: ["user_uuid"] });
+        if (!user) {
+            res.status(401).json({ status: "401", message: "ບັນຊີນີ້ຖືກປິດໃຊ້ງານ" });
+            return;
+        }
+        res.status(200).json({ message: "ok", exp: req.user?.exp });
+    }
+    catch (e) {
+        console.error("Error in checkSession:", e);
+        res.status(500).json({ message: "Error checking session" });
+    }
+};
+exports.checkSession = checkSession;
 /** typ ຂອງ token ທີ່ app ພະນັກງານໄດ້ຈາກ POST /app/login (sub = employee _uuid) */
 exports.EMPLOYEE_TOKEN = "employee";
 /**

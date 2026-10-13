@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createUpload, createUploadFile } from "../utils/uploadFile";
-import { verifyToken, login } from "../middleware/auth";
+import { verifyToken, login, checkSession } from "../middleware/auth";
 import { requirePermission } from "../middleware/permission";
 import { getUsers, createUser, getUserById, updateUser, deleteUser, updatePassword, getTypeUser } from "../controllers/userController";
 import { getcurrency, updateCurrency, updateCurrencyMt } from "../controllers/currencyController";
@@ -69,6 +69,7 @@ import {
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
+import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
   saveAttendance, deleteAttendance, getHolidays, getMyHolidays, createHoliday, deleteHoliday,
@@ -88,7 +89,7 @@ import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
 import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
-import { getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
+import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
 
 const router = Router();
@@ -105,6 +106,8 @@ router.get("/currency", getcurrency);
 
 router.use(verifyToken);
 
+// ເວັບ bansi ກວດ token ທຸກເທື່ອທີ່ເປີດເວັບ (ກ່ອນ /user/:id)
+router.get("/user/session", checkSession);
 router.put("/app/password", changeAppPassword);
 // ຂໍ້ມູນບໍລິສັດສຳລັບ app (token ພະນັກງານເຂົ້າ /company ບໍ່ໄດ້ — ໃຊ້ຂໍ້ມູນດຽວກັນ, ບໍ່ມີລະຫັດ QR)
 router.get("/app/company", getCompany);
@@ -280,6 +283,13 @@ router.get("/employee/me", getMyEmployee);
 router.put("/employee/me/profile", profileUpload, updateMyProfilePhoto);
 router.get("/employee/me/history", getMyWorkHistory);
 router.get("/employee/me/colleagues", getMyColleagues);
+// ແຜນວຽກສ່ວນຕົວຂອງພະນັກງານ (app) — ຕາຕະລາງດຽວກັບປະຕິທິນແຜນວຽກຂອງເວັບ
+router.get("/employee/me/workplan", getMyWorkPlans);
+router.post("/employee/me/workplan", createMyWorkPlan);
+router.get("/employee/me/workplan/:id", getMyWorkPlan);
+router.put("/employee/me/workplan/:id", updateMyWorkPlan);
+router.post("/employee/me/workplan/:id/progress", addMyWorkPlanProgress);
+router.delete("/employee/me/workplan/:id", deleteMyWorkPlan);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
@@ -324,6 +334,7 @@ router.post("/birthday/me/wish", sendBirthdayWish);
 router.get("/birthday/me/wishes", getMyBirthdayWishes);
 router.post("/birthday/me/wishes/:id/reply", replyBirthdayWish);
 router.get("/birthday/me/replies", getMyBirthdayReplies);
+router.get("/birthday/me/wall", getBirthdayWall);
 // ========= ແຈ້ງເຕືອນ — /me ສຳລັບ app ມືຖື (ກະດິ່ງ); HR ແຈ້ງການໃຫ້ພະນັກງານທຸກຄົນ
 router.get("/notification/me", getMyNotifications);
 router.get("/notification/me/stream", streamMyNotifications);

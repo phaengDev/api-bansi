@@ -9,6 +9,7 @@ const autoSync_1 = require("./utils/autoSync");
 const seedDefaults_1 = require("./utils/seedDefaults");
 const glSeed_1 = require("./controllers/bansi/glSeed");
 const notificationController_1 = require("./controllers/hr/notificationController");
+const myWorkPlanController_1 = require("./controllers/hr/myWorkPlanController");
 const os_1 = require("os");
 const PORT = process.env.PORT || 8888;
 const getPositiveNumber = (value, fallback) => {
@@ -52,6 +53,8 @@ async function startServer() {
     await (0, glSeed_1.seedGlDefaults)().catch((error) => console.error("❌ seedGlDefaults:", error?.parent?.sqlMessage ?? error));
     // ແຈ້ງວັນເກີດທຸກມື້ 08:00 (ເດັ້ງຂຶ້ນຈໍມືຖື)
     (0, notificationController_1.scheduleBirthdayNotifications)();
+    // ເຕືອນແຜນວຽກທີ່ຍັງບໍ່ສຳເລັດຂອງມື້ນີ້ທຸກມື້ 07:30 (ເດັ້ງຂຶ້ນຈໍມືຖື)
+    (0, myWorkPlanController_1.scheduleWorkPlanReminders)();
     server_1.default.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);

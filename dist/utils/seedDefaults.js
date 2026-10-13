@@ -229,6 +229,8 @@ const ACCOUNT_MENUS = [
     { name_la: "ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ", name_en: "Master Data (HR)", name_cn: "基础资料（人事）", icons: "fa-solid fa-users-gear", path: "/hr" },
     { name_la: "ການເຂົ້າ-ອອກວຽກ", name_en: "Attendance", name_cn: "考勤", icons: "fa-solid fa-user-clock", path: "/hr/attendance" },
     { name_la: "ເງິນເດືອນ", name_en: "Payroll", name_cn: "工资", icons: "fa-solid fa-money-check-dollar", path: "/hr/payroll" },
+    // ແຍກອອກຈາກໜ້າຕ່າງ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ (2026-10-13) — DB ທີ່ມີເມນູແລ້ວ ໄດ້ແຖວນີ້ຕໍ່ທ້າຍ (ລຳດັບ _uuid)
+    { name_la: "ພະນັກງານ", name_en: "Employees", name_cn: "员工", icons: "fa-solid fa-id-card", path: "/hr/employees" },
     { name_la: "ປະຕິທິນ", name_en: "Calendar", name_cn: "日历", icons: "fa-solid fa-calendar-days", path: "/calendar" },
     { name_la: "ຕັ້ງຄ່າບັນຊີ", name_en: "Accounting Settings", name_cn: "会计设置", icons: "fa-solid fa-gears", path: "/account/setting" },
 ];

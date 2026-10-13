@@ -45,6 +45,8 @@ const getUserId = (req) => {
     const fromToken = Number(req.user?.sub);
     return fromToken || 0;
 };
+// ແຜນວຽກຂອງຜູ້ໃຊ້ລະບົບເທົ່ານັ້ນ — ແຜນຂອງພະນັກງານ (employee_id) ຈັດການຜ່ານ /employee/me/workplan (myWorkPlanController)
+const ADMIN_ONLY = { employee_id: null };
 const ownerInclude = [
     {
         model: userModel_1.default,
@@ -96,7 +98,7 @@ exports.createWorkPlan = createWorkPlan;
 const updateWorkPlan = async (req, res) => {
     try {
         const uuid = atob(req.params.id);
-        const workPlan = await workPlanModel_1.default.findByPk(uuid);
+        const workPlan = await workPlanModel_1.default.findOne({ where: { _uuid: uuid, ...ADMIN_ONLY } });
         if (!workPlan || workPlan.status !== 1) {
             return res.status(404).json({ error: "Work plan not found" });
         }
@@ -141,7 +143,7 @@ exports.updateWorkPlan = updateWorkPlan;
 const doneWorkPlan = async (req, res) => {
     try {
         const uuid = atob(req.params.id);
-        const workPlan = await workPlanModel_1.default.findByPk(uuid);
+        const workPlan = await workPlanModel_1.default.findOne({ where: { _uuid: uuid, ...ADMIN_ONLY } });
         if (!workPlan || workPlan.status !== 1) {
             return res.status(404).json({ error: "Work plan not found" });
         }
@@ -161,7 +163,7 @@ exports.doneWorkPlan = doneWorkPlan;
 const deleteWorkPlan = async (req, res) => {
     try {
         const uuid = atob(req.params.id);
-        const workPlan = await workPlanModel_1.default.findByPk(uuid);
+        const workPlan = await workPlanModel_1.default.findOne({ where: { _uuid: uuid, ...ADMIN_ONLY } });
         if (!workPlan || workPlan.status !== 1) {
             return res.status(404).json({ error: "Work plan not found" });
         }
@@ -183,7 +185,7 @@ const fetchWorkPlan = async (req, res) => {
         const skip = req.query.skip ? parseInt(req.query.skip, 10) : 0;
         const orderBy = req.query.orderBy || "start_date";
         const order = (req.query.order || "ASC").toUpperCase();
-        const whereCondition = { status: 1 };
+        const whereCondition = { status: 1, ...ADMIN_ONLY };
         const userid = getUserId(req);
         if (userid)
             whereCondition.userid = userid;
@@ -229,7 +231,7 @@ const getWorkPlanById = async (req, res) => {
     try {
         const uuid = atob(req.params.id);
         const workPlan = await workPlanModel_1.default.findOne({
-            where: { _uuid: uuid, status: 1 },
+            where: { _uuid: uuid, status: 1, ...ADMIN_ONLY },
             include: ownerInclude,
         });
         if (!workPlan) {
@@ -252,6 +254,7 @@ const getWorkPlanByDate = async (req, res) => {
         }
         const whereCondition = {
             status: 1,
+            ...ADMIN_ONLY,
             start_date: { [sequelize_1.Op.lte]: dateKey },
             end_date: { [sequelize_1.Op.gte]: dateKey },
         };

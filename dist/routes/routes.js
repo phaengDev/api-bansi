@@ -35,6 +35,7 @@ const departmentController_1 = require("../controllers/hr/departmentController")
 const employeeController_1 = require("../controllers/hr/employeeController");
 const companyController_1 = require("../controllers/hr/companyController");
 const appAuthController_1 = require("../controllers/hr/appAuthController");
+const myWorkPlanController_1 = require("../controllers/hr/myWorkPlanController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
 const payrollController_1 = require("../controllers/hr/payrollController");
 const leaveController_1 = require("../controllers/hr/leaveController");
@@ -57,6 +58,8 @@ router.post("/app/otp/verify", appAuthController_1.verifyAppOtp);
 router.get("/user/type", userController_1.getTypeUser);
 router.get("/currency", currencyController_1.getcurrency);
 router.use(auth_1.verifyToken);
+// ເວັບ bansi ກວດ token ທຸກເທື່ອທີ່ເປີດເວັບ (ກ່ອນ /user/:id)
+router.get("/user/session", auth_1.checkSession);
 router.put("/app/password", appAuthController_1.changeAppPassword);
 // ຂໍ້ມູນບໍລິສັດສຳລັບ app (token ພະນັກງານເຂົ້າ /company ບໍ່ໄດ້ — ໃຊ້ຂໍ້ມູນດຽວກັນ, ບໍ່ມີລະຫັດ QR)
 router.get("/app/company", companyController_1.getCompany);
@@ -226,6 +229,13 @@ router.get("/employee/me", employeeController_1.getMyEmployee);
 router.put("/employee/me/profile", hrHelpers_1.profileUpload, employeeController_1.updateMyProfilePhoto);
 router.get("/employee/me/history", historyController_1.getMyWorkHistory);
 router.get("/employee/me/colleagues", teamController_1.getMyColleagues);
+// ແຜນວຽກສ່ວນຕົວຂອງພະນັກງານ (app) — ຕາຕະລາງດຽວກັບປະຕິທິນແຜນວຽກຂອງເວັບ
+router.get("/employee/me/workplan", myWorkPlanController_1.getMyWorkPlans);
+router.post("/employee/me/workplan", myWorkPlanController_1.createMyWorkPlan);
+router.get("/employee/me/workplan/:id", myWorkPlanController_1.getMyWorkPlan);
+router.put("/employee/me/workplan/:id", myWorkPlanController_1.updateMyWorkPlan);
+router.post("/employee/me/workplan/:id/progress", myWorkPlanController_1.addMyWorkPlanProgress);
+router.delete("/employee/me/workplan/:id", myWorkPlanController_1.deleteMyWorkPlan);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);
@@ -270,6 +280,7 @@ router.post("/birthday/me/wish", birthdayController_1.sendBirthdayWish);
 router.get("/birthday/me/wishes", birthdayController_1.getMyBirthdayWishes);
 router.post("/birthday/me/wishes/:id/reply", birthdayController_1.replyBirthdayWish);
 router.get("/birthday/me/replies", birthdayController_1.getMyBirthdayReplies);
+router.get("/birthday/me/wall", birthdayController_1.getBirthdayWall);
 // ========= ແຈ້ງເຕືອນ — /me ສຳລັບ app ມືຖື (ກະດິ່ງ); HR ແຈ້ງການໃຫ້ພະນັກງານທຸກຄົນ
 router.get("/notification/me", notificationController_1.getMyNotifications);
 router.get("/notification/me/stream", notificationController_1.streamMyNotifications);

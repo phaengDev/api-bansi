@@ -18,6 +18,7 @@ import { WORKING, employedOn, todayLao } from "./workCalendar";
  * - GET /birthday/me/wishes — ຄຳອວຍພອນທີ່ຕົນເອງໄດ້ຮັບ (ເປີດເບິ່ງ = ໝາຍວ່າອ່ານແລ້ວ)
  * - POST /birthday/me/wishes/:id/reply — ເຈົ້າຂອງວັນເກີດຕອບກັບຄຳອວຍພອນ (ຕອບຊ້ຳ = ແກ້ຂໍ້ຄວາມ)
  * - GET /birthday/me/replies — ຄຳຕອບກັບທີ່ຕົນເອງໄດ້ຮັບ ຈາກຄົນທີ່ເຄີຍອວຍພອນ (ເປີດເບິ່ງ = ໝາຍວ່າອ່ານແລ້ວ)
+ * - GET /birthday/me/wall?date= — ຄຳອວຍພອນຂອງທີມງານ ຕໍ່ຄົນທີ່ມີວັນເກີດມື້ນັ້ນ (ມື້ນີ້ ຫຼື 7 ມື້ຫຼ້າສຸດ)
  * ວັນທີທັງໝົດເປັນເວລາລາວ
  */
 
@@ -153,6 +154,75 @@ export const getMyBirthdays = async (req: Request, res: Response) => {
     });
   } catch (error) {
     sendError(res, error, "Error getting birthdays");
+  }
+};
+
+/** ເບິ່ງຄຳອວຍພອນຍ້ອນຫຼັງໄດ້ກີ່ມື້ — ສະເພາະວັນເກີດທີ່ແຈ້ງທຸກຄົນແລ້ວ (ບໍ່ໃຫ້ໄລ່ຫາວັນເກີດຂອງທຸກຄົນທີລະມື້) */
+const WALL_DAYS = 7;
+
+/**
+ * GET /birthday/me/wall?date=YYYY-MM-DD (ບໍ່ສົ່ງ = ມື້ນີ້) — ເພື່ອນທີ່ມີວັນເກີດມື້ນັ້ນ (ລວມຕົນເອງ is_me) ພ້ອມຄຳອວຍພອນ
+ * ທັງໝົດຈາກທີມງານ (ຜູ້ສົ່ງ + ຂໍ້ຄວາມ); ຄຳຕອບກັບຂອງເຈົ້າຂອງວັນເກີດ ເຫັນສະເພາະອັນທີ່ຕອບຂ້ອຍ. ໄດ້ສະເພາະ WALL_DAYS ມື້ຫຼ້າສຸດ
+ */
+export const getBirthdayWall = async (req: Request, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const me = self.employee;
+    const today = todayLao();
+    const date = String(req.query.date ?? "").trim() || today;
+    const oldest = moment(today, "YYYY-MM-DD").subtract(WALL_DAYS, "days").format("YYYY-MM-DD");
+    if (!moment(date, "YYYY-MM-DD", true).isValid() || date > today || date < oldest) {
+      res.status(400).json({ message: `ເບິ່ງໄດ້ສະເພາະວັນເກີດ ${WALL_DAYS} ມື້ຫຼ້າສຸດ` });
+      return;
+    }
+    const people = await birthdaysOn(date);
+    const ids = people.map((e) => e._uuid);
+    const wishes = ids.length
+      ? await BirthdayWish.findAll({
+          where: { wish_date: date, employee_id: { [Op.in]: ids } },
+          include: [{ model: Employee, as: "sender", attributes: personAttributes, include: personInclude }],
+          order: [["createdAt", "ASC"]],
+          limit: MAX_WISHES,
+        })
+      : [];
+    const wishesOf = new Map<number, any[]>();
+    for (const row of wishes) {
+      const w: any = row.get({ plain: true });
+      const list = wishesOf.get(Number(w.employee_id)) ?? [];
+      list.push(w);
+      wishesOf.set(Number(w.employee_id), list);
+    }
+    res.status(200).json({
+      date,
+      today,
+      data: people.map((e) => {
+        const list = wishesOf.get(e._uuid) ?? [];
+        const mine = list.find((w) => w.sender_id === me._uuid);
+        return {
+          ...personOf(e),
+          is_me: e._uuid === me._uuid,
+          wished: !!mine,
+          my_message: mine?.message ?? null,
+          reply: mine?.reply ?? null,
+          wish_count: list.length,
+          wishes: list.map((w) => ({
+            _uuid: w._uuid,
+            message: w.message,
+            createdAt: w.createdAt,
+            updatedAt: w.updatedAt,
+            is_mine: w.sender_id === me._uuid,
+            reply: w.sender_id === me._uuid ? w.reply ?? null : null,
+            sender: personOf(w.sender),
+          })),
+        };
+      }),
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting birthday wall");
   }
 };
 

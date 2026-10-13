@@ -76,6 +76,24 @@ export const login = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Error logging in" });
   }
 };
+/**
+ * GET /user/session — ເວັບ bansi ກວດ token ທຸກເທື່ອທີ່ເປີດເວັບ ກ່ອນສະແດງໜ້າໃດໆ: verifyToken ກວດລາຍເຊັນ / ອາຍຸແລ້ວ
+ * (token ຂອງ app ພະນັກງານ = 403), ບ່ອນນີ້ກວດຕື່ມວ່າບັນຊີຍັງເປີດໃຊ້ຢູ່ (ຖືກລຶບ / ປິດ = 401 ກັບໄປ login)
+ */
+export const checkSession = async (req: Request, res: Response) => {
+  try {
+    const user = await Users.findOne({ where: { user_uuid: Number(req.user?.sub), status: 1 }, attributes: ["user_uuid"] });
+    if (!user) {
+      res.status(401).json({ status: "401", message: "ບັນຊີນີ້ຖືກປິດໃຊ້ງານ" });
+      return;
+    }
+    res.status(200).json({ message: "ok", exp: req.user?.exp });
+  } catch (e) {
+    console.error("Error in checkSession:", e);
+    res.status(500).json({ message: "Error checking session" });
+  }
+};
+
 /** typ ຂອງ token ທີ່ app ພະນັກງານໄດ້ຈາກ POST /app/login (sub = employee _uuid) */
 export const EMPLOYEE_TOKEN = "employee";
 

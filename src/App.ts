@@ -4,6 +4,7 @@ import { runAutoSync } from "./utils/autoSync";
 import { seedDefaults } from "./utils/seedDefaults";
 import { seedGlDefaults } from "./controllers/bansi/glSeed";
 import { scheduleBirthdayNotifications } from "./controllers/hr/notificationController";
+import { scheduleWorkPlanReminders } from "./controllers/hr/myWorkPlanController";
 import { networkInterfaces } from "os";
 
 const PORT = process.env.PORT || 8888;
@@ -56,6 +57,8 @@ async function startServer() {
     await seedGlDefaults().catch((error) => console.error("❌ seedGlDefaults:", (error as any)?.parent?.sqlMessage ?? error));
     // ແຈ້ງວັນເກີດທຸກມື້ 08:00 (ເດັ້ງຂຶ້ນຈໍມືຖື)
     scheduleBirthdayNotifications();
+    // ເຕືອນແຜນວຽກທີ່ຍັງບໍ່ສຳເລັດຂອງມື້ນີ້ທຸກມື້ 07:30 (ເດັ້ງຂຶ້ນຈໍມືຖື)
+    scheduleWorkPlanReminders();
     app.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);
