@@ -12,11 +12,18 @@ const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 /**
  * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
- * ເວລາເຂົ້າ-ອອກວຽກ ແລະ ວັນພັກປະຈຳອາທິດ
+ * ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກປະຈຳອາທິດ ແລະ ເຄື່ອງແບບປະຈຳວັນ
  */
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MIN_RADIUS = 10;
 const MAX_RADIUS = 1000;
+/** ເຄື່ອງແບບ: 0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ (ຕາມໃຈ) */
+const UNIFORM_TYPES = 3;
+/** uniform_days → 7 ຄ່າ (ດັດຊະນີ = Date.getDay()); ຍັງບໍ່ໄດ້ຕັ້ງ = 0 ທັງໝົດ */
+const uniformWeek = (value) => {
+    const parts = String(value ?? "").split(",").map(Number);
+    return Array.from({ length: 7 }, (_, day) => (Number.isInteger(parts[day]) && parts[day] > 0 && parts[day] <= UNIFORM_TYPES ? parts[day] : 0));
+};
 const present = (row) => {
     if (!row)
         return null;
@@ -27,6 +34,7 @@ const present = (row) => {
         latitude: r.latitude === null ? null : Number(r.latitude),
         longitude: r.longitude === null ? null : Number(r.longitude),
         days_off: String(r.days_off ?? "").split(",").filter((d) => d !== "").map(Number),
+        uniform_days: uniformWeek(r.uniform_days),
         logo_url: (0, hrHelpers_1.companyLogoUrl)(r.logo),
     };
 };
@@ -79,6 +87,16 @@ const parseInput = async (body) => {
         return { error: "ວັນພັກບໍ່ຖືກຕ້ອງ" };
     if (days.length >= 7)
         return { error: "ຕ້ອງມີວັນເຮັດວຽກຢ່າງໜ້ອຍ 1 ວັນ" };
+    // ເຄື່ອງແບບປະຈຳວັນ "3,1,1,2,2,3,3" (7 ຄ່າ ອາທິດ → ເສົາ) — ບໍ່ສົ່ງມາ (ໜ້າເວັບລຸ້ນເກົ່າ) = ບໍ່ແຕະຂອງເດີມ
+    let uniform = null;
+    if (body.uniform_days !== undefined) {
+        const raw = Array.isArray(body.uniform_days) ? body.uniform_days : String(body.uniform_days).split(",");
+        const values = raw.map((v) => Number(String(v).trim()));
+        if (values.length !== 7 || values.some((v) => !Number.isInteger(v) || v < 0 || v > UNIFORM_TYPES)) {
+            return { error: "ເຄື່ອງແບບປະຈຳວັນບໍ່ຖືກຕ້ອງ" };
+        }
+        uniform = { uniform_days: values.some((v) => v > 0) ? values.join(",") : null };
+    }
     return {
         name_la: name,
         name_en: text(body.name_en, 200),
@@ -92,6 +110,7 @@ const parseInput = async (body) => {
         work_start: start,
         work_end: end,
         days_off: days.join(","),
+        ...uniform,
     };
 };
 const uploadedLogo = (req) => req.file?.filename;
