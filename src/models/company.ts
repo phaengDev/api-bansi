@@ -9,7 +9,7 @@ import District from "./district";
  * ຕ້ອງສະແກນ QR ນຳ (ນອກຈາກ GPS). scan_token ບໍ່ສົ່ງອອກທາງ GET /company — ອ່ານໄດ້ສະເພາະ HR ຜ່ານ /company/scan-qr
  * work_start / work_end = "HH:mm", days_off = ວັນພັກປະຈຳອາທິດ "6,0" (0 ອາທິດ … 6 ເສົາ ຄື Date.getDay())
  * uniform_days = ເຄື່ອງແບບປະຈຳວັນ 7 ຄ່າ ລຽງຕາມ Date.getDay() (ອາທິດ → ເສົາ), ເຊັ່ນ "3,1,1,2,2,3,3":
- *   0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ (ຕາມໃຈ); null = ຍັງບໍ່ໄດ້ຕັ້ງ
+ *   0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ; null = ຍັງບໍ່ໄດ້ຕັ້ງ
  */
 class Company extends Model {
   public _uuid!: number;

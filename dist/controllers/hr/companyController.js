@@ -17,7 +17,7 @@ const hrHelpers_1 = require("./hrHelpers");
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MIN_RADIUS = 10;
 const MAX_RADIUS = 1000;
-/** ເຄື່ອງແບບ: 0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ (ຕາມໃຈ) */
+/** ເຄື່ອງແບບ: 0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ */
 const UNIFORM_TYPES = 3;
 /** uniform_days → 7 ຄ່າ (ດັດຊະນີ = Date.getDay()); ຍັງບໍ່ໄດ້ຕັ້ງ = 0 ທັງໝົດ */
 const uniformWeek = (value) => {
