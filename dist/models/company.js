@@ -14,6 +14,7 @@ const district_1 = __importDefault(require("./district"));
  * work_start / work_end = "HH:mm", days_off = ວັນພັກປະຈຳອາທິດ "6,0" (0 ອາທິດ … 6 ເສົາ ຄື Date.getDay())
  * uniform_days = ເຄື່ອງແບບປະຈຳວັນ 7 ຄ່າ ລຽງຕາມ Date.getDay() (ອາທິດ → ເສົາ), ເຊັ່ນ "3,1,1,2,2,3,3":
  *   0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ; null = ຍັງບໍ່ໄດ້ຕັ້ງ
+ * uniform_photo_1..3 = ຮູບເສື້ອແທ້ຂອງແຕ່ລະແບບ (ຊື່ໄຟລ໌ໃນ uploads/company, ຄືໂລໂກ້) — null = ໃຊ້ໄອຄອນ
  */
 class Company extends sequelize_1.Model {
 }
@@ -67,6 +68,9 @@ Company.init({
         allowNull: true,
         defaultValue: null
     },
+    uniform_photo_1: { type: sequelize_1.DataTypes.STRING(255), allowNull: true },
+    uniform_photo_2: { type: sequelize_1.DataTypes.STRING(255), allowNull: true },
+    uniform_photo_3: { type: sequelize_1.DataTypes.STRING(255), allowNull: true },
     updatedbyid: sequelize_1.DataTypes.INTEGER,
     createdAt: {
         type: sequelize_1.DataTypes.DATE,

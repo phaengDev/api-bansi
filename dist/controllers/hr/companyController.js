@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveMapLink = exports.saveScanQr = exports.getScanQr = exports.qrPayload = exports.QR_PREFIX = exports.saveCompany = exports.getCompany = void 0;
+exports.resolveMapLink = exports.saveScanQr = exports.getScanQr = exports.qrPayload = exports.QR_PREFIX = exports.removeUniformPhoto = exports.saveUniformPhoto = exports.saveCompany = exports.getCompany = void 0;
 const crypto_1 = require("crypto");
 const company_1 = __importDefault(require("../../models/company"));
 const district_1 = __importDefault(require("../../models/district"));
@@ -28,13 +28,15 @@ const present = (row) => {
     if (!row)
         return null;
     // ລະຫັດລັບຂອງ QR ບໍ່ສົ່ງໃຫ້ທຸກຄົນ (ໃຜມີ token ກໍ່ສ້າງ QR ເອງໄດ້) — HR ອ່ານຜ່ານ GET /company/scan-qr
-    const { scan_token: _token, ...r } = row.get({ plain: true });
+    const { scan_token: _token, uniform_photo_1, uniform_photo_2, uniform_photo_3, ...r } = row.get({ plain: true });
     return {
         ...r,
         latitude: r.latitude === null ? null : Number(r.latitude),
         longitude: r.longitude === null ? null : Number(r.longitude),
         days_off: String(r.days_off ?? "").split(",").filter((d) => d !== "").map(Number),
         uniform_days: uniformWeek(r.uniform_days),
+        // URL ຮູບເສື້ອ 3 ແບບ — ດັດຊະນີ = ປະເພດ - 1 (null = ຍັງບໍ່ມີຮູບ)
+        uniform_photos: [uniform_photo_1, uniform_photo_2, uniform_photo_3].map(hrHelpers_1.companyLogoUrl),
         logo_url: (0, hrHelpers_1.companyLogoUrl)(r.logo),
     };
 };
@@ -113,9 +115,9 @@ const parseInput = async (body) => {
         ...uniform,
     };
 };
-const uploadedLogo = (req) => req.file?.filename;
-const discardLogo = (req) => {
-    const name = uploadedLogo(req);
+const uploadedImage = (req) => req.file?.filename;
+const discardImage = (req) => {
+    const name = uploadedImage(req);
     if (name)
         (0, uploadFile_1.deleteFile)(hrHelpers_1.COMPANY_FOLDER, name);
 };
@@ -124,11 +126,11 @@ const saveCompany = async (req, res) => {
     try {
         const input = await parseInput(req.body || {});
         if ("error" in input) {
-            discardLogo(req);
+            discardImage(req);
             res.status(400).json({ message: input.error });
             return;
         }
-        const uploaded = uploadedLogo(req);
+        const uploaded = uploadedImage(req);
         const removeLogo = Number(req.body?.remove_logo) === 1;
         const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const row = await company_1.default.findOne({ order: [["_uuid", "ASC"]] });
@@ -144,11 +146,67 @@ const saveCompany = async (req, res) => {
         res.status(200).json({ message: "Successfully saved company", data: present(await findCompany()) });
     }
     catch (error) {
-        discardLogo(req);
+        discardImage(req);
         (0, bansiHelpers_1.sendError)(res, error, "Error saving company");
     }
 };
 exports.saveCompany = saveCompany;
+// ================= ຮູບເສື້ອເຄື່ອງແບບ
+const uniformType = (req) => {
+    const type = Number(req.params.type);
+    return Number.isInteger(type) && type >= 1 && type <= UNIFORM_TYPES ? type : null;
+};
+/** PUT /company/uniform/:type (multipart "photo") — ໃສ່ / ປ່ຽນຮູບເສື້ອຂອງແບບນັ້ນ (ລຶບຮູບເກົ່າອອກ) */
+const saveUniformPhoto = async (req, res) => {
+    try {
+        const type = uniformType(req);
+        const uploaded = uploadedImage(req);
+        if (!type || !uploaded) {
+            discardImage(req);
+            res.status(400).json({ message: type ? "ກະລຸນາເລືອກຮູບ" : "ປະເພດເສື້ອບໍ່ຖືກຕ້ອງ" });
+            return;
+        }
+        const row = await company_1.default.findOne({ order: [["_uuid", "ASC"]] });
+        if (!row) {
+            discardImage(req);
+            res.status(400).json({ message: "ກະລຸນາບັນທຶກຂໍ້ມູນບໍລິສັດກ່ອນ" });
+            return;
+        }
+        const field = `uniform_photo_${type}`;
+        const old = row[field];
+        await row.update({ [field]: uploaded, updatedbyid: Number((0, bansiHelpers_1.actorOf)(req)) || null, updatedAt: new Date() });
+        if (old)
+            (0, uploadFile_1.deleteFile)(hrHelpers_1.COMPANY_FOLDER, old);
+        res.status(200).json({ message: "Successfully saved uniform photo", data: present(await findCompany()) });
+    }
+    catch (error) {
+        discardImage(req);
+        (0, bansiHelpers_1.sendError)(res, error, "Error saving uniform photo");
+    }
+};
+exports.saveUniformPhoto = saveUniformPhoto;
+/** DELETE /company/uniform/:type — ລຶບຮູບເສື້ອ (ກັບໄປໃຊ້ໄອຄອນ) */
+const removeUniformPhoto = async (req, res) => {
+    try {
+        const type = uniformType(req);
+        const row = await company_1.default.findOne({ order: [["_uuid", "ASC"]] });
+        if (!type || !row) {
+            res.status(400).json({ message: "ປະເພດເສື້ອບໍ່ຖືກຕ້ອງ" });
+            return;
+        }
+        const field = `uniform_photo_${type}`;
+        const old = row[field];
+        if (old) {
+            await row.update({ [field]: null, updatedbyid: Number((0, bansiHelpers_1.actorOf)(req)) || null, updatedAt: new Date() });
+            (0, uploadFile_1.deleteFile)(hrHelpers_1.COMPANY_FOLDER, old);
+        }
+        res.status(200).json({ message: "Successfully removed uniform photo", data: present(await findCompany()) });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error removing uniform photo");
+    }
+};
+exports.removeUniformPhoto = removeUniformPhoto;
 // ================= QR ສະແກນເຂົ້າ-ອອກວຽກ
 /** ຂໍ້ຄວາມໃນ QR — app ມືຖືສົ່ງຂໍ້ຄວາມນີ້ທັງໝົດມາໃນ POST /attendance/scan { qr } */
 exports.QR_PREFIX = "BANSI-ATT:";

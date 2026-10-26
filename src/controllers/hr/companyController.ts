@@ -26,13 +26,15 @@ const uniformWeek = (value: string | null | undefined) => {
 const present = (row: Company | null) => {
   if (!row) return null;
   // ລະຫັດລັບຂອງ QR ບໍ່ສົ່ງໃຫ້ທຸກຄົນ (ໃຜມີ token ກໍ່ສ້າງ QR ເອງໄດ້) — HR ອ່ານຜ່ານ GET /company/scan-qr
-  const { scan_token: _token, ...r }: any = row.get({ plain: true });
+  const { scan_token: _token, uniform_photo_1, uniform_photo_2, uniform_photo_3, ...r }: any = row.get({ plain: true });
   return {
     ...r,
     latitude: r.latitude === null ? null : Number(r.latitude),
     longitude: r.longitude === null ? null : Number(r.longitude),
     days_off: String(r.days_off ?? "").split(",").filter((d) => d !== "").map(Number),
     uniform_days: uniformWeek(r.uniform_days),
+    // URL ຮູບເສື້ອ 3 ແບບ — ດັດຊະນີ = ປະເພດ - 1 (null = ຍັງບໍ່ມີຮູບ)
+    uniform_photos: [uniform_photo_1, uniform_photo_2, uniform_photo_3].map(companyLogoUrl),
     logo_url: companyLogoUrl(r.logo),
   };
 };
@@ -113,9 +115,9 @@ const parseInput = async (body: any): Promise<Record<string, unknown> | { error:
   };
 };
 
-const uploadedLogo = (req: Request) => (req as any).file?.filename as string | undefined;
-const discardLogo = (req: Request) => {
-  const name = uploadedLogo(req);
+const uploadedImage = (req: Request) => (req as any).file?.filename as string | undefined;
+const discardImage = (req: Request) => {
+  const name = uploadedImage(req);
   if (name) deleteFile(COMPANY_FOLDER, name);
 };
 
@@ -124,11 +126,11 @@ export const saveCompany = async (req: Request, res: Response) => {
   try {
     const input = await parseInput(req.body || {});
     if ("error" in input) {
-      discardLogo(req);
+      discardImage(req);
       res.status(400).json({ message: input.error });
       return;
     }
-    const uploaded = uploadedLogo(req);
+    const uploaded = uploadedImage(req);
     const removeLogo = Number(req.body?.remove_logo) === 1;
     const actor = Number(actorOf(req)) || null;
     const row = await Company.findOne({ order: [["_uuid", "ASC"]] });
@@ -141,8 +143,63 @@ export const saveCompany = async (req: Request, res: Response) => {
     if (oldLogo) deleteFile(COMPANY_FOLDER, oldLogo);
     res.status(200).json({ message: "Successfully saved company", data: present(await findCompany()) });
   } catch (error) {
-    discardLogo(req);
+    discardImage(req);
     sendError(res, error, "Error saving company");
+  }
+};
+
+// ================= ຮູບເສື້ອເຄື່ອງແບບ
+
+const uniformType = (req: Request) => {
+  const type = Number(req.params.type);
+  return Number.isInteger(type) && type >= 1 && type <= UNIFORM_TYPES ? (type as 1 | 2 | 3) : null;
+};
+
+/** PUT /company/uniform/:type (multipart "photo") — ໃສ່ / ປ່ຽນຮູບເສື້ອຂອງແບບນັ້ນ (ລຶບຮູບເກົ່າອອກ) */
+export const saveUniformPhoto = async (req: Request<{ type: string }>, res: Response) => {
+  try {
+    const type = uniformType(req);
+    const uploaded = uploadedImage(req);
+    if (!type || !uploaded) {
+      discardImage(req);
+      res.status(400).json({ message: type ? "ກະລຸນາເລືອກຮູບ" : "ປະເພດເສື້ອບໍ່ຖືກຕ້ອງ" });
+      return;
+    }
+    const row = await Company.findOne({ order: [["_uuid", "ASC"]] });
+    if (!row) {
+      discardImage(req);
+      res.status(400).json({ message: "ກະລຸນາບັນທຶກຂໍ້ມູນບໍລິສັດກ່ອນ" });
+      return;
+    }
+    const field = `uniform_photo_${type}` as const;
+    const old = row[field];
+    await row.update({ [field]: uploaded, updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
+    if (old) deleteFile(COMPANY_FOLDER, old);
+    res.status(200).json({ message: "Successfully saved uniform photo", data: present(await findCompany()) });
+  } catch (error) {
+    discardImage(req);
+    sendError(res, error, "Error saving uniform photo");
+  }
+};
+
+/** DELETE /company/uniform/:type — ລຶບຮູບເສື້ອ (ກັບໄປໃຊ້ໄອຄອນ) */
+export const removeUniformPhoto = async (req: Request<{ type: string }>, res: Response) => {
+  try {
+    const type = uniformType(req);
+    const row = await Company.findOne({ order: [["_uuid", "ASC"]] });
+    if (!type || !row) {
+      res.status(400).json({ message: "ປະເພດເສື້ອບໍ່ຖືກຕ້ອງ" });
+      return;
+    }
+    const field = `uniform_photo_${type}` as const;
+    const old = row[field];
+    if (old) {
+      await row.update({ [field]: null, updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
+      deleteFile(COMPANY_FOLDER, old);
+    }
+    res.status(200).json({ message: "Successfully removed uniform photo", data: present(await findCompany()) });
+  } catch (error) {
+    sendError(res, error, "Error removing uniform photo");
   }
 };
 

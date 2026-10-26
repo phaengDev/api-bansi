@@ -39,7 +39,7 @@ const IMAGE_TYPES = /\.(jpe?g|png|webp)$/i;
 const uniqueName = (original: string) =>
   `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(original).toLowerCase()}`;
 
-const storageIn = (dir: string) => {
+export const storageIn = (dir: string) => {
   fs.mkdirSync(dir, { recursive: true });
   return multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, dir),
@@ -48,11 +48,11 @@ const storageIn = (dir: string) => {
 };
 
 /** multer ທີ່ error ເປັນ JSON 400 (ໄຟລ໌ໃຫຍ່ເກີນ / ປະເພດບໍ່ອະນຸຍາດ) ແທນໜ້າ HTML 500 ຂອງ Express */
-const asJson = (handler: RequestHandler): RequestHandler => (req: Request, res: Response, next: NextFunction) =>
+export const asJson = (handler: RequestHandler, tooLargeMessage = "ໄຟລ໌ໃຫຍ່ເກີນ 5MB"): RequestHandler => (req: Request, res: Response, next: NextFunction) =>
   handler(req, res, (error?: unknown) => {
     if (!error) return next();
     const tooLarge = (error as any)?.code === "LIMIT_FILE_SIZE";
-    res.status(400).json({ message: tooLarge ? "ໄຟລ໌ໃຫຍ່ເກີນ 5MB" : (error as Error).message || "ອັບໂຫຼດໄຟລ໌ບໍ່ສຳເລັດ" });
+    res.status(400).json({ message: tooLarge ? tooLargeMessage : (error as Error).message || "ອັບໂຫຼດໄຟລ໌ບໍ່ສຳເລັດ" });
   });
 
 /** ຮູບ 1 ໄຟລ໌ (JPG, PNG, WEBP) ລົງ uploads/<folder> */
@@ -69,6 +69,8 @@ const imageUpload = (folder: string, field: string) => asJson(
 export const profileUpload = imageUpload(PROFILE_FOLDER, "profile");
 /** ໂລໂກ້ບໍລິສັດ field "logo" */
 export const companyLogoUpload = imageUpload(COMPANY_FOLDER, "logo");
+/** ຮູບເສື້ອເຄື່ອງແບບ field "photo" */
+export const uniformPhotoUpload = imageUpload(COMPANY_FOLDER, "photo");
 
 /** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" — ຮູບ, PDF, Word, Excel */
 export const documentUpload = asJson(

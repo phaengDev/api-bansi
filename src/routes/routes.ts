@@ -67,8 +67,9 @@ import {
   getEmployees, getEmployeeOption, getMyEmployee, updateMyProfilePhoto, createEmployee, updateEmployee, deleteEmployee,
   uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument, resetAppPassword,
 } from "../controllers/hr/employeeController";
-import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink } from "../controllers/hr/companyController";
+import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink, saveUniformPhoto, removeUniformPhoto } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
+import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
@@ -88,7 +89,7 @@ import { getMyColleagues } from "../controllers/hr/teamController";
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyLogoUpload, documentUpload, profileUpload } from "../controllers/hr/hrHelpers";
+import { companyLogoUpload, documentUpload, profileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
 
@@ -111,6 +112,8 @@ router.get("/user/session", checkSession);
 router.put("/app/password", changeAppPassword);
 // ຂໍ້ມູນບໍລິສັດສຳລັບ app (token ພະນັກງານເຂົ້າ /company ບໍ່ໄດ້ — ໃຊ້ຂໍ້ມູນດຽວກັນ, ບໍ່ມີລະຫັດ QR)
 router.get("/app/company", getCompany);
+// ລຸ້ນລ່າສຸດຂອງແອັບ Android ທີ່ HR ອັບໂຫຼດ — ແອັບທຽບເລກ build ແລ້ວຂຶ້ນແຖບອັບເດດ
+router.get("/app/release", getLatestAppRelease);
 
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
 router.get("/menu/main", getMainMenus);
@@ -302,11 +305,18 @@ router.delete("/employee/:id", requirePermission("deletes"), deleteEmployee);
 // ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
 router.get("/company", getCompany);
 router.put("/company", requirePermission("updates"), companyLogoUpload, saveCompany);
+// ຮູບເສື້ອເຄື່ອງແບບ 1 ໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ
+router.put("/company/uniform/:type", requirePermission("updates"), uniformPhotoUpload, saveUniformPhoto);
+router.delete("/company/uniform/:type", requirePermission("updates"), removeUniformPhoto);
 // QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company
 router.get("/company/scan-qr", requirePermission("updates"), getScanQr);
 router.put("/company/scan-qr", requirePermission("updates"), saveScanQr);
 // ລິ້ງສັ້ນ Google Maps → ລິ້ງເຕັມ (ມີພິກັດ) ສຳລັບຊ່ອງວາງພິກັດໃນ modal ທີ່ຕັ້ງບໍລິສັດ
 router.post("/company/map-link", requirePermission("updates"), resolveMapLink);
+// ອັບເດດແອັບພະນັກງານ (Android) — HR ອັບໂຫຼດ APK, ແອັບດາວໂຫຼດຈາກ /image/app/…
+router.get("/app-release/fetch", getAppReleases);
+router.post("/app-release/create", requirePermission("creates"), apkUpload, createAppRelease);
+router.delete("/app-release/:id", requirePermission("deletes"), deleteAppRelease);
 // ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
 router.post("/attendance/scan", scanAttendance);
 router.get("/attendance/me", getMyAttendance);

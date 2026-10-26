@@ -35,6 +35,7 @@ const departmentController_1 = require("../controllers/hr/departmentController")
 const employeeController_1 = require("../controllers/hr/employeeController");
 const companyController_1 = require("../controllers/hr/companyController");
 const appAuthController_1 = require("../controllers/hr/appAuthController");
+const appReleaseController_1 = require("../controllers/hr/appReleaseController");
 const myWorkPlanController_1 = require("../controllers/hr/myWorkPlanController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
 const payrollController_1 = require("../controllers/hr/payrollController");
@@ -63,6 +64,8 @@ router.get("/user/session", auth_1.checkSession);
 router.put("/app/password", appAuthController_1.changeAppPassword);
 // ຂໍ້ມູນບໍລິສັດສຳລັບ app (token ພະນັກງານເຂົ້າ /company ບໍ່ໄດ້ — ໃຊ້ຂໍ້ມູນດຽວກັນ, ບໍ່ມີລະຫັດ QR)
 router.get("/app/company", companyController_1.getCompany);
+// ລຸ້ນລ່າສຸດຂອງແອັບ Android ທີ່ HR ອັບໂຫຼດ — ແອັບທຽບເລກ build ແລ້ວຂຶ້ນແຖບອັບເດດ
+router.get("/app/release", appReleaseController_1.getLatestAppRelease);
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
 router.get("/menu/main", menuController_1.getMainMenus);
 // ================= ສະກຸນເງິນ
@@ -248,11 +251,18 @@ router.delete("/employee/:id", (0, permission_1.requirePermission)("deletes"), e
 // ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
 router.get("/company", companyController_1.getCompany);
 router.put("/company", (0, permission_1.requirePermission)("updates"), hrHelpers_1.companyLogoUpload, companyController_1.saveCompany);
+// ຮູບເສື້ອເຄື່ອງແບບ 1 ໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ
+router.put("/company/uniform/:type", (0, permission_1.requirePermission)("updates"), hrHelpers_1.uniformPhotoUpload, companyController_1.saveUniformPhoto);
+router.delete("/company/uniform/:type", (0, permission_1.requirePermission)("updates"), companyController_1.removeUniformPhoto);
 // QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company
 router.get("/company/scan-qr", (0, permission_1.requirePermission)("updates"), companyController_1.getScanQr);
 router.put("/company/scan-qr", (0, permission_1.requirePermission)("updates"), companyController_1.saveScanQr);
 // ລິ້ງສັ້ນ Google Maps → ລິ້ງເຕັມ (ມີພິກັດ) ສຳລັບຊ່ອງວາງພິກັດໃນ modal ທີ່ຕັ້ງບໍລິສັດ
 router.post("/company/map-link", (0, permission_1.requirePermission)("updates"), companyController_1.resolveMapLink);
+// ອັບເດດແອັບພະນັກງານ (Android) — HR ອັບໂຫຼດ APK, ແອັບດາວໂຫຼດຈາກ /image/app/…
+router.get("/app-release/fetch", appReleaseController_1.getAppReleases);
+router.post("/app-release/create", (0, permission_1.requirePermission)("creates"), appReleaseController_1.apkUpload, appReleaseController_1.createAppRelease);
+router.delete("/app-release/:id", (0, permission_1.requirePermission)("deletes"), appReleaseController_1.deleteAppRelease);
 // ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
 router.post("/attendance/scan", attendanceController_1.scanAttendance);
 router.get("/attendance/me", attendanceController_1.getMyAttendance);

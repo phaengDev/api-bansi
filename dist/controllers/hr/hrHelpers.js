@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.originalNameOf = exports.removeQuietly = exports.documentUpload = exports.companyLogoUpload = exports.profileUpload = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
+exports.originalNameOf = exports.removeQuietly = exports.documentUpload = exports.uniformPhotoUpload = exports.companyLogoUpload = exports.profileUpload = exports.asJson = exports.storageIn = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -45,16 +45,18 @@ const storageIn = (dir) => {
         filename: (_req, file, cb) => cb(null, uniqueName(file.originalname)),
     });
 };
+exports.storageIn = storageIn;
 /** multer ທີ່ error ເປັນ JSON 400 (ໄຟລ໌ໃຫຍ່ເກີນ / ປະເພດບໍ່ອະນຸຍາດ) ແທນໜ້າ HTML 500 ຂອງ Express */
-const asJson = (handler) => (req, res, next) => handler(req, res, (error) => {
+const asJson = (handler, tooLargeMessage = "ໄຟລ໌ໃຫຍ່ເກີນ 5MB") => (req, res, next) => handler(req, res, (error) => {
     if (!error)
         return next();
     const tooLarge = error?.code === "LIMIT_FILE_SIZE";
-    res.status(400).json({ message: tooLarge ? "ໄຟລ໌ໃຫຍ່ເກີນ 5MB" : error.message || "ອັບໂຫຼດໄຟລ໌ບໍ່ສຳເລັດ" });
+    res.status(400).json({ message: tooLarge ? tooLargeMessage : error.message || "ອັບໂຫຼດໄຟລ໌ບໍ່ສຳເລັດ" });
 });
+exports.asJson = asJson;
 /** ຮູບ 1 ໄຟລ໌ (JPG, PNG, WEBP) ລົງ uploads/<folder> */
-const imageUpload = (folder, field) => asJson((0, multer_1.default)({
-    storage: storageIn(path_1.default.join(__dirname, "..", "..", "uploads", folder)),
+const imageUpload = (folder, field) => (0, exports.asJson)((0, multer_1.default)({
+    storage: (0, exports.storageIn)(path_1.default.join(__dirname, "..", "..", "uploads", folder)),
     limits: { fileSize: exports.MAX_FILE },
     fileFilter: (_req, file, cb) => IMAGE_TYPES.test(file.originalname) ? cb(null, true) : cb(new Error("ຮູບຕ້ອງເປັນ JPG, PNG ຫຼື WEBP")),
 }).single(field));
@@ -62,9 +64,11 @@ const imageUpload = (folder, field) => asJson((0, multer_1.default)({
 exports.profileUpload = imageUpload(exports.PROFILE_FOLDER, "profile");
 /** ໂລໂກ້ບໍລິສັດ field "logo" */
 exports.companyLogoUpload = imageUpload(exports.COMPANY_FOLDER, "logo");
+/** ຮູບເສື້ອເຄື່ອງແບບ field "photo" */
+exports.uniformPhotoUpload = imageUpload(exports.COMPANY_FOLDER, "photo");
 /** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" — ຮູບ, PDF, Word, Excel */
-exports.documentUpload = asJson((0, multer_1.default)({
-    storage: storageIn(exports.DOCUMENT_DIR),
+exports.documentUpload = (0, exports.asJson)((0, multer_1.default)({
+    storage: (0, exports.storageIn)(exports.DOCUMENT_DIR),
     limits: { fileSize: exports.MAX_FILE, files: 5 },
     fileFilter: (_req, file, cb) => DOCUMENT_TYPES.test(file.originalname) ? cb(null, true) : cb(new Error("ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel")),
 }).array("files", 5));
