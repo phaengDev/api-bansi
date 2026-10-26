@@ -56,6 +56,8 @@ router.post("/app/login", appAuthController_1.appLogin);
 // ລືມລະຫັດຜ່ານ — OTP ທາງ SMS ແລ້ວອອກລະຫັດຜ່ານໃໝ່
 router.post("/app/otp/request", appAuthController_1.requestAppOtp);
 router.post("/app/otp/verify", appAuthController_1.verifyAppOtp);
+// Mac ທີ່ build ແອັບ ອັບໂຫຼດ APK ເອງຫຼັງ build — ກະແຈ APP_RELEASE_KEY ແທນ login
+router.post("/app-release/publish", appReleaseController_1.requireReleaseKey, appReleaseController_1.apkUpload, appReleaseController_1.createAppRelease);
 router.get("/user/type", userController_1.getTypeUser);
 router.get("/currency", currencyController_1.getcurrency);
 router.use(auth_1.verifyToken);

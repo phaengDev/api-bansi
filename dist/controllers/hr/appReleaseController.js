@@ -3,9 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLatestAppRelease = exports.deleteAppRelease = exports.createAppRelease = exports.getAppReleases = exports.apkUpload = exports.APP_FOLDER = void 0;
+exports.getLatestAppRelease = exports.deleteAppRelease = exports.createAppRelease = exports.getAppReleases = exports.requireReleaseKey = exports.apkUpload = exports.APP_FOLDER = void 0;
 const path_1 = __importDefault(require("path"));
 const multer_1 = __importDefault(require("multer"));
+const crypto_1 = require("crypto");
 const sequelize_1 = require("sequelize");
 const appRelease_1 = __importDefault(require("../../models/appRelease"));
 const userModel_1 = __importDefault(require("../../models/userModel"));
@@ -33,6 +34,25 @@ exports.apkUpload = (0, hrHelpers_1.asJson)((0, multer_1.default)({
     limits: { fileSize: MAX_APK },
     fileFilter: (_req, file, cb) => (/\.apk$/i.test(file.originalname) ? cb(null, true) : cb(new Error("ກະລຸນາເລືອກໄຟລ໌ .apk"))),
 }).single("apk"), "ໄຟລ໌ໃຫຍ່ເກີນ 100MB");
+/**
+ * POST /app-release/publish — Mac ທີ່ build ແອັບອັບໂຫຼດເອງຫຼັງ build (tool/release_android.sh ຂອງ oacbroker) ໂດຍບໍ່ຕ້ອງ
+ * login ເວັບ: header X-Release-Key ຕ້ອງກົງກັບ APP_RELEASE_KEY ໃນ .env (ບໍ່ຕັ້ງ = ປິດທາງນີ້). ກວດກ່ອນ multer ຮັບໄຟລ໌.
+ * ຄົນທີ່ໄດ້ກະແຈໄປ ກໍ່ສົ່ງໄດ້ແຕ່ APK ຂອງ OAC HR ທີ່ເລກ build ສູງກວ່າ — ລາຍເຊັນບໍ່ກົງ ໂທລະສັບບໍ່ຍອມຕິດຕັ້ງທັບ
+ */
+const requireReleaseKey = (req, res, next) => {
+    const expected = Buffer.from(process.env.APP_RELEASE_KEY ?? "");
+    const given = Buffer.from(String(req.get("x-release-key") ?? ""));
+    if (expected.length < 32) {
+        res.status(404).json({ message: "ບໍ່ໄດ້ເປີດການອັບໂຫຼດອັດຕະໂນມັດ (APP_RELEASE_KEY)" });
+        return;
+    }
+    if (given.length !== expected.length || !(0, crypto_1.timingSafeEqual)(given, expected)) {
+        res.status(401).json({ message: "X-Release-Key ບໍ່ຖືກຕ້ອງ" });
+        return;
+    }
+    next();
+};
+exports.requireReleaseKey = requireReleaseKey;
 const present = (row, uploader) => ({
     ...row.get({ plain: true }),
     url: `${(0, utils_1.url)()}/${exports.APP_FOLDER}/${row.file_name}`,

@@ -1,6 +1,7 @@
 import path from "path";
 import multer from "multer";
-import { Request, Response } from "express";
+import { timingSafeEqual } from "crypto";
+import { NextFunction, Request, Response } from "express";
 import { Op } from "sequelize";
 import AppRelease from "../../models/appRelease";
 import Users from "../../models/userModel";
@@ -35,6 +36,25 @@ export const apkUpload = asJson(
   }).single("apk"),
   "ໄຟລ໌ໃຫຍ່ເກີນ 100MB",
 );
+
+/**
+ * POST /app-release/publish — Mac ທີ່ build ແອັບອັບໂຫຼດເອງຫຼັງ build (tool/release_android.sh ຂອງ oacbroker) ໂດຍບໍ່ຕ້ອງ
+ * login ເວັບ: header X-Release-Key ຕ້ອງກົງກັບ APP_RELEASE_KEY ໃນ .env (ບໍ່ຕັ້ງ = ປິດທາງນີ້). ກວດກ່ອນ multer ຮັບໄຟລ໌.
+ * ຄົນທີ່ໄດ້ກະແຈໄປ ກໍ່ສົ່ງໄດ້ແຕ່ APK ຂອງ OAC HR ທີ່ເລກ build ສູງກວ່າ — ລາຍເຊັນບໍ່ກົງ ໂທລະສັບບໍ່ຍອມຕິດຕັ້ງທັບ
+ */
+export const requireReleaseKey = (req: Request, res: Response, next: NextFunction) => {
+  const expected = Buffer.from(process.env.APP_RELEASE_KEY ?? "");
+  const given = Buffer.from(String(req.get("x-release-key") ?? ""));
+  if (expected.length < 32) {
+    res.status(404).json({ message: "ບໍ່ໄດ້ເປີດການອັບໂຫຼດອັດຕະໂນມັດ (APP_RELEASE_KEY)" });
+    return;
+  }
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    res.status(401).json({ message: "X-Release-Key ບໍ່ຖືກຕ້ອງ" });
+    return;
+  }
+  next();
+};
 
 const present = (row: AppRelease, uploader?: string | null) => ({
   ...row.get({ plain: true }),

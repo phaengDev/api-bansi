@@ -69,7 +69,7 @@ import {
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink, saveUniformPhoto, removeUniformPhoto } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
-import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease } from "../controllers/hr/appReleaseController";
+import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease, requireReleaseKey } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
@@ -102,6 +102,8 @@ router.post("/app/login", appLogin);
 // ລືມລະຫັດຜ່ານ — OTP ທາງ SMS ແລ້ວອອກລະຫັດຜ່ານໃໝ່
 router.post("/app/otp/request", requestAppOtp);
 router.post("/app/otp/verify", verifyAppOtp);
+// Mac ທີ່ build ແອັບ ອັບໂຫຼດ APK ເອງຫຼັງ build — ກະແຈ APP_RELEASE_KEY ແທນ login
+router.post("/app-release/publish", requireReleaseKey, apkUpload, createAppRelease);
 router.get("/user/type", getTypeUser);
 router.get("/currency", getcurrency);
 
