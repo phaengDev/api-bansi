@@ -14,6 +14,15 @@ import DeviceToken from "../models/deviceToken";
 
 /** ຊ່ອງແຈ້ງເຕືອນ Android ຄວາມສຳຄັນສູງ (ເດັ້ງຂຶ້ນຈໍ) — ສ້າງໃນ MainActivity.kt ຂອງແອັບ oacbroker, ຊື່ຕ້ອງກົງກັນ */
 const ANDROID_CHANNEL = "oac_alerts";
+/**
+ * ສຽງເວົ້າພາສາລາວຂອງແຈ້ງເຕືອນ — ໄຟລ໌ຢູ່ໃນແອັບ: Android res/raw/<sound> + ຊ່ອງແຈ້ງເຕືອນຂອງມັນ (ສຽງຂອງຊ່ອງ Android
+ * ຕັ້ງໄດ້ຕອນສ້າງຊ່ອງເທົ່ານັ້ນ — MainActivity.kt), iOS Runner/<sound>.caf. ເຄື່ອງທີ່ປິດສຽງເວົ້າໃນແອັບ (voice = 0) ໄດ້ສຽງທຳມະດາ
+ */
+export const VOICES = {
+  checkout: { sound: "checkout_reminder", channel: "oac_checkout" },
+} as const;
+export type Voice = keyof typeof VOICES;
+
 /** FCM ຮັບບໍ່ເກີນ 500 token ຕໍ່ຄັ້ງ */
 const BATCH = 500;
 /** token ທີ່ເຄື່ອງຖອນແອັບ / ໝົດອາຍຸ — ລຶບອອກຈາກ tbl_device_token */
@@ -25,6 +34,8 @@ export type PushMessage = {
   body?: string | null;
   /** ໃຫ້ app ເປີດໜ້າທີ່ກ່ຽວຂ້ອງເມື່ອກົດ (ຄືກັບແຖວຂອງ GET /notification/me) */
   data: { id: string; type: string; ref: string };
+  /** ສຽງເວົ້າແທນສຽງແຈ້ງເຕືອນທຳມະດາ */
+  voice?: Voice;
 };
 
 let messaging: Messaging | null | undefined;
@@ -58,28 +69,34 @@ export const sendPush = async (messages: PushMessage[]) => {
   try {
     const devices = await DeviceToken.findAll({
       where: { employee_id: { [Op.in]: [...new Set(messages.map((m) => m.employee_id))] } },
-      attributes: ["token", "employee_id"],
+      attributes: ["token", "employee_id", "voice"],
       raw: true,
     });
-    const tokensOf = new Map<number, string[]>();
-    for (const d of devices) tokensOf.set(Number(d.employee_id), [...(tokensOf.get(Number(d.employee_id)) ?? []), d.token]);
+    const devicesOf = new Map<number, typeof devices>();
+    for (const d of devices) devicesOf.set(Number(d.employee_id), [...(devicesOf.get(Number(d.employee_id)) ?? []), d]);
 
     const dead: string[] = [];
-    for (const m of messages) {
-      const tokens = tokensOf.get(m.employee_id) ?? [];
+    const send = async (m: PushMessage, tokens: string[], voice?: (typeof VOICES)[Voice]) => {
       for (let i = 0; i < tokens.length; i += BATCH) {
         const batch = tokens.slice(i, i + BATCH);
         const result = await fcm.sendEachForMulticast({
           tokens: batch,
           notification: { title: m.title, ...(m.body ? { body: m.body } : {}) },
           data: m.data,
-          android: { priority: "high", notification: { channelId: ANDROID_CHANNEL, sound: "default" } },
-          apns: { payload: { aps: { sound: "default" } } },
+          android: { priority: "high", notification: { channelId: voice?.channel ?? ANDROID_CHANNEL, sound: voice?.sound ?? "default" } },
+          apns: { payload: { aps: { sound: voice ? `${voice.sound}.caf` : "default" } } },
         });
         result.responses.forEach((r, index) => {
           if (!r.success && r.error && DEAD_TOKEN.has(r.error.code)) dead.push(batch[index]);
         });
       }
+    };
+    for (const m of messages) {
+      const mine = devicesOf.get(m.employee_id) ?? [];
+      const voice = m.voice ? VOICES[m.voice] : undefined;
+      const voiced = voice ? mine.filter((d) => Number(d.voice) !== 0) : [];
+      await send(m, mine.filter((d) => !voiced.includes(d)).map((d) => d.token));
+      await send(m, voiced.map((d) => d.token), voice);
     }
     if (dead.length) await DeviceToken.destroy({ where: { token: { [Op.in]: dead } } });
   } catch (error) {

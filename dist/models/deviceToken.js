@@ -30,6 +30,12 @@ DeviceToken.init({
     },
     /** android | ios */
     platform: sequelize_1.DataTypes.STRING(10),
+    /** 1 = ແຈ້ງເຕືອນທີ່ມີສຽງເວົ້າ (ເຊັ່ນ "ຢ່າລືມກົດອອກວຽກ") ໃຊ້ສຽງເວົ້າ, 0 = ຜູ້ໃຊ້ປິດໃນແອັບ → ສຽງທຳມະດາ */
+    voice: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 1
+    },
     createdAt: {
         type: sequelize_1.DataTypes.DATE,
         defaultValue: sequelize_1.DataTypes.NOW

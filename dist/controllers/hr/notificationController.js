@@ -59,6 +59,7 @@ const notify = async (items) => {
                 title: row.title,
                 body: row.body,
                 data: { id: String(row._uuid), type: row.type, ref: row.ref ?? "" },
+                voice: items[index].voice,
             }] : [])));
     }
     catch (error) {
@@ -273,8 +274,9 @@ const announce = async (req, res) => {
 };
 exports.announce = announce;
 /**
- * POST /app/device-token { token, platform: "android" | "ios" } — ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM token).
- * app ເອີ້ນທຸກເທື່ອທີ່ເຂົ້າລະບົບ / ເປີດແອັບ / token ປ່ຽນ; token ຂອງຄົນອື່ນ (ເຄື່ອງດຽວກັນ ປ່ຽນຄົນເຂົ້າລະບົບ) = ຍ້າຍມາຫາຄົນນີ້
+ * POST /app/device-token { token, platform: "android" | "ios", voice: 1 | 0 } — ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM token).
+ * app ເອີ້ນທຸກເທື່ອທີ່ເຂົ້າລະບົບ / ເປີດແອັບ / token ປ່ຽນ / ເປີດ-ປິດສຽງເວົ້າ; token ຂອງຄົນອື່ນ (ເຄື່ອງດຽວກັນ ປ່ຽນຄົນເຂົ້າລະບົບ)
+ * = ຍ້າຍມາຫາຄົນນີ້. ແອັບລຸ້ນເກົ່າບໍ່ສົ່ງ voice = ເປີດ
  */
 const registerDeviceToken = async (req, res) => {
     try {
@@ -289,9 +291,10 @@ const registerDeviceToken = async (req, res) => {
             return;
         }
         const platform = ["android", "ios"].includes(String(req.body?.platform)) ? String(req.body.platform) : null;
-        const [row, created] = await deviceToken_1.default.findOrCreate({ where: { token }, defaults: { employee_id: self.employee._uuid, platform } });
+        const voice = ["0", "false"].includes(String(req.body?.voice)) ? 0 : 1;
+        const [row, created] = await deviceToken_1.default.findOrCreate({ where: { token }, defaults: { employee_id: self.employee._uuid, platform, voice } });
         if (!created)
-            await row.update({ employee_id: self.employee._uuid, platform, updatedAt: new Date() });
+            await row.update({ employee_id: self.employee._uuid, platform, voice, updatedAt: new Date() });
         res.status(200).json({ message: "ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນແລ້ວ" });
     }
     catch (error) {

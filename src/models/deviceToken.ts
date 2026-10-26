@@ -12,6 +12,7 @@ class DeviceToken extends Model {
   public employee_id!: number;
   public token!: string;
   public platform!: string | null;
+  public voice!: number;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -34,6 +35,12 @@ DeviceToken.init(
     },
     /** android | ios */
     platform: DataTypes.STRING(10),
+    /** 1 = ແຈ້ງເຕືອນທີ່ມີສຽງເວົ້າ (ເຊັ່ນ "ຢ່າລືມກົດອອກວຽກ") ໃຊ້ສຽງເວົ້າ, 0 = ຜູ້ໃຊ້ປິດໃນແອັບ → ສຽງທຳມະດາ */
+    voice: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 1
+    },
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW

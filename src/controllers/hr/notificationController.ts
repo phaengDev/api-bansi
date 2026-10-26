@@ -5,7 +5,7 @@ import { Op, col, fn, where } from "sequelize";
 import Notification from "../../models/notification";
 import Employee from "../../models/employee";
 import DeviceToken from "../../models/deviceToken";
-import { sendPush } from "../../utils/push";
+import { sendPush, type Voice } from "../../utils/push";
 import { actorOf, decodeId, sendError } from "../bansi/bansiHelpers";
 import { selfEmployee } from "./attendanceController";
 import { WORKING, employedOn, nowLao, todayLao } from "./workCalendar";
@@ -47,6 +47,8 @@ export type NotifyInput = {
   createdbyid?: number | null;
   /** ສົ່ງເດັ້ງຂຶ້ນຈໍມືຖືນຳ (Firebase) — ບໍ່ໃສ່ = ສະເພາະໃນແອັບ */
   push?: boolean;
+  /** push ດ້ວຍສຽງເວົ້າພາສາລາວ (utils/push VOICES) — ເຄື່ອງທີ່ປິດສຽງເວົ້າ ໄດ້ສຽງທຳມະດາ */
+  voice?: Voice;
 };
 
 /** ສ້າງແຈ້ງເຕືອນ — ບໍ່ສຳເລັດ ແຄ່ບັນທຶກ log (ບໍ່ໃຫ້ວຽກຫຼັກ ເຊັ່ນ ຈ່າຍເງິນເດືອນ ລົ້ມເພາະແຈ້ງເຕືອນ) */
@@ -71,6 +73,7 @@ export const notify = async (items: NotifyInput[]) => {
       title: row.title,
       body: row.body,
       data: { id: String(row._uuid), type: row.type, ref: row.ref ?? "" },
+      voice: items[index].voice,
     }] : [])));
   } catch (error) {
     console.error("❌ notify:", error);
@@ -277,8 +280,9 @@ export const announce = async (req: Request, res: Response) => {
 };
 
 /**
- * POST /app/device-token { token, platform: "android" | "ios" } — ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM token).
- * app ເອີ້ນທຸກເທື່ອທີ່ເຂົ້າລະບົບ / ເປີດແອັບ / token ປ່ຽນ; token ຂອງຄົນອື່ນ (ເຄື່ອງດຽວກັນ ປ່ຽນຄົນເຂົ້າລະບົບ) = ຍ້າຍມາຫາຄົນນີ້
+ * POST /app/device-token { token, platform: "android" | "ios", voice: 1 | 0 } — ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ (FCM token).
+ * app ເອີ້ນທຸກເທື່ອທີ່ເຂົ້າລະບົບ / ເປີດແອັບ / token ປ່ຽນ / ເປີດ-ປິດສຽງເວົ້າ; token ຂອງຄົນອື່ນ (ເຄື່ອງດຽວກັນ ປ່ຽນຄົນເຂົ້າລະບົບ)
+ * = ຍ້າຍມາຫາຄົນນີ້. ແອັບລຸ້ນເກົ່າບໍ່ສົ່ງ voice = ເປີດ
  */
 export const registerDeviceToken = async (req: Request, res: Response) => {
   try {
@@ -293,8 +297,9 @@ export const registerDeviceToken = async (req: Request, res: Response) => {
       return;
     }
     const platform = ["android", "ios"].includes(String(req.body?.platform)) ? String(req.body.platform) : null;
-    const [row, created] = await DeviceToken.findOrCreate({ where: { token }, defaults: { employee_id: self.employee._uuid, platform } });
-    if (!created) await row.update({ employee_id: self.employee._uuid, platform, updatedAt: new Date() });
+    const voice = ["0", "false"].includes(String(req.body?.voice)) ? 0 : 1;
+    const [row, created] = await DeviceToken.findOrCreate({ where: { token }, defaults: { employee_id: self.employee._uuid, platform, voice } });
+    if (!created) await row.update({ employee_id: self.employee._uuid, platform, voice, updatedAt: new Date() });
     res.status(200).json({ message: "ລົງທະບຽນເຄື່ອງຮັບແຈ້ງເຕືອນແລ້ວ" });
   } catch (error) {
     sendError(res, error, "Error registering device token");

@@ -5,6 +5,7 @@ import { seedDefaults } from "./utils/seedDefaults";
 import { seedGlDefaults } from "./controllers/bansi/glSeed";
 import { scheduleBirthdayNotifications } from "./controllers/hr/notificationController";
 import { scheduleWorkPlanReminders } from "./controllers/hr/myWorkPlanController";
+import { scheduleCheckoutReminders } from "./controllers/hr/checkoutReminder";
 import { networkInterfaces } from "os";
 
 const PORT = process.env.PORT || 8888;
@@ -59,6 +60,8 @@ async function startServer() {
     scheduleBirthdayNotifications();
     // ເຕືອນແຜນວຽກທີ່ຍັງບໍ່ສຳເລັດຂອງມື້ນີ້ທຸກມື້ 07:30 (ເດັ້ງຂຶ້ນຈໍມືຖື)
     scheduleWorkPlanReminders();
+    // ຮອດເວລາເລີກວຽກ ເຕືອນຄົນທີ່ຍັງບໍ່ສະແກນອອກ (ສຽງເວົ້າ "ຢ່າລືມກົດອອກວຽກ")
+    scheduleCheckoutReminders();
     app.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);

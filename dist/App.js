@@ -10,6 +10,7 @@ const seedDefaults_1 = require("./utils/seedDefaults");
 const glSeed_1 = require("./controllers/bansi/glSeed");
 const notificationController_1 = require("./controllers/hr/notificationController");
 const myWorkPlanController_1 = require("./controllers/hr/myWorkPlanController");
+const checkoutReminder_1 = require("./controllers/hr/checkoutReminder");
 const os_1 = require("os");
 const PORT = process.env.PORT || 8888;
 const getPositiveNumber = (value, fallback) => {
@@ -55,6 +56,8 @@ async function startServer() {
     (0, notificationController_1.scheduleBirthdayNotifications)();
     // ເຕືອນແຜນວຽກທີ່ຍັງບໍ່ສຳເລັດຂອງມື້ນີ້ທຸກມື້ 07:30 (ເດັ້ງຂຶ້ນຈໍມືຖື)
     (0, myWorkPlanController_1.scheduleWorkPlanReminders)();
+    // ຮອດເວລາເລີກວຽກ ເຕືອນຄົນທີ່ຍັງບໍ່ສະແກນອອກ (ສຽງເວົ້າ "ຢ່າລືມກົດອອກວຽກ")
+    (0, checkoutReminder_1.scheduleCheckoutReminders)();
     server_1.default.listen(PORT, () => {
         console.log(`🚀 Server running at:`);
         console.log(`   Local:   http://localhost:${PORT}`);
