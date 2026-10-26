@@ -25,8 +25,8 @@ const ANDROID = "android";
 const APP_PACKAGE = "com.oacbroker.oacbroker";
 /** Cloudflare (ທາງເຂົ້າ api) ຮັບໄຟລ໌ບໍ່ເກີນ 100MB ຕໍ່ເທື່ອ */
 const MAX_APK = 100 * 1024 * 1024;
-/** ເກັບໄວ້ສະເພາະລຸ້ນລ່າສຸດ — APK ລະ 50–80MB, ອັບເດດເລື້ອຍ ດິສກ໌ເຕັມໄວ */
-const KEEP = 5;
+/** ເກັບໄວ້ລຸ້ນດຽວ — ອັບໂຫຼດລຸ້ນໃໝ່ = ລຶບລຸ້ນເກົ່າ (ແຖວ + ໄຟລ໌ APK 50–80MB) ທັນທີ ບໍ່ໃຫ້ດິສກ໌ຂອງເຊີບເວີເຕັມ */
+const KEEP = 1;
 const APP_DIR = path_1.default.join(__dirname, "..", "..", "uploads", exports.APP_FOLDER);
 /** ໄຟລ໌ .apk 1 ໄຟລ໌ field "apk" */
 exports.apkUpload = (0, hrHelpers_1.asJson)((0, multer_1.default)({
@@ -62,14 +62,14 @@ const removeRelease = async (row) => {
     (0, hrHelpers_1.removeQuietly)(path_1.default.join(APP_DIR, row.file_name));
     await row.destroy();
 };
-/** GET /app-release/fetch — ທຸກລຸ້ນທີ່ເກັບໄວ້ (ໃໝ່ສຸດກ່ອນ) + ຊື່ຜູ້ອັບໂຫຼດ */
+/** GET /app-release/fetch — ລຸ້ນທີ່ເກັບໄວ້ (KEEP = 1 ລຸ້ນ) + ຊື່ຜູ້ອັບໂຫຼດ */
 const getAppReleases = async (_req, res) => {
     try {
         const rows = await appRelease_1.default.findAll({ where: { platform: ANDROID }, order: [["build_number", "DESC"]] });
         const ids = [...new Set(rows.map((r) => Number(r.createdbyid)).filter(Boolean))];
         const users = ids.length ? await userModel_1.default.findAll({ where: { user_uuid: { [sequelize_1.Op.in]: ids } }, attributes: ["user_uuid", "user_name"] }) : [];
         const nameOf = new Map(users.map((u) => [Number(u.user_uuid), u.user_name]));
-        res.status(200).json({ data: rows.map((r) => present(r, nameOf.get(Number(r.createdbyid)) ?? null)), keep: KEEP });
+        res.status(200).json({ data: rows.map((r) => present(r, nameOf.get(Number(r.createdbyid)) ?? null)) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error fetching app releases");
@@ -78,7 +78,7 @@ const getAppReleases = async (_req, res) => {
 exports.getAppReleases = getAppReleases;
 /**
  * POST /app-release/create (multipart: apk, notes) — ອ່ານເລກ build / ເວີຊັນຈາກ APK ເອງ; ຕ້ອງເປັນແອັບ OAC HR ແລະ
- * ເລກ build ສູງກວ່າລຸ້ນລ່າສຸດ (ບໍ່ດັ່ງນັ້ນ ແອັບບໍ່ເຫັນວ່າເປັນລຸ້ນໃໝ່). ລຸ້ນເກົ່າກວ່າ KEEP ລຸ້ນ ລຶບອອກເອງ
+ * ເລກ build ສູງກວ່າລຸ້ນລ່າສຸດ (ບໍ່ດັ່ງນັ້ນ ແອັບບໍ່ເຫັນວ່າເປັນລຸ້ນໃໝ່). ບັນທຶກແລ້ວ ລຸ້ນເກົ່າ (ເກີນ KEEP) ຖືກລຶບອອກເອງ
  */
 const createAppRelease = async (req, res) => {
     const file = req.file;
@@ -123,7 +123,7 @@ const createAppRelease = async (req, res) => {
     }
 };
 exports.createAppRelease = createAppRelease;
-/** DELETE /app-release/:id — ລຶບລຸ້ນລ່າສຸດ = ແອັບກັບໄປທຽບກັບລຸ້ນກ່ອນໜ້າ (ໃຊ້ຕອນອັບໂຫຼດຜິດ) */
+/** DELETE /app-release/:id — ລຶບລຸ້ນທີ່ເກັບໄວ້ (ອັບໂຫຼດຜິດ) = ແອັບບໍ່ເຫັນແຖບອັບເດດ ຈົນກວ່າຈະອັບໂຫຼດລຸ້ນໃໝ່ */
 const deleteAppRelease = async (req, res) => {
     try {
         const row = await appRelease_1.default.findByPk(Number((0, bansiHelpers_1.decodeId)(req)));

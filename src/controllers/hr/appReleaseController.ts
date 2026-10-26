@@ -22,8 +22,8 @@ const ANDROID = "android";
 const APP_PACKAGE = "com.oacbroker.oacbroker";
 /** Cloudflare (ທາງເຂົ້າ api) ຮັບໄຟລ໌ບໍ່ເກີນ 100MB ຕໍ່ເທື່ອ */
 const MAX_APK = 100 * 1024 * 1024;
-/** ເກັບໄວ້ສະເພາະລຸ້ນລ່າສຸດ — APK ລະ 50–80MB, ອັບເດດເລື້ອຍ ດິສກ໌ເຕັມໄວ */
-const KEEP = 5;
+/** ເກັບໄວ້ລຸ້ນດຽວ — ອັບໂຫຼດລຸ້ນໃໝ່ = ລຶບລຸ້ນເກົ່າ (ແຖວ + ໄຟລ໌ APK 50–80MB) ທັນທີ ບໍ່ໃຫ້ດິສກ໌ຂອງເຊີບເວີເຕັມ */
+const KEEP = 1;
 
 const APP_DIR = path.join(__dirname, "..", "..", "uploads", APP_FOLDER);
 
@@ -67,14 +67,14 @@ const removeRelease = async (row: AppRelease) => {
   await row.destroy();
 };
 
-/** GET /app-release/fetch — ທຸກລຸ້ນທີ່ເກັບໄວ້ (ໃໝ່ສຸດກ່ອນ) + ຊື່ຜູ້ອັບໂຫຼດ */
+/** GET /app-release/fetch — ລຸ້ນທີ່ເກັບໄວ້ (KEEP = 1 ລຸ້ນ) + ຊື່ຜູ້ອັບໂຫຼດ */
 export const getAppReleases = async (_req: Request, res: Response) => {
   try {
     const rows = await AppRelease.findAll({ where: { platform: ANDROID }, order: [["build_number", "DESC"]] });
     const ids = [...new Set(rows.map((r) => Number(r.createdbyid)).filter(Boolean))];
     const users = ids.length ? await Users.findAll({ where: { user_uuid: { [Op.in]: ids } }, attributes: ["user_uuid", "user_name"] }) : [];
     const nameOf = new Map(users.map((u) => [Number(u.user_uuid), u.user_name]));
-    res.status(200).json({ data: rows.map((r) => present(r, nameOf.get(Number(r.createdbyid)) ?? null)), keep: KEEP });
+    res.status(200).json({ data: rows.map((r) => present(r, nameOf.get(Number(r.createdbyid)) ?? null)) });
   } catch (error) {
     sendError(res, error, "Error fetching app releases");
   }
@@ -82,7 +82,7 @@ export const getAppReleases = async (_req: Request, res: Response) => {
 
 /**
  * POST /app-release/create (multipart: apk, notes) — ອ່ານເລກ build / ເວີຊັນຈາກ APK ເອງ; ຕ້ອງເປັນແອັບ OAC HR ແລະ
- * ເລກ build ສູງກວ່າລຸ້ນລ່າສຸດ (ບໍ່ດັ່ງນັ້ນ ແອັບບໍ່ເຫັນວ່າເປັນລຸ້ນໃໝ່). ລຸ້ນເກົ່າກວ່າ KEEP ລຸ້ນ ລຶບອອກເອງ
+ * ເລກ build ສູງກວ່າລຸ້ນລ່າສຸດ (ບໍ່ດັ່ງນັ້ນ ແອັບບໍ່ເຫັນວ່າເປັນລຸ້ນໃໝ່). ບັນທຶກແລ້ວ ລຸ້ນເກົ່າ (ເກີນ KEEP) ຖືກລຶບອອກເອງ
  */
 export const createAppRelease = async (req: Request, res: Response) => {
   const file = req.file;
@@ -123,7 +123,7 @@ export const createAppRelease = async (req: Request, res: Response) => {
   }
 };
 
-/** DELETE /app-release/:id — ລຶບລຸ້ນລ່າສຸດ = ແອັບກັບໄປທຽບກັບລຸ້ນກ່ອນໜ້າ (ໃຊ້ຕອນອັບໂຫຼດຜິດ) */
+/** DELETE /app-release/:id — ລຶບລຸ້ນທີ່ເກັບໄວ້ (ອັບໂຫຼດຜິດ) = ແອັບບໍ່ເຫັນແຖບອັບເດດ ຈົນກວ່າຈະອັບໂຫຼດລຸ້ນໃໝ່ */
 export const deleteAppRelease = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const row = await AppRelease.findByPk(Number(decodeId(req)));
