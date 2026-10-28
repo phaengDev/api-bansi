@@ -35,6 +35,7 @@ const departmentController_1 = require("../controllers/hr/departmentController")
 const employeeController_1 = require("../controllers/hr/employeeController");
 const companyController_1 = require("../controllers/hr/companyController");
 const appAuthController_1 = require("../controllers/hr/appAuthController");
+const aiController_1 = require("../controllers/hr/aiController");
 const appReleaseController_1 = require("../controllers/hr/appReleaseController");
 const myWorkPlanController_1 = require("../controllers/hr/myWorkPlanController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
@@ -68,6 +69,9 @@ router.put("/app/password", appAuthController_1.changeAppPassword);
 router.get("/app/company", companyController_1.getCompany);
 // ລຸ້ນລ່າສຸດຂອງແອັບ Android ທີ່ HR ອັບໂຫຼດ — ແອັບທຽບເລກ build ແລ້ວຂຶ້ນແຖບອັບເດດ
 router.get("/app/release", appReleaseController_1.getLatestAppRelease);
+// ຜູ້ຊ່ວຍ AI ໃນເມນູແຜນວຽກ (Claude) — ວາງແຜນ, ສະຫຼຸບ, ຖາມ-ຕອບ ກ່ຽວກັບແຜນວຽກຂອງຕົນເອງ
+router.post("/app/ai/chat", aiController_1.aiChat);
+router.post("/app/ai/speak", aiController_1.aiSpeak);
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
 router.get("/menu/main", menuController_1.getMainMenus);
 // ================= ສະກຸນເງິນ

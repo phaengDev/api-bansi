@@ -55,7 +55,7 @@ const withEntry = (raw: string | null | undefined, entry: Omit<LogEntry, "at">) 
   JSON.stringify([...logOf(raw), { ...entry, at: new Date().toISOString() }].slice(-MAX_LOG));
 
 /** ລາຍການ (ໜ້າປະຕິທິນ) ສົ່ງສະເພາະການອັບເດດຫຼ້າສຸດ; ລາຍລະອຽດ (withLog) ສົ່ງປະຫວັດທັງໝົດ */
-const planOf = (row: any, withLog = false) => {
+export const planOf = (row: any, withLog = false) => {
   const p = row?.get ? row.get({ plain: true }) : row;
   const log = logOf(p.progress_log);
   const done = Number(p.done) === 1;

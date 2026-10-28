@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduleWorkPlanReminders = exports.deleteMyWorkPlan = exports.addMyWorkPlanProgress = exports.updateMyWorkPlan = exports.createMyWorkPlan = exports.getMyWorkPlan = exports.getMyWorkPlans = void 0;
+exports.scheduleWorkPlanReminders = exports.deleteMyWorkPlan = exports.addMyWorkPlanProgress = exports.updateMyWorkPlan = exports.createMyWorkPlan = exports.getMyWorkPlan = exports.getMyWorkPlans = exports.planOf = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const workPlanModel_1 = __importDefault(require("../../models/workPlanModel"));
@@ -72,6 +72,7 @@ const planOf = (row, withLog = false) => {
         updatedAt: p.updatedAt,
     };
 };
+exports.planOf = planOf;
 /** ປິດ / ເປີດຄືນແຜນ — ປິດ = 100% + ເວລາປິດ; ເປີດຄືນ = ກັບໄປ % ຂອງການອັບເດດຫຼ້າສຸດທີ່ຍັງບໍ່ຮອດ 100 */
 const doneChange = (plan, done, note) => {
     if (done)
@@ -124,7 +125,7 @@ const getMyWorkPlans = async (req, res) => {
                 order: [["start_date", "ASC"], ["createdAt", "ASC"]],
                 limit: MAX_ROWS + 1,
             });
-            res.status(200).json({ today, scope: "range", from, to, data: rows.slice(0, MAX_ROWS).map((r) => planOf(r)), has_more: rows.length > MAX_ROWS });
+            res.status(200).json({ today, scope: "range", from, to, data: rows.slice(0, MAX_ROWS).map((r) => (0, exports.planOf)(r)), has_more: rows.length > MAX_ROWS });
             return;
         }
         const scopes = scopesOf(self.employee._uuid, today);
@@ -146,7 +147,7 @@ const getMyWorkPlans = async (req, res) => {
         res.status(200).json({
             today,
             scope,
-            data: rows.slice(0, limit).map((r) => planOf(r)),
+            data: rows.slice(0, limit).map((r) => (0, exports.planOf)(r)),
             has_more: rows.length > limit,
             counts: { active, upcoming, history: done, overdue },
         });
@@ -169,7 +170,7 @@ const getMyWorkPlan = async (req, res) => {
             res.status(404).json({ message: "ບໍ່ພົບແຜນວຽກນີ້" });
             return;
         }
-        res.status(200).json({ today: (0, workCalendar_1.todayLao)(), data: planOf(plan, true) });
+        res.status(200).json({ today: (0, workCalendar_1.todayLao)(), data: (0, exports.planOf)(plan, true) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error getting work plan");
@@ -246,7 +247,7 @@ const createMyWorkPlan = async (req, res) => {
             createdAt: now,
             updatedAt: now,
         });
-        res.status(200).json({ message: "ບັນທຶກແຜນວຽກແລ້ວ", data: planOf(row) });
+        res.status(200).json({ message: "ບັນທຶກແຜນວຽກແລ້ວ", data: (0, exports.planOf)(row) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error creating work plan");
@@ -276,7 +277,7 @@ const updateMyWorkPlan = async (req, res) => {
         const changed = done !== undefined && done !== Number(plan.done);
         await plan.update({ ...fields, ...(changed ? doneChange(plan, done === 1, null) : {}), updatedAt: new Date() });
         const message = !changed ? "ແກ້ໄຂແຜນວຽກແລ້ວ" : done ? "ປິດແຜນວຽກແລ້ວ — ສຳເລັດ 🎉" : "ເປີດແຜນວຽກຄືນແລ້ວ";
-        res.status(200).json({ message, data: planOf(plan, true) });
+        res.status(200).json({ message, data: (0, exports.planOf)(plan, true) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error updating work plan");
@@ -329,7 +330,7 @@ const addMyWorkPlanProgress = async (req, res) => {
                 updatedAt: new Date(),
             });
         }
-        res.status(200).json({ message, data: planOf(plan, true) });
+        res.status(200).json({ message, data: (0, exports.planOf)(plan, true) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error updating work plan progress");

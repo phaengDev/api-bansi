@@ -69,6 +69,7 @@ import {
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink, saveUniformPhoto, removeUniformPhoto } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
+import { aiChat, aiSpeak } from "../controllers/hr/aiController";
 import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease, requireReleaseKey } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
@@ -116,6 +117,9 @@ router.put("/app/password", changeAppPassword);
 router.get("/app/company", getCompany);
 // ລຸ້ນລ່າສຸດຂອງແອັບ Android ທີ່ HR ອັບໂຫຼດ — ແອັບທຽບເລກ build ແລ້ວຂຶ້ນແຖບອັບເດດ
 router.get("/app/release", getLatestAppRelease);
+// ຜູ້ຊ່ວຍ AI ໃນເມນູແຜນວຽກ (Claude) — ວາງແຜນ, ສະຫຼຸບ, ຖາມ-ຕອບ ກ່ຽວກັບແຜນວຽກຂອງຕົນເອງ
+router.post("/app/ai/chat", aiChat);
+router.post("/app/ai/speak", aiSpeak);
 
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
 router.get("/menu/main", getMainMenus);
