@@ -14,7 +14,7 @@ const workCalendar_1 = require("./workCalendar");
 const LATE_LIMIT = 60;
 /**
  * ຮອດເວລາເລີກວຽກ (work_end ຂອງບໍລິສັດ) — ເຕືອນຄົນທີ່ສະແກນເຂົ້າມື້ນີ້ແລ້ວ ແຕ່ຍັງບໍ່ໄດ້ສະແກນອອກ ໃຫ້ກົດອອກວຽກ
- * (ສຽງເວົ້າພາສາລາວ "ຢ່າລືມກົດອອກວຽກ" — ເຄື່ອງທີ່ປິດສຽງເວົ້າໄດ້ສຽງທຳມະດາ). ref "checkout:<date>" ກັນເຕືອນຊ້ຳ
+ * (ສຽງເວົ້າພາສາລາວ "ຢ່າລືມກົດອອກວຽກ" ຍິງ / ຊາຍ ຕາມເພດ — ເຄື່ອງທີ່ປິດສຽງເວົ້າໄດ້ສຽງທຳມະດາ). ref "checkout:<date>" ກັນເຕືອນຊ້ຳ
  */
 const remindCheckout = async (today) => {
     const open = await attendance_1.default.findAll({
@@ -27,7 +27,7 @@ const remindCheckout = async (today) => {
         return;
     const ref = `checkout:${today}`;
     const [people, sent] = await Promise.all([
-        employee_1.default.findAll({ attributes: ["_uuid", "start_date", "end_date", "work_status"], where: { _uuid: { [sequelize_1.Op.in]: ids }, work_status: workCalendar_1.WORKING } }),
+        employee_1.default.findAll({ attributes: ["_uuid", "gender", "start_date", "end_date", "work_status"], where: { _uuid: { [sequelize_1.Op.in]: ids }, work_status: workCalendar_1.WORKING } }),
         notification_1.default.findAll({ where: { ref, employee_id: { [sequelize_1.Op.in]: ids } }, attributes: ["employee_id"], raw: true }),
     ]);
     const already = new Set(sent.map((n) => Number(n.employee_id)));
@@ -40,7 +40,8 @@ const remindCheckout = async (today) => {
         title: "ຮອດເວລາເລີກວຽກແລ້ວ ⏰",
         body: "ຢ່າລືມກົດອອກວຽກເດີ ເພື່ອບັນທຶກການເຂົ້າ-ອອກວຽກ",
         push: true,
-        voice: "checkout",
+        // ສຽງຍິງສະເພາະ gender 2 — ຄືກັບແອັບ (ໜ້າໂປຣໄຟລ໌)
+        voice: Number(e.gender) === 2 ? "checkout" : "checkout_male",
     })));
 };
 /**

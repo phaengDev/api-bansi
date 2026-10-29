@@ -19,7 +19,9 @@ const ANDROID_CHANNEL = "oac_alerts";
  * ຕັ້ງໄດ້ຕອນສ້າງຊ່ອງເທົ່ານັ້ນ — MainActivity.kt), iOS Runner/<sound>.caf. ເຄື່ອງທີ່ປິດສຽງເວົ້າໃນແອັບ (voice = 0) ໄດ້ສຽງທຳມະດາ
  */
 export const VOICES = {
+  /** ເຕືອນກົດອອກວຽກ — ສຽງຍິງ / ຊາຍ ຕາມເພດພະນັກງານ (checkoutReminder.ts) */
   checkout: { sound: "checkout_reminder", channel: "oac_checkout" },
+  checkout_male: { sound: "checkout_reminder_male", channel: "oac_checkout_male" },
 } as const;
 export type Voice = keyof typeof VOICES;
 

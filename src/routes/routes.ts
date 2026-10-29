@@ -73,6 +73,10 @@ import { aiChat, aiSpeak } from "../controllers/hr/aiController";
 import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease, requireReleaseKey } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
+  createMyMoneyCategory, createMyMoneyEntry, deleteMyMoneyCategory, deleteMyMoneyEntry, getMyMoneyCategories, getMyMoneyEntries,
+  getMyMoneyEntryPhoto, getMyMoneySummary, updateMyMoneyCategory, updateMyMoneyEntry,
+} from "../controllers/hr/myMoneyController";
+import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
   saveAttendance, deleteAttendance, getHolidays, getMyHolidays, createHoliday, deleteHoliday,
 } from "../controllers/hr/attendanceController";
@@ -90,7 +94,7 @@ import { getMyColleagues } from "../controllers/hr/teamController";
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyLogoUpload, documentUpload, profileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import { companyLogoUpload, documentUpload, profileUpload, receiptUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
 
@@ -299,6 +303,17 @@ router.get("/employee/me/workplan/:id", getMyWorkPlan);
 router.put("/employee/me/workplan/:id", updateMyWorkPlan);
 router.post("/employee/me/workplan/:id/progress", addMyWorkPlanProgress);
 router.delete("/employee/me/workplan/:id", deleteMyWorkPlan);
+// ລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
+router.get("/money/me/categories", getMyMoneyCategories);
+router.post("/money/me/categories", createMyMoneyCategory);
+router.put("/money/me/categories/:id", updateMyMoneyCategory);
+router.delete("/money/me/categories/:id", deleteMyMoneyCategory);
+router.get("/money/me/entries", getMyMoneyEntries);
+router.post("/money/me/entries", receiptUpload, createMyMoneyEntry);
+router.get("/money/me/entries/:id/photo", getMyMoneyEntryPhoto);
+router.put("/money/me/entries/:id", receiptUpload, updateMyMoneyEntry);
+router.delete("/money/me/entries/:id", deleteMyMoneyEntry);
+router.get("/money/me/summary", getMyMoneySummary);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);

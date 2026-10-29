@@ -56,6 +56,10 @@ const syncTable = async (model: ModelStatic<any>, { rename = {} }: AutoSyncOptio
       charset: "utf8mb4",
     });
     log("created");
+    // ດັດຊະນີທີ່ປະກາດໃນ model (indexes) — ສ້າງພ້ອມຕາຕະລາງໃໝ່ເທົ່ານັ້ນ (ຕາຕະລາງເກົ່າບໍ່ແຕະ)
+    for (const index of model.options.indexes ?? []) {
+      await qi.addIndex(table, { fields: index.fields as string[], unique: index.unique });
+    }
     return;
   }
 

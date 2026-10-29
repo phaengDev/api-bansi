@@ -72,6 +72,19 @@ export const companyLogoUpload = imageUpload(COMPANY_FOLDER, "logo");
 /** ຮູບເສື້ອເຄື່ອງແບບ field "photo" */
 export const uniformPhotoUpload = imageUpload(COMPANY_FOLDER, "photo");
 
+/** ຮູບໃບບິນຂອງລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວ — ນອກ uploads ຄືເອກະສານ (ບໍ່ມີ URL ສາທາລະນະ), ເປີດຜ່ານ API ຂອງເຈົ້າຂອງເທົ່ານັ້ນ */
+export const RECEIPT_DIR = path.join(__dirname, "..", "..", "private", "money-receipts");
+
+/** ຮູບໃບບິນ 1 ໄຟລ໌ field "photo" (JPG, PNG, WEBP) — ຟີວອື່ນຂອງ multipart ມາໃນ req.body */
+export const receiptUpload = asJson(
+  multer({
+    storage: storageIn(RECEIPT_DIR),
+    limits: { fileSize: MAX_FILE },
+    fileFilter: (_req, file, cb) =>
+      IMAGE_TYPES.test(file.originalname) ? cb(null, true) : cb(new Error("ຮູບຕ້ອງເປັນ JPG, PNG ຫຼື WEBP")),
+  }).single("photo")
+);
+
 /** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" — ຮູບ, PDF, Word, Excel */
 export const documentUpload = asJson(
   multer({

@@ -10,7 +10,7 @@ const LATE_LIMIT = 60;
 
 /**
  * ຮອດເວລາເລີກວຽກ (work_end ຂອງບໍລິສັດ) — ເຕືອນຄົນທີ່ສະແກນເຂົ້າມື້ນີ້ແລ້ວ ແຕ່ຍັງບໍ່ໄດ້ສະແກນອອກ ໃຫ້ກົດອອກວຽກ
- * (ສຽງເວົ້າພາສາລາວ "ຢ່າລືມກົດອອກວຽກ" — ເຄື່ອງທີ່ປິດສຽງເວົ້າໄດ້ສຽງທຳມະດາ). ref "checkout:<date>" ກັນເຕືອນຊ້ຳ
+ * (ສຽງເວົ້າພາສາລາວ "ຢ່າລືມກົດອອກວຽກ" ຍິງ / ຊາຍ ຕາມເພດ — ເຄື່ອງທີ່ປິດສຽງເວົ້າໄດ້ສຽງທຳມະດາ). ref "checkout:<date>" ກັນເຕືອນຊ້ຳ
  */
 const remindCheckout = async (today: string) => {
   const open = await Attendance.findAll({
@@ -22,7 +22,7 @@ const remindCheckout = async (today: string) => {
   if (!ids.length) return;
   const ref = `checkout:${today}`;
   const [people, sent] = await Promise.all([
-    Employee.findAll({ attributes: ["_uuid", "start_date", "end_date", "work_status"], where: { _uuid: { [Op.in]: ids }, work_status: WORKING } }),
+    Employee.findAll({ attributes: ["_uuid", "gender", "start_date", "end_date", "work_status"], where: { _uuid: { [Op.in]: ids }, work_status: WORKING } }),
     Notification.findAll({ where: { ref, employee_id: { [Op.in]: ids } }, attributes: ["employee_id"], raw: true }),
   ]);
   const already = new Set((sent as any[]).map((n) => Number(n.employee_id)));
@@ -36,7 +36,8 @@ const remindCheckout = async (today: string) => {
         title: "ຮອດເວລາເລີກວຽກແລ້ວ ⏰",
         body: "ຢ່າລືມກົດອອກວຽກເດີ ເພື່ອບັນທຶກການເຂົ້າ-ອອກວຽກ",
         push: true,
-        voice: "checkout" as const,
+        // ສຽງຍິງສະເພາະ gender 2 — ຄືກັບແອັບ (ໜ້າໂປຣໄຟລ໌)
+        voice: Number(e.gender) === 2 ? ("checkout" as const) : ("checkout_male" as const),
       })),
   );
 };

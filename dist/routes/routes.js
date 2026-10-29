@@ -38,6 +38,7 @@ const appAuthController_1 = require("../controllers/hr/appAuthController");
 const aiController_1 = require("../controllers/hr/aiController");
 const appReleaseController_1 = require("../controllers/hr/appReleaseController");
 const myWorkPlanController_1 = require("../controllers/hr/myWorkPlanController");
+const myMoneyController_1 = require("../controllers/hr/myMoneyController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
 const payrollController_1 = require("../controllers/hr/payrollController");
 const leaveController_1 = require("../controllers/hr/leaveController");
@@ -245,6 +246,17 @@ router.get("/employee/me/workplan/:id", myWorkPlanController_1.getMyWorkPlan);
 router.put("/employee/me/workplan/:id", myWorkPlanController_1.updateMyWorkPlan);
 router.post("/employee/me/workplan/:id/progress", myWorkPlanController_1.addMyWorkPlanProgress);
 router.delete("/employee/me/workplan/:id", myWorkPlanController_1.deleteMyWorkPlan);
+// ລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
+router.get("/money/me/categories", myMoneyController_1.getMyMoneyCategories);
+router.post("/money/me/categories", myMoneyController_1.createMyMoneyCategory);
+router.put("/money/me/categories/:id", myMoneyController_1.updateMyMoneyCategory);
+router.delete("/money/me/categories/:id", myMoneyController_1.deleteMyMoneyCategory);
+router.get("/money/me/entries", myMoneyController_1.getMyMoneyEntries);
+router.post("/money/me/entries", hrHelpers_1.receiptUpload, myMoneyController_1.createMyMoneyEntry);
+router.get("/money/me/entries/:id/photo", myMoneyController_1.getMyMoneyEntryPhoto);
+router.put("/money/me/entries/:id", hrHelpers_1.receiptUpload, myMoneyController_1.updateMyMoneyEntry);
+router.delete("/money/me/entries/:id", myMoneyController_1.deleteMyMoneyEntry);
+router.get("/money/me/summary", myMoneyController_1.getMyMoneySummary);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);
