@@ -74,8 +74,9 @@ import { getAttendanceVoice } from "../controllers/hr/voiceController";
 import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease, requireReleaseKey } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
 import {
-  createMyMoneyCategory, createMyMoneyEntry, deleteMyMoneyCategory, deleteMyMoneyEntry, getMyMoneyCategories, getMyMoneyEntries,
-  getMyMoneyEntryPhoto, getMyMoneySummary, updateMyMoneyCategory, updateMyMoneyEntry,
+  createMyMoneyAccount, createMyMoneyCategory, createMyMoneyEntry, deleteMyMoneyAccount, deleteMyMoneyCategory, deleteMyMoneyEntry,
+  getMyMoneyAccounts, getMyMoneyBanks, getMyMoneyCategories, getMyMoneyEntries, getMyMoneyEntryPhoto, getMyMoneySummary,
+  updateMyMoneyAccount, updateMyMoneyCategory, updateMyMoneyEntry,
 } from "../controllers/hr/myMoneyController";
 import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
@@ -306,7 +307,12 @@ router.get("/employee/me/workplan/:id", getMyWorkPlan);
 router.put("/employee/me/workplan/:id", updateMyWorkPlan);
 router.post("/employee/me/workplan/:id/progress", addMyWorkPlanProgress);
 router.delete("/employee/me/workplan/:id", deleteMyWorkPlan);
-// ລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
+// ບັນຊີເງິນສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
+router.get("/money/me/accounts", getMyMoneyAccounts);
+router.post("/money/me/accounts", createMyMoneyAccount);
+router.put("/money/me/accounts/:id", updateMyMoneyAccount);
+router.delete("/money/me/accounts/:id", deleteMyMoneyAccount);
+router.get("/money/me/banks", getMyMoneyBanks);
 router.get("/money/me/categories", getMyMoneyCategories);
 router.post("/money/me/categories", createMyMoneyCategory);
 router.put("/money/me/categories/:id", updateMyMoneyCategory);

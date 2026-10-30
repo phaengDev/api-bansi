@@ -26,7 +26,6 @@ import {
 } from "./workCalendar";
 import { selfEmployee } from "./attendanceController";
 import { companyLogoUrl } from "./hrHelpers";
-import { recordSalaryIncome, removeSalaryIncome } from "./myMoneyController";
 import { notify } from "./notificationController";
 
 /**
@@ -702,9 +701,6 @@ export const payPayroll = async (req: Request<{ id: string }>, res: Response) =>
       createdbyid: actor,
       push: true,
     })));
-    // ລາຍຮັບ "ເງິນເດືອນ" ໃນບັນຊີລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງແຕ່ລະຄົນ (ແອັບ) — ບໍ່ສຳເລັດ ບໍ່ກະທົບການຈ່າຍ
-    await recordSalaryIncome(payroll._uuid, payDate.date, `ເງິນເດືອນ ${periodText(payroll.period)}`, lines)
-      .catch((error) => console.error("❌ salary income:", error));
     await reply(res, payroll._uuid, "Successfully paid payroll");
   } catch (error) {
     await t.rollback();
@@ -739,7 +735,6 @@ export const unpayPayroll = async (req: Request<{ id: string }>, res: Response) 
       status: DRAFT, number: null, pay_date: null, account_id: null, paidbyid: null, paidAt: null, updatedAt: new Date(),
     }, { transaction: t });
     await t.commit();
-    await removeSalaryIncome(payroll._uuid).catch((error) => console.error("❌ salary income:", error));
     await reply(res, payroll._uuid, "Successfully cancelled payroll payment");
   } catch (error) {
     await t.rollback();

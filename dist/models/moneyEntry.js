@@ -7,9 +7,11 @@ const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
 /**
- * ລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ. ສະກຸນເງິນ LAK / THB / USD (ບໍ່ແປງຄ່າ — ລາຍງານແຍກຕາມສະກຸນ).
- * photo = ຮູບໃບບິນ (ໄຟລ໌ຢູ່ private/money-receipts, ເປີດຜ່ານ API ທີ່ login ແລ້ວເທົ່ານັ້ນ).
- * source "PAYROLL" + source_id = ໃບເງິນເດືອນ: ລະບົບເພີ່ມເອງຕອນ HR ຈ່າຍເງິນເດືອນ, ລຶບເອງຕອນຍົກເລີກການຈ່າຍ
+ * ລາຍຮັບ / ລາຍຈ່າຍ / ໂອນ ຂອງບັນຊີເງິນສ່ວນຕົວ (app) — ເຫັນສະເພາະຂອງຕົນເອງ. ສະກຸນ = ສະກຸນຂອງບັນຊີ (ບໍ່ແປງຄ່າ —
+ * ລາຍງານແຍກຕາມສະກຸນ). transfer = ໂອນຈາກ account_id (amount, ສະກຸນບັນຊີຕົ້ນທາງ) ໄປ to_account_id (to_amount,
+ * ສະກຸນບັນຊີປາຍທາງ — ແລກເງິນ = ຄົນລະຈຳນວນ), category_id 0, ບໍ່ນັບເປັນລາຍຮັບ-ລາຍຈ່າຍ.
+ * account_id null = ລາຍການກ່ອນມີບັນຊີ (ບໍ່ລະບຸບັນຊີ). photo = ຮູບໃບບິນ (private/money-receipts, ເປີດຜ່ານ API ເທົ່ານັ້ນ).
+ * source "PAYROLL" = ລາຍການທີ່ລະບົບເຄີຍເພີ່ມຕອນ HR ຈ່າຍເງິນເດືອນ (ເລີກແລ້ວ — ພະນັກງານບັນທຶກເອງ)
  */
 class MoneyEntry extends sequelize_1.Model {
 }
@@ -23,11 +25,14 @@ MoneyEntry.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false
     },
-    /** income ລາຍຮັບ, expense ລາຍຈ່າຍ (ຕາມໝວດ) */
+    /** income ລາຍຮັບ, expense ລາຍຈ່າຍ (ຕາມໝວດ), transfer ໂອນລະຫວ່າງບັນຊີ */
     kind: {
         type: sequelize_1.DataTypes.STRING(10),
         allowNull: false
     },
+    /** ບັນຊີ (ລາຍຮັບເຂົ້າ / ລາຍຈ່າຍອອກ / ໂອນອອກ) — null = ກ່ອນມີບັນຊີ */
+    account_id: sequelize_1.DataTypes.INTEGER,
+    /** ໂອນ = 0 */
     category_id: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false
@@ -36,6 +41,9 @@ MoneyEntry.init({
         type: sequelize_1.DataTypes.DECIMAL(16, 2),
         allowNull: false
     },
+    /** ໂອນ: ບັນຊີປາຍທາງ ແລະ ຈຳນວນທີ່ເຂົ້າ (ສະກຸນຂອງປາຍທາງ) */
+    to_account_id: sequelize_1.DataTypes.INTEGER,
+    to_amount: sequelize_1.DataTypes.DECIMAL(16, 2),
     currency: {
         type: sequelize_1.DataTypes.STRING(3),
         allowNull: false,
@@ -62,7 +70,7 @@ MoneyEntry.init({
     modelName: "MoneyEntry",
     tableName: "tbl_money_entry",
     timestamps: true,
-    indexes: [{ fields: ["employee_id", "entry_date"] }, { fields: ["source", "source_id"] }],
+    indexes: [{ fields: ["employee_id", "entry_date"] }, { fields: ["account_id"] }, { fields: ["to_account_id"] }],
 });
 (0, autoSync_1.autoSync)(MoneyEntry);
 exports.default = MoneyEntry;

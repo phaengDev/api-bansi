@@ -25,7 +25,6 @@ const payrollRules_1 = require("./payrollRules");
 const workCalendar_1 = require("./workCalendar");
 const attendanceController_1 = require("./attendanceController");
 const hrHelpers_1 = require("./hrHelpers");
-const myMoneyController_1 = require("./myMoneyController");
 const notificationController_1 = require("./notificationController");
 /**
  * ເງິນເດືອນປະຈຳເດືອນ: ສ້າງໃບ (ຄິດຈາກເງິນເດືອນພື້ນຖານ + ການເຂົ້າວຽກ) → ແກ້ລາຍຄົນ (ເງິນເພີ່ມ / ຫັກ / ປກສ / ອາກອນ)
@@ -707,9 +706,6 @@ const payPayroll = async (req, res) => {
             createdbyid: actor,
             push: true,
         })));
-        // ລາຍຮັບ "ເງິນເດືອນ" ໃນບັນຊີລາຍຮັບ-ລາຍຈ່າຍສ່ວນຕົວຂອງແຕ່ລະຄົນ (ແອັບ) — ບໍ່ສຳເລັດ ບໍ່ກະທົບການຈ່າຍ
-        await (0, myMoneyController_1.recordSalaryIncome)(payroll._uuid, payDate.date, `ເງິນເດືອນ ${periodText(payroll.period)}`, lines)
-            .catch((error) => console.error("❌ salary income:", error));
         await reply(res, payroll._uuid, "Successfully paid payroll");
     }
     catch (error) {
@@ -748,7 +744,6 @@ const unpayPayroll = async (req, res) => {
             status: DRAFT, number: null, pay_date: null, account_id: null, paidbyid: null, paidAt: null, updatedAt: new Date(),
         }, { transaction: t });
         await t.commit();
-        await (0, myMoneyController_1.removeSalaryIncome)(payroll._uuid).catch((error) => console.error("❌ salary income:", error));
         await reply(res, payroll._uuid, "Successfully cancelled payroll payment");
     }
     catch (error) {
