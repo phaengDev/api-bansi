@@ -4,6 +4,8 @@ import Incomes from "../../models/incomeModel";
 import Expenses from "../../models/expenseModel";
 import TransferMoney from "../../models/transferMoney";
 import Payroll from "../../models/payroll";
+import SalaryAdvance from "../../models/salaryAdvance";
+import SalaryAdvanceRepayment from "../../models/salaryAdvanceRepayment";
 import TreasuryAccount from "../../models/treasuryAcount";
 import TypeTreasury from "../../models/typeTreasury";
 import JournalEntry from "../../models/journalEntry";
@@ -21,7 +23,9 @@ import {
  * - TRANSFER: ໜີ້ ບັນຊີຮັບ                             / ມີ ບັນຊີໂອນອອກ
  * - OPENING:  ໜີ້ ເງິນສົດ/ທະນາຄານ (ຍອດເລີ່ມຕົ້ນຕອນເປີດບັນຊີເງິນຄັງ) / ມີ ທຶນຍອດຍົກມາ — source_id "TA-{id}"
  * - PAYROLL:  ໜີ້ ລາຍຈ່າຍເງິນເດືອນ (gross) + ໜີ້ ປກສ ສ່ວນບໍລິສັດ / ມີ ເງິນສົດ/ທະນາຄານ (ສຸດທິ) + ມີ ປກສ ຄ້າງຈ່າຍ
- *             (ພະນັກງານ + ບໍລິສັດ) + ມີ ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ + ມີ ຍອດຫັກອື່ນ
+ *             (ພະນັກງານ + ບໍລິສັດ) + ມີ ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ + ມີ ຍອດຫັກອື່ນ + ມີ ເງິນລ່ວງໜ້າພະນັກງານ (ຫັກເງິນເບີກ)
+ * - ADVANCE:  ໜີ້ ເງິນລ່ວງໜ້າພະນັກງານ / ມີ ເງິນສົດ/ທະນາຄານ (ຈ່າຍເງິນເບີກ)
+ * - ADVANCE_REPAY: ໜີ້ ເງິນສົດ/ທະນາຄານ / ມີ ເງິນລ່ວງໜ້າພະນັກງານ (ຮັບຄືນເງິນເບີກເປັນເງິນສົດ)
  * ຍອດຍົກມາຕົ້ນປີ (tbl_opening_balance) ເປັນພຽງພາບຖ່າຍຂອງຍອດທີ່ຍົກມາຈາກປີກ່ອນ ຈຶ່ງບໍ່ລົງບັນຊີ (ລົງແລ້ວຈະນັບຊ້ຳ).
  * ທຸກຟັງຊັນບໍ່ເຮັດຫຍັງ ຖ້າຍັງບໍ່ໄດ້ສ້າງຕາຕະລາງ (glReady)
  */
@@ -120,8 +124,41 @@ export const postPayroll = async (row: any, t: Transaction, actorId?: number | n
   await add("SSO_PAYABLE", CREDIT, round2(value("total_sso_employee") + employer));
   await add("PIT_PAYABLE", CREDIT, value("total_tax"));
   await add("PAYROLL_DEDUCTION", CREDIT, value("total_other_deduction"));
+  await add("EMPLOYEE_ADVANCE", CREDIT, value("total_advance_deduction"));
   return postSource({
     date, sourceType: "PAYROLL", sourceId: row._uuid, reference: row.number, description: row.description, lines, actorId,
+  }, t);
+};
+
+/** ຈ່າຍເງິນເບີກລ່ວງໜ້າໃຫ້ພະນັກງານ (ບັນຊີສະກຸນກີບເທົ່ານັ້ນ) */
+export const postAdvance = async (row: any, t: Transaction, actorId?: number | null) => {
+  if (!(await glReady(t))) return null;
+  const date = row.pay_date;
+  const amount = round2(Number(row.amount) || 0);
+  const cash = await treasurySide(Number(row.account_id), date, t);
+  return postSource({
+    date, sourceType: "ADVANCE", sourceId: row._uuid, reference: row.number, description: row.reason,
+    lines: [
+      { accountId: await roleAccountId("EMPLOYEE_ADVANCE", t), side: DEBIT, amount },
+      { accountId: cash.accountId, side: CREDIT, amount, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: Number(row.account_id) },
+    ],
+    actorId,
+  }, t);
+};
+
+/** ຮັບຄືນເງິນເບີກລ່ວງໜ້າເປັນເງິນສົດ / ໂອນ — row = ແຖວ tbl_salary_advance_repayment (kind 2) */
+export const postAdvanceRepayment = async (row: any, reference: string | null, t: Transaction, actorId?: number | null) => {
+  if (!(await glReady(t))) return null;
+  const date = row.repay_date;
+  const amount = round2(Number(row.amount) || 0);
+  const cash = await treasurySide(Number(row.account_id), date, t);
+  return postSource({
+    date, sourceType: "ADVANCE_REPAY", sourceId: row._uuid, reference, description: row.note,
+    lines: [
+      { accountId: cash.accountId, side: DEBIT, amount, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: Number(row.account_id) },
+      { accountId: await roleAccountId("EMPLOYEE_ADVANCE", t), side: CREDIT, amount },
+    ],
+    actorId,
   }, t);
 };
 
@@ -218,6 +255,12 @@ export const rebuildFromDocuments = async (actorId?: number | null) => {
 
   const payrolls: any[] = await Payroll.findAll({ where: { status: 2 }, order: [["_uuid", "ASC"]] });
   for (const row of payrolls) await run("PAYROLL", row._uuid, row.number ?? `PAYROLL #${row._uuid}`, (t) => postPayroll(row, t, actorId));
+
+  // status 3 ກຳລັງຫັກຄືນ, 4 ຄືນຄົບແລ້ວ = ຈ່າຍເງິນແລ້ວ
+  const advances: any[] = await SalaryAdvance.findAll({ where: { status: [3, 4] }, order: [["_uuid", "ASC"]] });
+  for (const row of advances) await run("ADVANCE", row._uuid, row.number ?? `ADVANCE #${row._uuid}`, (t) => postAdvance(row, t, actorId));
+  const repayments: any[] = await SalaryAdvanceRepayment.findAll({ where: { kind: 2 }, order: [["_uuid", "ASC"]] });
+  for (const row of repayments) await run("ADVANCE_REPAY", row._uuid, `ADVANCE_REPAY #${row._uuid}`, (t) => postAdvanceRepayment(row, null, t, actorId));
 
   // ສຸດທ້າຍ: ຍອດເລີ່ມຕົ້ນຂອງແຕ່ລະບັນຊີເງິນຄັງ ໃຫ້ຍອດໃນສະໝຸດບັນຊີກົງກັບຍອດປັດຈຸບັນ (ຄິດໃໝ່ທຸກເທື່ອ)
   const accounts: any[] = await TreasuryAccount.findAll({ order: [["_uuid", "ASC"]] });

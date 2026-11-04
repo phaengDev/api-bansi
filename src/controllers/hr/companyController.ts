@@ -5,6 +5,7 @@ import District from "../../models/district";
 import { deleteFile } from "../../utils/uploadFile";
 import { actorOf, sendError } from "../bansi/bansiHelpers";
 import { COMPANY_FOLDER, companyLogoUrl, districtInclude } from "./hrHelpers";
+import { syncDraftPayrolls } from "./payrollController";
 
 /**
  * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
@@ -141,6 +142,8 @@ export const saveCompany = async (req: Request, res: Response) => {
     else await Company.create({ ...input, updatedbyid: actor });
 
     if (oldLogo) deleteFile(COMPANY_FOLDER, oldLogo);
+    // ເວລາເຮັດວຽກ / ວັນພັກປະຈຳອາທິດ ປ່ຽນ = ມື້ເຮັດວຽກຂອງໃບເງິນເດືອນຮ່າງປ່ຽນ
+    await syncDraftPayrolls();
     res.status(200).json({ message: "Successfully saved company", data: present(await findCompany()) });
   } catch (error) {
     discardImage(req);

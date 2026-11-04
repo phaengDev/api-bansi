@@ -1,6 +1,7 @@
 import { Op, Transaction } from "sequelize";
 import PayrollSetting from "../../models/payrollSetting";
 import Overtime from "../../models/overtime";
+import SalaryAdvance from "../../models/salaryAdvance";
 
 /**
  * ຕັ້ງຄ່າ ແລະ ສູດຄິດເງິນເດືອນ — ຄ່າເລີ່ມຕົ້ນຕາມກົດໝາຍລາວ (ກວດຄືນເມື່ອກົດໝາຍປ່ຽນ, ແກ້ໄດ້ຢູ່ໜ້າຕັ້ງຄ່າເງິນເດືອນ):
@@ -46,6 +47,14 @@ export type PayrollSettings = {
   ot_rate_night: number;
   ot_rate_dayoff: number;
   ot_rate_dayoff_night: number;
+  /** ພະນັກງານຂໍເບີກລ່ວງໜ້າຜ່ານ app ໄດ້ບໍ່ (HR ບັນທຶກແທນໄດ້ສະເໝີ) */
+  advance_enabled: boolean;
+  /** ເບີກຄ້າງລວມໄດ້ບໍ່ເກີນ % ຂອງເງິນເດືອນພື້ນຖານ (0 = ບໍ່ຈຳກັດ) */
+  advance_max_percent: number;
+  /** ຜ່ອນຄືນໄດ້ສູງສຸດຈັກເດືອນ (ຄຳຂໍຈາກ app) */
+  advance_max_installments: number;
+  /** ໝວດລາຍຈ່າຍທີ່ເງິນເດືອນນັບເຂົ້າງົບປະມານ (null = ບໍ່ນັບ) */
+  budget_category_id: number | null;
   updatedAt: Date | null;
 };
 
@@ -65,6 +74,10 @@ export const DEFAULT_SETTINGS: PayrollSettings = {
   ot_rate_night: 200,
   ot_rate_dayoff: 250,
   ot_rate_dayoff_night: 300,
+  advance_enabled: true,
+  advance_max_percent: 50,
+  advance_max_installments: 3,
+  budget_category_id: null,
   updatedAt: null,
 };
 
@@ -161,6 +174,10 @@ export const presentSettings = (row: PayrollSetting | null): PayrollSettings => 
     ot_rate_night: Number(row.ot_rate_night) || 0,
     ot_rate_dayoff: Number(row.ot_rate_dayoff) || 0,
     ot_rate_dayoff_night: Number(row.ot_rate_dayoff_night) || 0,
+    advance_enabled: Number(row.advance_enabled) === 1,
+    advance_max_percent: Number(row.advance_max_percent) || 0,
+    advance_max_installments: Number(row.advance_max_installments) || 1,
+    budget_category_id: Number(row.budget_category_id) || null,
     updatedAt: row.updatedAt ?? null,
   };
 };
@@ -225,6 +242,12 @@ export type LineInput = {
   sso_employer: number;
   tax_mode: number;
   tax: number;
+  /** MODE_MANUAL = ຫັກເງິນເບີກຕາມຈຳນວນທີ່ປ້ອນ (advance_deduction), ອື່ນ = ຕາມງວດ (advance_due) */
+  advance_mode: number;
+  advance_deduction: number;
+  advance_due: number;
+  /** ຍອດເບີກຄ້າງກ່ອນຫັກ — ເພດານຂອງການຫັກ */
+  advance_balance: number;
 };
 
 /**
@@ -235,7 +258,9 @@ export type LineInput = {
  * - gross = ເງິນເດືອນຕາມວັນ − ຫັກ + ເງິນອຸດໜູນ + ລ່ວງເວລາ + ໂບນັດ
  * - ປກສ ຄິດຈາກ gross (ບໍ່ເກີນເພດານ); ອາກອນຄິດຈາກ gross − ປກສ ພະນັກງານ (− ລ່ວງເວລາທີ່ຍົກເວັ້ນ)
  * - ແຕ່ລະກຸ່ມ (ຂາດ/ຊ້າ, ປກສ, ອາກອນ) ຕາມ *_mode ຂອງຄົນນັ້ນ: ຕາມນະໂຍບາຍບໍລິສັດ (ປິດ = 0), ຫັກສະເໝີ, ບໍ່ຫັກ ຫຼື ປ້ອນເອງ
- * - net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ
+ * - ຫັກເງິນເບີກລ່ວງໜ້າ = ງວດຂອງເດືອນ (ຫັກບໍ່ເກີນເງິນທີ່ເຫຼືອ — ສ່ວນທີ່ຫັກບໍ່ໄດ້ຍົກໄປເດືອນໜ້າ) ຫຼື ປ້ອນເອງ (ບໍ່ເກີນຍອດຄ້າງ);
+ *   ຫັກຫຼັງອາກອນ ບໍ່ກະທົບ gross / ປກສ / ອາກອນ
+ * - net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ − ຫັກເງິນເບີກ
  */
 export const computeLine = (line: LineInput, settings: PayrollSettings, minutesPerDay: number) => {
   const basic = kip(line.basic_salary);
@@ -266,11 +291,15 @@ export const computeLine = (line: LineInput, settings: PayrollSettings, minutesP
   const taxable = Math.max(0, gross - sso_employee - otFree);
   const tax = byMode(line.tax_mode, settings.tax_enabled, () => progressiveTax(taxable, settings.tax_brackets), line.tax);
   const other_deduction = kip(line.other_deduction);
-  const net = gross - sso_employee - tax - other_deduction;
+  const beforeAdvance = gross - sso_employee - tax - other_deduction;
+  const advance_deduction = Number(line.advance_mode) === MODE_MANUAL
+    ? Math.min(kip(line.advance_deduction), kip(line.advance_balance))
+    : Math.min(kip(line.advance_due), Math.max(0, beforeAdvance));
+  const net = beforeAdvance - advance_deduction;
 
   return {
     basic_salary: basic, base_pay, absence_deduction, late_deduction, allowance, overtime, bonus, gross,
-    sso_base, sso_employee, sso_employer, taxable, tax, other_deduction, net,
+    sso_base, sso_employee, sso_employer, taxable, tax, other_deduction, advance_deduction, net,
   };
 };
 
@@ -296,5 +325,33 @@ export const overtimeByEmployee = async (
     byEmployee.set(id, [...(byEmployee.get(id) ?? []), row]);
   }
   for (const [id, list] of byEmployee) result.set(id, otTotals(list, settings));
+  return result;
+};
+
+/** status ຂອງ tbl_salary_advance — ຈ່າຍເງິນແລ້ວ ກຳລັງຫັກຄືນ */
+export const ADVANCE_ACTIVE = 3;
+
+/** ເງິນເບີກລ່ວງໜ້າຂອງ 1 ຄົນໃນເດືອນ: due ງວດທີ່ຕ້ອງຫັກເດືອນນີ້, balance ຍອດຄ້າງທັງໝົດ */
+export type AdvanceTotals = { due: number; balance: number };
+export const NO_ADVANCE: AdvanceTotals = { due: 0, balance: 0 };
+
+/** ງວດທີ່ຕ້ອງຫັກໃນເດືອນ + ຍອດຄ້າງ ຂອງແຕ່ລະຄົນ → Map(employee_id, ...) — ໃຊ້ຄິດເງິນເດືອນ */
+export const advancesByEmployee = async (employeeIds: number[], period: string, t?: Transaction) => {
+  const result = new Map<number, AdvanceTotals>();
+  if (!employeeIds.length) return result;
+  const rows = await SalaryAdvance.findAll({
+    where: { employee_id: { [Op.in]: employeeIds }, status: ADVANCE_ACTIVE },
+    attributes: ["employee_id", "amount", "repaid", "monthly_deduction", "start_period"],
+    raw: true,
+    transaction: t,
+  });
+  for (const row of rows) {
+    const id = Number(row.employee_id);
+    const left = Math.max(0, Math.round((Number(row.amount) || 0) - (Number(row.repaid) || 0)));
+    const total = result.get(id) ?? { ...NO_ADVANCE };
+    total.balance += left;
+    if (String(row.start_period) <= period) total.due += Math.min(left, Math.round(Number(row.monthly_deduction) || 0));
+    result.set(id, total);
+  }
   return result;
 };

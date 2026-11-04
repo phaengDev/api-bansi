@@ -11,6 +11,7 @@ import { actorOf, decodeId, sendError, toDateOnly } from "../bansi/bansiHelpers"
 import { profileUrl } from "./hrHelpers";
 import { selfEmployee } from "./attendanceController";
 import { notify } from "./notificationController";
+import { syncDraftPayroll } from "./payrollController";
 import {
   BY_HR, HHMM, PRESENT, atLao, clockOf, employedOn, findCompany, holidaysBetween, isWorkday, lateEarlyOf, nowLao, todayLao, workRulesOf,
 } from "./workCalendar";
@@ -254,6 +255,7 @@ export const approveCorrection = async (req: Request<{ id: string }>, res: Respo
     await row.update({ status: APPROVED, review_note: note, reviewedbyid: actor, reviewedAt: new Date(), updatedAt: new Date() }, { transaction: t });
     await t.commit();
     done = true;
+    await syncDraftPayroll(date.slice(0, 7), [Number(row.employee_id)]);
     await notify([{
       employee_id: Number(row.employee_id),
       type: "attendance",

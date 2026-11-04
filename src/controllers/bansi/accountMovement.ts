@@ -29,7 +29,11 @@ export type MovementSource =
   | "AP_PAYMENT"
   | "AP_PAYMENT_CANCEL"
   | "PAYROLL"
-  | "PAYROLL_CANCEL";
+  | "PAYROLL_CANCEL"
+  | "ADVANCE"
+  | "ADVANCE_CANCEL"
+  | "ADVANCE_REPAY"
+  | "ADVANCE_REPAY_CANCEL";
 
 type MoveOptions = {
   direction: typeof MOVE_IN | typeof MOVE_OUT;

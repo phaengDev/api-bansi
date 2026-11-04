@@ -8,6 +8,8 @@ import { autoSync } from "../utils/autoSync";
  * [{ upto, rate }] ຂັ້ນສຸດທ້າຍ upto = null), ເງິນເດືອນສູງສຸດທີ່ຄ່າລ່ວງເວລາບໍ່ເສຍອາກອນ (0 = ເສຍທຸກຄົນ),
  * ນາທີຜ່ອນຜັນມາຊ້າ/ອອກກ່ອນ ແລະ ຫັກຂາດວຽກ/ມາຊ້າ ອັດຕະໂນມັດ ຫຼື ບໍ່; ຄ່າລ່ວງເວລາ (OT): ຊົ່ວໂມງເຮັດວຽກຕໍ່ມື້
  * (ຄິດຄ່າແຮງຕໍ່ຊົ່ວໂມງ) ແລະ % ຂອງຄ່າແຮງຕໍ່ຊົ່ວໂມງ ຕາມປະເພດ OT (tbl_overtime.kind). ຍັງບໍ່ມີແຖວ = ໃຊ້ຄ່າເລີ່ມຕົ້ນ (hr/payrollRules.ts)
+ * ເບີກລ່ວງໜ້າ: advance_enabled (ພະນັກງານຂໍຜ່ານ app ໄດ້ບໍ່), advance_max_percent (% ຂອງເງິນເດືອນພື້ນຖານ, 0 = ບໍ່ຈຳກັດ), advance_max_installments.
+ * budget_category_id = ໝວດລາຍຈ່າຍທີ່ເງິນເດືອນນັບເຂົ້າງົບປະມານ (null = ບໍ່ນັບ)
  */
 class PayrollSetting extends Model {
   public _uuid!: number;
@@ -26,6 +28,10 @@ class PayrollSetting extends Model {
   public ot_rate_night!: string;
   public ot_rate_dayoff!: string;
   public ot_rate_dayoff_night!: string;
+  public advance_enabled!: number;
+  public advance_max_percent!: string;
+  public advance_max_installments!: number;
+  public budget_category_id!: number | null;
   public updatedbyid!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
@@ -112,6 +118,22 @@ PayrollSetting.init(
       allowNull: false,
       defaultValue: 300
     },
+    advance_enabled: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 1
+    },
+    advance_max_percent: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 50
+    },
+    advance_max_installments: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 3
+    },
+    budget_category_id: DataTypes.INTEGER,
     updatedbyid: DataTypes.INTEGER,
     createdAt: {
       type: DataTypes.DATE,

@@ -1,0 +1,581 @@
+import { Request, Response } from "express";
+import moment from "moment";
+import { Op, Transaction } from "sequelize";
+import Task from "../../models/task";
+import { TaskAssignee, TaskItem, TaskProject, TaskStar } from "../../models/taskParts";
+import Employee from "../../models/employee";
+import Users from "../../models/userModel";
+import { actorOf, decodeId, sendError, toDateOnly } from "../bansi/bansiHelpers";
+import { currentUser, hasPermission } from "../../middleware/permission";
+import { selfEmployee } from "./attendanceController";
+import { profileUrl } from "./hrHelpers";
+import { notify } from "./notificationController";
+import { WORKING, todayLao } from "./workCalendar";
+
+/**
+ * ມອບໝາຍວຽກ:
+ * - HR / ຫົວໜ້າ (ເວັບ): POST /task/fetch, GET /task/:id, POST /task/create, PUT /task/:id, PUT /task/status/:id,
+ *   POST /task/bulk { ids, action: status | archive | unarchive | delete }, PUT /task/star/:id, PUT /task/item/:id,
+ *   ໂປຣເຈັກ /task/project/*
+ * - ພະນັກງານ (app): GET /task/me, PUT /task/me/status/:id, PUT /task/me/item/:id — ສະເພາະວຽກທີ່ຕົນເອງຮັບຜິດຊອບ
+ * ມອບໝາຍ (ສ້າງ / ເພີ່ມຄົນ) = ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍມືຖືຂອງຜູ້ຮັບຜິດຊອບທັນທີ
+ */
+
+export const TASK_PENDING = 1;
+export const TASK_DOING = 2;
+export const TASK_DONE = 3;
+const STATUSES = [TASK_PENDING, TASK_DOING, TASK_DONE];
+const PRIORITIES = [1, 2, 3];
+const MAX_ASSIGNEES = 50;
+const MAX_ITEMS = 50;
+const COLOR = /^#[0-9a-f]{6}$/i;
+
+const STATUS_TEXT: Record<number, string> = { 1: "ລໍຖ້າດຳເນີນການ", 2: "ກຳລັງດຳເນີນການ", 3: "ສຳເລັດແລ້ວ" };
+const PRIORITY_TEXT: Record<number, string> = { 1: "", 2: "ສຳຄັນ", 3: "ດ່ວນ" };
+
+const employeeInclude = {
+  model: Employee,
+  as: "employee",
+  attributes: ["_uuid", "emp_code", "first_name", "last_name", "profile", "work_status"],
+};
+const projectInclude = { model: TaskProject, as: "project", attributes: ["_uuid", "name", "color", "status"] };
+const assigneeInclude = { model: TaskAssignee, as: "assignees", attributes: ["employee_id", "is_lead"], include: [employeeInclude] };
+const itemOrder: any = [[{ model: TaskItem, as: "items" }, "sort", "ASC"], [{ model: TaskItem, as: "items" }, "_uuid", "ASC"]];
+
+const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max) || null;
+const dayText = (date: string) => moment(date).format("DD/MM/YYYY");
+const isOverdue = (r: { status: unknown; due_date: unknown }, today: string) =>
+  !!r.due_date && Number(r.status) !== TASK_DONE && String(r.due_date) < today;
+
+/** ວຽກ → JSON: ຜູ້ຮັບຜິດຊອບ (ຫົວໜ້າວຽກກ່ອນ), ຈຳນວນລາຍການຍ່ອຍ, ດາວ, ເກີນກຳນົດ; withItems = ສົ່ງລາຍການຍ່ອຍທັງໝົດນຳ */
+const present = (row: Task, today: string, starred = false, withItems = false) => {
+  const { assignees = [], items = [], ...r }: any = row.get({ plain: true });
+  return {
+    ...r,
+    assignees: assignees
+      .map((a: any) => ({
+        employee_id: a.employee_id,
+        is_lead: Number(a.is_lead) === 1,
+        emp_code: a.employee?.emp_code ?? "",
+        first_name: a.employee?.first_name ?? "",
+        last_name: a.employee?.last_name ?? null,
+        work_status: a.employee?.work_status ?? null,
+        profile_url: profileUrl(a.employee?.profile),
+      }))
+      .sort((a: any, b: any) => Number(b.is_lead) - Number(a.is_lead)),
+    items_total: items.length,
+    items_done: items.filter((i: any) => Number(i.done) === 1).length,
+    ...(withItems ? { items: items.map((i: any) => ({ _uuid: i._uuid, title: i.title, done: Number(i.done) === 1, done_at: i.done_at, done_by: i.done_by })) } : {}),
+    starred,
+    overdue: isOverdue(r, today),
+  };
+};
+
+const findFull = (id: number, t?: Transaction) =>
+  Task.findByPk(id, { include: [projectInclude, assigneeInclude, { model: TaskItem, as: "items" }], order: itemOrder, transaction: t });
+
+const starredBy = async (userId: number, taskIds?: number[]) => {
+  if (!userId) return new Set<number>();
+  const rows = await TaskStar.findAll({
+    where: { user_id: userId, ...(taskIds ? { task_id: { [Op.in]: taskIds } } : {}) },
+    attributes: ["task_id"],
+    raw: true,
+  });
+  return new Set(rows.map((r: any) => Number(r.task_id)));
+};
+
+const reply = async (req: Request, res: Response, id: number, message: string) => {
+  const row = await findFull(id);
+  const stars = await starredBy(Number(actorOf(req)), [id]);
+  res.status(200).json({ message, data: row && present(row, todayLao(), stars.has(id), true) });
+};
+
+/** ແຈ້ງຜູ້ຮັບຜິດຊອບວ່າໄດ້ຮັບມອບໝາຍວຽກ — ເດັ້ງຂຶ້ນຈໍມືຖື */
+const notifyAssigned = async (task: Task, employeeIds: number[], actor: number | null) => {
+  if (!employeeIds.length) return;
+  const priority = PRIORITY_TEXT[Number(task.priority)];
+  await notify(employeeIds.map((employee_id) => ({
+    employee_id,
+    type: "task",
+    title: `${priority ? `[${priority}] ` : ""}ທ່ານໄດ້ຮັບມອບໝາຍວຽກ 📋`,
+    body: [task.title, task.due_date ? `ກຳນົດສົ່ງ ${dayText(task.due_date)}` : null].filter(Boolean).join("\n"),
+    ref: `task:${task._uuid}`,
+    createdbyid: actor,
+    push: true,
+  })));
+};
+
+// ================= ໂປຣເຈັກ
+
+/** GET /task/project/fetch — ທຸກໂປຣເຈັກ (ລວມທີ່ປິດ) + ຈຳນວນວຽກທີ່ໃຊ້ */
+export const getTaskProjects = async (_req: Request, res: Response) => {
+  try {
+    const [rows, used] = await Promise.all([
+      TaskProject.findAll({ order: [["status", "DESC"], ["sort", "ASC"], ["name", "ASC"]] }),
+      Task.count({ where: { project_id: { [Op.ne]: null } }, group: ["project_id"] }) as unknown as Promise<{ project_id: number; count: number }[]>,
+    ]);
+    const counts = new Map(used.map((u) => [Number(u.project_id), Number(u.count)]));
+    res.status(200).json({ data: rows.map((r) => ({ ...r.get({ plain: true }), tasks: counts.get(r._uuid) ?? 0 })) });
+  } catch (error) {
+    sendError(res, error, "Error getting task projects");
+  }
+};
+
+const projectInput = (body: any) => {
+  const name = text(body.name, 150);
+  if (!name) return { error: "ກະລຸນາປ້ອນຊື່ໂປຣເຈັກ" };
+  const color = String(body.color ?? "#1580be");
+  if (!COLOR.test(color)) return { error: "ສີບໍ່ຖືກຕ້ອງ" };
+  return { name, color, sort: Number(body.sort) || 0, status: Number(body.status ?? 1) === 0 ? 0 : 1 };
+};
+
+/** POST /task/project/create { name, color } */
+export const createTaskProject = async (req: Request, res: Response) => {
+  try {
+    const input = projectInput(req.body || {});
+    if ("error" in input) {
+      res.status(400).json({ message: input.error });
+      return;
+    }
+    if (await TaskProject.count({ where: { name: input.name } })) {
+      res.status(400).json({ message: `ໂປຣເຈັກ "${input.name}" ມີແລ້ວ` });
+      return;
+    }
+    res.status(200).json({ message: "Successfully created task project", data: await TaskProject.create(input) });
+  } catch (error) {
+    sendError(res, error, "Error creating task project");
+  }
+};
+
+/** PUT /task/project/:id { name, color, status } */
+export const updateTaskProject = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const row = await TaskProject.findByPk(Number(decodeId(req)));
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບໂປຣເຈັກ" });
+      return;
+    }
+    const input = projectInput({ ...row.get({ plain: true }), ...(req.body || {}) });
+    if ("error" in input) {
+      res.status(400).json({ message: input.error });
+      return;
+    }
+    if (await TaskProject.count({ where: { name: input.name, _uuid: { [Op.ne]: row._uuid } } })) {
+      res.status(400).json({ message: `ໂປຣເຈັກ "${input.name}" ມີແລ້ວ` });
+      return;
+    }
+    await row.update({ ...input, updatedAt: new Date() });
+    res.status(200).json({ message: "Successfully updated task project", data: row });
+  } catch (error) {
+    sendError(res, error, "Error updating task project");
+  }
+};
+
+/** DELETE /task/project/:id — ມີວຽກໃຊ້ຢູ່ = ປິດແທນການລຶບ (ວຽກເກົ່າຍັງສະແດງຊື່ໂປຣເຈັກ) */
+export const deleteTaskProject = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const row = await TaskProject.findByPk(Number(decodeId(req)));
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບໂປຣເຈັກ" });
+      return;
+    }
+    if (await Task.count({ where: { project_id: row._uuid } })) {
+      await row.update({ status: 0, updatedAt: new Date() });
+      res.status(200).json({ message: "ມີວຽກໃຊ້ໂປຣເຈັກນີ້ຢູ່ — ປິດໃຊ້ງານແທນການລຶບ", data: row });
+      return;
+    }
+    await row.destroy();
+    res.status(200).json({ message: "Successfully deleted task project" });
+  } catch (error) {
+    sendError(res, error, "Error deleting task project");
+  }
+};
+
+// ================= ວຽກ (HR)
+
+/**
+ * POST /task/fetch { archived?: 0 | 1 } — ທຸກວຽກ (ຄົ້ນຫາ / ຈັດລຽງ / ແບ່ງໜ້າ ເຮັດຢູ່ໜ້າເວັບ) + summary ຂອງວຽກທີ່ບໍ່ໄດ້ເກັບເຂົ້າຄັງ:
+ * total, pending, doing, done, overdue, archived
+ */
+export const getTasks = async (req: Request, res: Response) => {
+  try {
+    const archived = Number(req.body?.archived) === 1 ? 1 : 0;
+    const today = todayLao();
+    const [rows, open, archivedCount] = await Promise.all([
+      Task.findAll({
+        where: { archived },
+        include: [projectInclude, assigneeInclude, { model: TaskItem, as: "items", attributes: ["_uuid", "done"] }],
+        order: [["createdAt", "DESC"], ["_uuid", "DESC"]],
+      }),
+      Task.findAll({ where: { archived: 0 }, attributes: ["status", "due_date"], raw: true }),
+      Task.count({ where: { archived: 1 } }),
+    ]);
+    const stars = await starredBy(Number(actorOf(req)));
+    const countOf = (status: number) => open.filter((r: any) => Number(r.status) === status).length;
+    res.status(200).json({
+      data: rows.map((r) => present(r, today, stars.has(r._uuid))),
+      summary: {
+        total: open.length,
+        pending: countOf(TASK_PENDING),
+        doing: countOf(TASK_DOING),
+        done: countOf(TASK_DONE),
+        overdue: open.filter((r: any) => isOverdue(r, today)).length,
+        archived: archivedCount,
+      },
+      today,
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting tasks");
+  }
+};
+
+/** GET /task/:id — ລາຍລະອຽດ + ລາຍການຍ່ອຍ + ຊື່ຜູ້ສ້າງ */
+export const getTask = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const id = Number(decodeId(req));
+    const row = await findFull(id);
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບວຽກ" });
+      return;
+    }
+    const [stars, creator] = await Promise.all([
+      starredBy(Number(actorOf(req)), [id]),
+      row.createdbyid ? Users.findByPk(row.createdbyid, { attributes: ["user_name"] }) : null,
+    ]);
+    res.status(200).json({ data: { ...present(row, todayLao(), stars.has(id), true), createdby_name: creator?.user_name ?? null } });
+  } catch (error) {
+    sendError(res, error, "Error getting task");
+  }
+};
+
+type ItemInput = { _uuid: number | null; title: string; done: boolean };
+type TaskInput = {
+  values: { title: string; detail: string | null; project_id: number | null; priority: number; start_date: string | null; due_date: string | null };
+  assigneeIds: number[];
+  leadId: number;
+  items: ItemInput[];
+};
+
+/** body ຂອງຟອມ → ຄ່າທີ່ກວດແລ້ວ; currentIds = ຜູ້ຮັບຜິດຊອບເດີມ (ຄົນທີ່ລາອອກແລ້ວ ຍັງຢູ່ໃນວຽກເກົ່າໄດ້) */
+const parseTask = async (body: any, currentIds: number[] = []): Promise<TaskInput | { error: string }> => {
+  const title = text(body.title, 255);
+  if (!title) return { error: "ກະລຸນາປ້ອນຊື່ວຽກ" };
+  const detail = String(body.detail ?? "").trim().slice(0, 5000) || null;
+  const priority = Number(body.priority ?? 1);
+  if (!PRIORITIES.includes(priority)) return { error: "ຄວາມສຳຄັນບໍ່ຖືກຕ້ອງ" };
+
+  const projectId = Number(body.project_id) || null;
+  if (projectId && !(await TaskProject.count({ where: { _uuid: projectId } }))) return { error: "ບໍ່ພົບໂປຣເຈັກ" };
+
+  const startDate = body.start_date ? toDateOnly(body.start_date) : null;
+  const dueDate = body.due_date ? toDateOnly(body.due_date) : null;
+  if ((body.start_date && !startDate) || (body.due_date && !dueDate)) return { error: "ວັນທີບໍ່ຖືກຕ້ອງ" };
+  if (startDate && dueDate && dueDate < startDate) return { error: "ກຳນົດສົ່ງຕ້ອງບໍ່ກ່ອນວັນທີເລີ່ມ" };
+
+  const assigneeIds = [...new Set((Array.isArray(body.assignee_ids) ? body.assignee_ids : []).map(Number).filter((n: number) => n > 0))] as number[];
+  if (!assigneeIds.length) return { error: "ກະລຸນາເລືອກຜູ້ຮັບຜິດຊອບຢ່າງໜ້ອຍ 1 ຄົນ" };
+  if (assigneeIds.length > MAX_ASSIGNEES) return { error: `ຜູ້ຮັບຜິດຊອບໄດ້ບໍ່ເກີນ ${MAX_ASSIGNEES} ຄົນ` };
+  const employees = await Employee.findAll({ where: { _uuid: { [Op.in]: assigneeIds } }, attributes: ["_uuid", "emp_code", "first_name", "work_status"] });
+  if (employees.length !== assigneeIds.length) return { error: "ບໍ່ພົບພະນັກງານບາງຄົນ" };
+  const resigned = employees.find((e) => Number(e.work_status) !== WORKING && !currentIds.includes(e._uuid));
+  if (resigned) return { error: `${resigned.emp_code} ${resigned.first_name} ລາອອກແລ້ວ — ມອບໝາຍວຽກໃໝ່ບໍ່ໄດ້` };
+  const lead = Number(body.lead_id);
+  const leadId = assigneeIds.includes(lead) ? lead : assigneeIds[0];
+
+  const rawItems: any[] = Array.isArray(body.items) ? body.items : [];
+  if (rawItems.length > MAX_ITEMS) return { error: `ລາຍການຍ່ອຍໄດ້ບໍ່ເກີນ ${MAX_ITEMS} ລາຍການ` };
+  const items: ItemInput[] = [];
+  for (const item of rawItems) {
+    const itemTitle = text(item?.title, 255);
+    if (!itemTitle) continue;
+    items.push({ _uuid: Number(item?._uuid) || null, title: itemTitle, done: item?.done === true || Number(item?.done) === 1 });
+  }
+
+  return {
+    values: { title, detail, project_id: projectId, priority, start_date: startDate, due_date: dueDate },
+    assigneeIds,
+    leadId,
+    items,
+  };
+};
+
+/** ບັນທຶກຜູ້ຮັບຜິດຊອບໃໝ່ທັງໝົດ — ຄືນຄົນທີ່ເພີ່ມເຂົ້າມາໃໝ່ (ໄວ້ແຈ້ງເຕືອນ) */
+const syncAssignees = async (taskId: number, ids: number[], leadId: number, t: Transaction) => {
+  const existing = await TaskAssignee.findAll({ where: { task_id: taskId }, transaction: t });
+  const have = new Set(existing.map((a) => Number(a.employee_id)));
+  await TaskAssignee.destroy({ where: { task_id: taskId, employee_id: { [Op.notIn]: ids } }, transaction: t });
+  for (const a of existing) {
+    if (ids.includes(Number(a.employee_id))) await a.update({ is_lead: Number(a.employee_id) === leadId ? 1 : 0 }, { transaction: t });
+  }
+  const added = ids.filter((id) => !have.has(id));
+  if (added.length) {
+    await TaskAssignee.bulkCreate(added.map((employee_id) => ({ task_id: taskId, employee_id, is_lead: employee_id === leadId ? 1 : 0 })), { transaction: t });
+  }
+  return added;
+};
+
+/** ບັນທຶກລາຍການຍ່ອຍ — ມີ _uuid = ແກ້, ບໍ່ມີ = ເພີ່ມ, ບໍ່ສົ່ງມາ = ລຶບ; ລຳດັບຕາມທີ່ສົ່ງ */
+const syncItems = async (taskId: number, items: ItemInput[], t: Transaction) => {
+  const existing = await TaskItem.findAll({ where: { task_id: taskId }, transaction: t });
+  const byId = new Map(existing.map((i) => [i._uuid, i]));
+  const keep = new Set<number>();
+  for (const [sort, item] of items.entries()) {
+    const current = item._uuid ? byId.get(item._uuid) : undefined;
+    if (current) {
+      keep.add(current._uuid);
+      const changed = Number(current.done) === 1 !== item.done;
+      await current.update({
+        title: item.title,
+        sort,
+        ...(changed ? { done: item.done ? 1 : 0, done_at: item.done ? new Date() : null, done_by: null } : {}),
+        updatedAt: new Date(),
+      }, { transaction: t });
+    } else {
+      await TaskItem.create({ task_id: taskId, title: item.title, sort, done: item.done ? 1 : 0, done_at: item.done ? new Date() : null }, { transaction: t });
+    }
+  }
+  const removed = existing.filter((i) => !keep.has(i._uuid)).map((i) => i._uuid);
+  if (removed.length) await TaskItem.destroy({ where: { _uuid: { [Op.in]: removed } }, transaction: t });
+};
+
+/** POST /task/create { title, detail, project_id, priority, start_date, due_date, assignee_ids, lead_id, items: [{ title }] } */
+export const createTask = async (req: Request, res: Response) => {
+  const t = await Task.sequelize!.transaction();
+  try {
+    const input = await parseTask(req.body || {});
+    if ("error" in input) {
+      await t.rollback();
+      res.status(400).json({ message: input.error });
+      return;
+    }
+    const actor = Number(actorOf(req)) || null;
+    const row = await Task.create({ ...input.values, status: TASK_PENDING, createdbyid: actor, updatedbyid: actor }, { transaction: t });
+    const added = await syncAssignees(row._uuid, input.assigneeIds, input.leadId, t);
+    await syncItems(row._uuid, input.items, t);
+    await t.commit();
+    await notifyAssigned(row, added, actor);
+    await reply(req, res, row._uuid, `ມອບໝາຍວຽກແລ້ວ — ແຈ້ງເຕືອນ ${added.length} ຄົນ`);
+  } catch (error) {
+    await t.rollback();
+    sendError(res, error, "Error creating task");
+  }
+};
+
+/** PUT /task/:id — ຄືກັບ create (+ status ໄດ້); ຄົນທີ່ເພີ່ມເຂົ້າມາໃໝ່ໄດ້ຮັບແຈ້ງເຕືອນ */
+export const updateTask = async (req: Request<{ id: string }>, res: Response) => {
+  const t = await Task.sequelize!.transaction();
+  const fail = async (code: number, message: string) => {
+    await t.rollback();
+    res.status(code).json({ message });
+  };
+  try {
+    const row = await Task.findByPk(Number(decodeId(req)), { transaction: t, lock: t.LOCK.UPDATE });
+    if (!row) return fail(404, "ບໍ່ພົບວຽກ");
+    const current = await TaskAssignee.findAll({ where: { task_id: row._uuid }, attributes: ["employee_id"], raw: true, transaction: t });
+    const input = await parseTask(req.body || {}, current.map((a: any) => Number(a.employee_id)));
+    if ("error" in input) return fail(400, input.error);
+    const status = req.body?.status === undefined ? Number(row.status) : Number(req.body.status);
+    if (!STATUSES.includes(status)) return fail(400, "ສະຖານະບໍ່ຖືກຕ້ອງ");
+    const actor = Number(actorOf(req)) || null;
+    await row.update({ ...input.values, ...statusFields(row, status), updatedbyid: actor, updatedAt: new Date() }, { transaction: t });
+    const added = await syncAssignees(row._uuid, input.assigneeIds, input.leadId, t);
+    await syncItems(row._uuid, input.items, t);
+    await t.commit();
+    await notifyAssigned(row, added, actor);
+    await reply(req, res, row._uuid, added.length ? `ບັນທຶກແລ້ວ — ແຈ້ງເຕືອນຄົນທີ່ເພີ່ມໃໝ່ ${added.length} ຄົນ` : "Successfully updated task");
+  } catch (error) {
+    await t.rollback();
+    sendError(res, error, "Error updating task");
+  }
+};
+
+/** ສະຖານະ + ເວລາສຳເລັດ (ສຳເລັດ = ບັນທຶກເວລາ, ກັບໄປເຮັດຕໍ່ = ລ້າງ) */
+const statusFields = (row: Task, status: number) => ({
+  status,
+  done_at: status === TASK_DONE ? row.done_at ?? new Date() : null,
+});
+
+/** PUT /task/status/:id { status } — ປ່ຽນສະຖານະຈາກລາຍການ */
+export const updateTaskStatus = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const row = await Task.findByPk(Number(decodeId(req)));
+    const status = Number(req.body?.status);
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບວຽກ" });
+      return;
+    }
+    if (!STATUSES.includes(status)) {
+      res.status(400).json({ message: "ສະຖານະບໍ່ຖືກຕ້ອງ" });
+      return;
+    }
+    await row.update({ ...statusFields(row, status), updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
+    await reply(req, res, row._uuid, "Successfully updated task status");
+  } catch (error) {
+    sendError(res, error, "Error updating task status");
+  }
+};
+
+/** PUT /task/star/:id — ດາວ ເປີດ / ປິດ (ຂອງຜູ້ໃຊ້ທີ່ login) */
+export const toggleTaskStar = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const taskId = Number(decodeId(req));
+    const userId = Number(actorOf(req));
+    if (!userId || !(await Task.count({ where: { _uuid: taskId } }))) {
+      res.status(404).json({ message: "ບໍ່ພົບວຽກ" });
+      return;
+    }
+    const removed = await TaskStar.destroy({ where: { user_id: userId, task_id: taskId } });
+    if (!removed) await TaskStar.create({ user_id: userId, task_id: taskId });
+    res.status(200).json({ message: "Successfully updated star", starred: !removed });
+  } catch (error) {
+    sendError(res, error, "Error updating task star");
+  }
+};
+
+/** POST /task/bulk { ids, action: "status" | "archive" | "unarchive" | "delete", status? } — ຫຼາຍວຽກພ້ອມກັນ */
+export const bulkTasks = async (req: Request, res: Response) => {
+  const t = await Task.sequelize!.transaction();
+  const fail = async (message: string) => {
+    await t.rollback();
+    res.status(400).json({ message });
+  };
+  try {
+    const body = req.body || {};
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n: number) => n > 0))] as number[];
+    if (!ids.length) return fail("ກະລຸນາເລືອກວຽກຢ່າງໜ້ອຍ 1 ລາຍການ");
+    const actor = Number(actorOf(req)) || null;
+    const where = { _uuid: { [Op.in]: ids } };
+    const action = String(body.action ?? "");
+    if (action === "status") {
+      const status = Number(body.status);
+      if (!STATUSES.includes(status)) return fail("ສະຖານະບໍ່ຖືກຕ້ອງ");
+      const rows = await Task.findAll({ where, transaction: t });
+      for (const row of rows) await row.update({ ...statusFields(row, status), updatedbyid: actor, updatedAt: new Date() }, { transaction: t });
+    } else if (action === "archive" || action === "unarchive") {
+      await Task.update({ archived: action === "archive" ? 1 : 0, updatedbyid: actor, updatedAt: new Date() } as any, { where, transaction: t });
+    } else if (action === "delete") {
+      if (!hasPermission(await currentUser(req), "deletes")) {
+        await t.rollback();
+        res.status(403).json({ message: "ທ່ານບໍ່ມີສິດລຶບຂໍ້ມູນ" });
+        return;
+      }
+      for (const model of [TaskAssignee, TaskItem, TaskStar] as const) await (model as any).destroy({ where: { task_id: { [Op.in]: ids } }, transaction: t });
+      await Task.destroy({ where, transaction: t });
+    } else {
+      return fail("ການກະທຳບໍ່ຖືກຕ້ອງ");
+    }
+    await t.commit();
+    res.status(200).json({ message: `Successfully updated ${ids.length} tasks`, count: ids.length });
+  } catch (error) {
+    await t.rollback();
+    sendError(res, error, "Error updating tasks");
+  }
+};
+
+/**
+ * ໝາຍລາຍການຍ່ອຍ ສຳເລັດ / ບໍ່ສຳເລັດ — ໝາຍອັນທຳອິດຕອນວຽກຍັງລໍຖ້າ = ຍ້າຍເປັນ "ກຳລັງດຳເນີນການ" ໃຫ້ເອງ
+ * (ສຳເລັດທັງວຽກ ຍັງຕ້ອງກົດເອງ). doneBy = ພະນັກງານທີ່ໝາຍ (null = HR)
+ */
+const setItemDone = async (item: TaskItem, done: boolean, doneBy: number | null) => {
+  await item.update({ done: done ? 1 : 0, done_at: done ? new Date() : null, done_by: done ? doneBy : null, updatedAt: new Date() });
+  if (done) await Task.update({ status: TASK_DOING, updatedAt: new Date() } as any, { where: { _uuid: item.task_id, status: TASK_PENDING } });
+};
+
+/** PUT /task/item/:id { done } — HR ໝາຍລາຍການຍ່ອຍ */
+export const updateTaskItem = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const item = await TaskItem.findByPk(Number(decodeId(req)));
+    if (!item) {
+      res.status(404).json({ message: "ບໍ່ພົບລາຍການຍ່ອຍ" });
+      return;
+    }
+    await setItemDone(item, req.body?.done === true || Number(req.body?.done) === 1, null);
+    await reply(req, res, item.task_id, "Successfully updated task item");
+  } catch (error) {
+    sendError(res, error, "Error updating task item");
+  }
+};
+
+// ================= ພະນັກງານ (app ມືຖື)
+
+/** ວຽກທີ່ຄົນນີ້ຮັບຜິດຊອບ (ບໍ່ລວມທີ່ເກັບເຂົ້າຄັງ) — null = ບໍ່ແມ່ນວຽກຂອງຄົນນີ້ */
+const myTask = async (employeeId: number, taskId: number) => {
+  const assigned = await TaskAssignee.count({ where: { task_id: taskId, employee_id: employeeId } });
+  if (!assigned) return null;
+  return Task.findOne({ where: { _uuid: taskId, archived: 0 } });
+};
+
+/** GET /task/me — ວຽກທີ່ໄດ້ຮັບມອບໝາຍ (ຍັງບໍ່ສຳເລັດກ່ອນ: ເກີນກຳນົດ → ກຳນົດສົ່ງໃກ້ສຸດ) + ລາຍການຍ່ອຍ + ຈຳນວນທີ່ຍັງຄ້າງ */
+export const getMyTasks = async (req: Request, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const mine = await TaskAssignee.findAll({ where: { employee_id: self.employee._uuid }, attributes: ["task_id"], raw: true });
+    const ids = mine.map((a: any) => Number(a.task_id));
+    const rows = ids.length
+      ? await Task.findAll({
+        where: { _uuid: { [Op.in]: ids }, archived: 0 },
+        include: [projectInclude, assigneeInclude, { model: TaskItem, as: "items" }],
+        order: itemOrder,
+      })
+      : [];
+    const today = todayLao();
+    const data = rows.map((r) => present(r, today, false, true));
+    const rank = (d: any) => (Number(d.status) === TASK_DONE ? 2 : d.overdue ? 0 : 1);
+    data.sort((a, b) => rank(a) - rank(b) || String(a.due_date ?? "9999").localeCompare(String(b.due_date ?? "9999")) || b._uuid - a._uuid);
+    res.status(200).json({ data, open: data.filter((d) => Number(d.status) !== TASK_DONE).length, today });
+  } catch (error) {
+    sendError(res, error, "Error getting my tasks");
+  }
+};
+
+/** PUT /task/me/status/:id { status } — ພະນັກງານປ່ຽນສະຖານະວຽກຂອງຕົນເອງ */
+export const updateMyTaskStatus = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const row = await myTask(self.employee._uuid, Number(decodeId(req)));
+    const status = Number(req.body?.status);
+    if (!row) {
+      res.status(404).json({ message: "ບໍ່ພົບວຽກ" });
+      return;
+    }
+    if (!STATUSES.includes(status)) {
+      res.status(400).json({ message: "ສະຖານະບໍ່ຖືກຕ້ອງ" });
+      return;
+    }
+    await row.update({ ...statusFields(row, status), updatedAt: new Date() });
+    const saved = await findFull(row._uuid);
+    res.status(200).json({ message: `ປ່ຽນເປັນ "${STATUS_TEXT[status]}" ແລ້ວ`, data: saved && present(saved, todayLao(), false, true) });
+  } catch (error) {
+    sendError(res, error, "Error updating my task status");
+  }
+};
+
+/** PUT /task/me/item/:id { done } — ພະນັກງານໝາຍລາຍການຍ່ອຍຂອງວຽກຕົນເອງ */
+export const updateMyTaskItem = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const self = await selfEmployee(req);
+    if ("code" in self) {
+      res.status(self.code).json({ message: self.message });
+      return;
+    }
+    const item = await TaskItem.findByPk(Number(decodeId(req)));
+    const row = item ? await myTask(self.employee._uuid, item.task_id) : null;
+    if (!item || !row) {
+      res.status(404).json({ message: "ບໍ່ພົບລາຍການຍ່ອຍ" });
+      return;
+    }
+    await setItemDone(item, req.body?.done === true || Number(req.body?.done) === 1, self.employee._uuid);
+    const saved = await findFull(row._uuid);
+    res.status(200).json({ message: "Successfully updated task item", data: saved && present(saved, todayLao(), false, true) });
+  } catch (error) {
+    sendError(res, error, "Error updating my task item");
+  }
+};

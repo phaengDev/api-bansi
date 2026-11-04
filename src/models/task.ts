@@ -1,0 +1,78 @@
+import { DataTypes, Model } from "sequelize";
+import sequelize from "../config/database";
+import { autoSync } from "../utils/autoSync";
+
+/**
+ * ວຽກທີ່ມອບໝາຍ — HR / ຫົວໜ້າ ສ້າງໃນເວັບ, ພະນັກງານທີ່ຮັບຜິດຊອບເຫັນ ແລະ ອັບເດດໃນ app.
+ * status: 1 ລໍຖ້າດຳເນີນການ, 2 ກຳລັງດຳເນີນການ, 3 ສຳເລັດແລ້ວ. priority: 1 ປົກກະຕິ, 2 ສຳຄັນ, 3 ດ່ວນ.
+ * archived = 1 ເກັບເຂົ້າຄັງ (ບໍ່ສະແດງໃນລາຍການຫຼັກ / app). ຜູ້ຮັບຜິດຊອບ tbl_task_assignee, ລາຍການຍ່ອຍ tbl_task_item
+ */
+class Task extends Model {
+  public _uuid!: number;
+  public title!: string;
+  public detail!: string | null;
+  public project_id!: number | null;
+  public status!: number;
+  public priority!: number;
+  public start_date!: string | null;
+  public due_date!: string | null;
+  public archived!: number;
+  public done_at!: Date | null;
+  public createdbyid!: number | null;
+  public updatedbyid!: number | null;
+  public createdAt!: Date;
+  public updatedAt!: Date;
+}
+
+Task.init(
+  {
+    _uuid: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    title: {
+      type: DataTypes.STRING(255),
+      allowNull: false
+    },
+    detail: DataTypes.TEXT,
+    project_id: DataTypes.INTEGER,
+    status: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 1
+    },
+    priority: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 1
+    },
+    start_date: DataTypes.DATEONLY,
+    due_date: DataTypes.DATEONLY,
+    archived: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 0
+    },
+    done_at: DataTypes.DATE,
+    createdbyid: DataTypes.INTEGER,
+    updatedbyid: DataTypes.INTEGER,
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+  },
+  {
+    sequelize,
+    modelName: "Task",
+    tableName: "tbl_task",
+    timestamps: true
+  }
+);
+
+autoSync(Task);
+export default Task;

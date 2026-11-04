@@ -185,6 +185,12 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_overtime", "idx_overtime_date", ["work_date", "employee_id"], false],
   ["tbl_payroll", "uq_payroll_period", ["period"], true],
   ["tbl_payroll_line", "uq_payroll_line_employee", ["payroll_id", "employee_id"], true],
+  // ມອບໝາຍວຽກ (controllers/hr/taskController.ts)
+  ["tbl_task", "idx_task_archived_status", ["archived", "status"], false],
+  ["tbl_task_assignee", "uq_task_assignee", ["task_id", "employee_id"], true],
+  ["tbl_task_assignee", "idx_task_assignee_employee", ["employee_id"], false],
+  ["tbl_task_item", "idx_task_item_task", ["task_id"], false],
+  ["tbl_task_star", "uq_task_star", ["user_id", "task_id"], true],
 ];
 
 /** [ຕາຕະລາງ, ຊື່ constraint, ຖັນ, ຕາຕະລາງປາຍທາງ, ຖັນປາຍທາງ] — sql/fix_tbl_transfer_money_fk.sql */
@@ -249,6 +255,8 @@ const ACCOUNT_MENUS = [
   { name_la: "ເງິນເດືອນ", name_en: "Payroll", name_cn: "工资", icons: "fa-solid fa-money-check-dollar", path: "/hr/payroll" },
   // ແຍກອອກຈາກໜ້າຕ່າງ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ (2026-10-13) — DB ທີ່ມີເມນູແລ້ວ ໄດ້ແຖວນີ້ຕໍ່ທ້າຍ (ລຳດັບ _uuid)
   { name_la: "ພະນັກງານ", name_en: "Employees", name_cn: "员工", icons: "fa-solid fa-id-card", path: "/hr/employees" },
+  // ມອບໝາຍວຽກ (2026-11-04) — ເພີ່ມຕໍ່ທ້າຍໃນ DB ທີ່ມີເມນູແລ້ວ
+  { name_la: "ມອບໝາຍວຽກ", name_en: "Task Assignment", name_cn: "任务分配", icons: "fa-solid fa-list-check", path: "/hr/tasks" },
   { name_la: "ປະຕິທິນ", name_en: "Calendar", name_cn: "日历", icons: "fa-solid fa-calendar-days", path: "/calendar" },
   { name_la: "ຕັ້ງຄ່າບັນຊີ", name_en: "Accounting Settings", name_cn: "会计设置", icons: "fa-solid fa-gears", path: "/account/setting" },
 ];

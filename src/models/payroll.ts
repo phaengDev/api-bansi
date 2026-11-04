@@ -23,6 +23,7 @@ class Payroll extends Model {
   public total_sso_employer!: string;
   public total_tax!: string;
   public total_other_deduction!: string;
+  public total_advance_deduction!: string;
   public total_net!: string;
   public number!: string | null;
   public pay_date!: string | null;
@@ -72,6 +73,7 @@ Payroll.init(
     total_sso_employer: money(),
     total_tax: money(),
     total_other_deduction: money(),
+    total_advance_deduction: money(),
     total_net: money(),
     number: DataTypes.STRING(30),
     pay_date: DataTypes.DATEONLY,

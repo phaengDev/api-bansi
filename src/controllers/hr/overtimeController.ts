@@ -10,7 +10,8 @@ import { profileUrl } from "./hrHelpers";
 import {
   OT_KINDS, OT_PAY_RATE, OT_PAY_TYPES, loadPayrollSettings, otFixedOf, otRateOf, otTotals,
 } from "./payrollRules";
-import { syncDraftOvertime } from "./payrollController";
+import { syncDraftPayroll } from "./payrollController";
+import { notify } from "./notificationController";
 import { selfEmployee } from "./attendanceController";
 import {
   HHMM, PERIOD, currentPeriod, employedOn, findCompany, holidaysBetween, isWorkday, monthOf, workRulesOf,
@@ -268,7 +269,15 @@ export const createOvertime = async (req: Request, res: Response) => {
 
     const actor = Number(actorOf(req)) || null;
     const data = await Overtime.bulkCreate(ids.map((employee_id) => ({ ...input, employee_id, createdbyid: actor, updatedbyid: actor })));
-    await syncDraftOvertime(input.work_date.slice(0, 7), ids);
+    await syncDraftPayroll(input.work_date.slice(0, 7), ids);
+    await notify(ids.map((employee_id) => ({
+      employee_id,
+      type: "overtime",
+      title: "HR ບັນທຶກ OT ໃຫ້ທ່ານແລ້ວ",
+      body: `ວັນທີ ${moment(input.work_date).format("DD/MM/YYYY")} · ${input.hours} ຊົ່ວໂມງ`,
+      ref: `overtime:${input.work_date}`,
+      createdbyid: actor,
+    })));
     res.status(200).json({ message: `ບັນທຶກ OT ແລ້ວ ${data.length} ຄົນ · ${input.hours} ຊົ່ວໂມງ`, data });
   } catch (error) {
     sendError(res, error, "Error creating overtime");
@@ -296,7 +305,7 @@ export const updateOvertime = async (req: Request<{ id: string }>, res: Response
 
     const before = String(row.work_date).slice(0, 7);
     await row.update({ ...input, updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
-    for (const period of new Set([before, input.work_date.slice(0, 7)])) await syncDraftOvertime(period, [Number(row.employee_id)]);
+    for (const period of new Set([before, input.work_date.slice(0, 7)])) await syncDraftPayroll(period, [Number(row.employee_id)]);
     res.status(200).json({ message: "Successfully updated overtime", data: row });
   } catch (error) {
     sendError(res, error, "Error updating overtime");
@@ -316,7 +325,7 @@ export const deleteOvertime = async (req: Request<{ id: string }>, res: Response
       return;
     }
     await row.destroy();
-    await syncDraftOvertime(String(row.work_date).slice(0, 7), [Number(row.employee_id)]);
+    await syncDraftPayroll(String(row.work_date).slice(0, 7), [Number(row.employee_id)]);
     res.status(200).json({ message: "Successfully deleted overtime" });
   } catch (error) {
     sendError(res, error, "Error deleting overtime");

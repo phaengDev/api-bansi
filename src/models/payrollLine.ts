@@ -7,7 +7,8 @@ import Payroll from "./payroll";
  * ເງິນເດືອນລາຍຄົນຂອງໃບເງິນເດືອນ (UNIQUE payroll_id + employee_id). ຊື່/ພະແນກ/ບັນຊີທະນາຄານ ເກັບເປັນສຳເນົາ
  * ຕອນສ້າງ/ຄິດໄລ່ໃໝ່ (ໃບທີ່ຈ່າຍແລ້ວບໍ່ປ່ຽນຕາມຂໍ້ມູນພະນັກງານ). ສູດຢູ່ controllers/hr/payrollRules.ts:
  * ເງິນເດືອນຕາມວັນເຮັດວຽກ (base_pay) − ຫັກຂາດວຽກ − ຫັກມາຊ້າ + ເງິນອຸດໜູນ + ລ່ວງເວລາ + ໂບນັດ = gross;
- * net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ. ລ່ວງເວລາ (overtime) ຄິດຈາກບັນທຶກ OT (overtime_mode 1) ຫຼື ປ້ອນເອງ (0).
+ * net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ − ຫັກເງິນເບີກ. ລ່ວງເວລາ (overtime) ຄິດຈາກບັນທຶກ OT (overtime_mode 1) ຫຼື ປ້ອນເອງ (0).
+ * ຫັກເງິນເບີກລ່ວງໜ້າ (advance_deduction): advance_mode 1 ຕາມງວດຂອງເດືອນ (advance_due), 0 ປ້ອນເອງ (ບໍ່ເກີນ advance_balance = ຍອດຄ້າງກ່ອນຫັກ).
  * deduction_mode / sso_mode / tax_mode = ນະໂຍບາຍສະເພາະຄົນຂອງແຕ່ລະກຸ່ມການຫັກ:
  * 1 ຕາມບໍລິສັດ, 3 ຫັກສະເໝີ, 2 ບໍ່ຫັກ, 0 ປ້ອນເອງ (MODE_* ໃນ payrollRules.ts)
  */
@@ -48,6 +49,10 @@ class PayrollLine extends Model {
   public taxable!: string;
   public tax!: string;
   public other_deduction!: string;
+  public advance_due!: string;
+  public advance_balance!: string;
+  public advance_deduction!: string;
+  public advance_mode!: number;
   public net!: string;
   public deduction_mode!: number;
   public sso_mode!: number;
@@ -119,6 +124,10 @@ PayrollLine.init(
     taxable: money(),
     tax: money(),
     other_deduction: money(),
+    advance_due: money(),
+    advance_balance: money(),
+    advance_deduction: money(),
+    advance_mode: mode(),
     net: money(),
     deduction_mode: mode(),
     sso_mode: mode(),

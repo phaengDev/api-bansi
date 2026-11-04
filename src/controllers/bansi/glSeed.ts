@@ -96,6 +96,7 @@ const ROLE_CODES: Record<string, string> = {
   SSO_PAYABLE: "2145",
   PIT_PAYABLE: "2140",
   PAYROLL_DEDUCTION: "1170",
+  EMPLOYEE_ADVANCE: "1170",
 };
 
 /**

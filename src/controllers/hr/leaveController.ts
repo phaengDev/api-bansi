@@ -12,6 +12,7 @@ import { actorOf, decodeId, sendError, toDateOnly } from "../bansi/bansiHelpers"
 import { profileUrl } from "./hrHelpers";
 import { selfEmployee } from "./attendanceController";
 import { notify } from "./notificationController";
+import { syncDraftPayrollForDates } from "./payrollController";
 import {
   BY_HR, PAID_LEAVE, PRESENT, UNPAID_LEAVE, employedOn, findCompany, holidaysBetween, isWorkday, nowLao, workRulesOf,
 } from "./workCalendar";
@@ -20,7 +21,7 @@ import {
  * ຄຳຂໍລາພັກ:
  * - ພະນັກງານ (app ມືຖື): GET/POST /leave/me, PUT /leave/me/cancel/:id — ສະເພາະຄຳຂໍຂອງຕົນເອງ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
  * - HR: POST /leave/fetch, POST /leave/balance, PUT /leave/approve/:id (ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງ),
- *   PUT /leave/reject/:id
+ *   PUT /leave/reject/:id, PUT /leave/revoke/:id (ຖອນການອະນຸມັດ — ລຶບມື້ລາອອກຈາກການເຂົ້າວຽກ)
  * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ).
  * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ) — ເກີນ = ຍັງຂໍໄດ້ ແລະ ແຈ້ງພະນັກງານ;
  * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid)
@@ -230,7 +231,7 @@ const quotaError = async (employeeId: number, type: LeaveType | null, dates: str
 };
 
 /** ທຸກປະເພດທີ່ໃຊ້ງານ + ມື້ທີ່ໃຊ້/ລໍຖ້າ/ເຫຼືອ ຂອງພະນັກງານໃນປີ (remaining null = ບໍ່ຈຳກັດ) */
-const balancesOf = async (employeeId: number, year: string, exceptId?: number) => {
+export const balancesOf = async (employeeId: number, year: string, exceptId?: number) => {
   const types = await LeaveType.findAll({ where: { status: 1 }, order: TYPE_ORDER });
   return Promise.all(types.map(async (type) => {
     const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId);
@@ -497,6 +498,7 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     }, { transaction: t });
     await t.commit();
     done = true;
+    await syncDraftPayrollForDates(applied, [Number(row.employee_id)]);
 
     await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [
       [type?.name, `${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied.length} ມື້`].filter(Boolean).join(" · "),
@@ -518,6 +520,49 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
       return;
     }
     sendError(res, error, "Error approving leave request");
+  }
+};
+
+/**
+ * PUT /leave/revoke/:id { note? } — ຖອນການອະນຸມັດ (ເຊັ່ນ ພະນັກງານຍົກເລີກການລາ / ອະນຸມັດຜິດ): ລຶບມື້ລາທີ່ບັນທຶກຕອນອະນຸມັດອອກຈາກ
+ * tbl_attendance (ມື້ທີ່ບໍ່ມີແຖວ = ຂາດວຽກ ຖ້າຮອດມື້ແລ້ວ; HR ບັນທຶກການເຂົ້າວຽກແທນໄດ້), ຄືນໂຄຕາ ແລະ ແຈ້ງພະນັກງານ.
+ * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຖອນບໍ່ໄດ້
+ */
+export const revokeLeave = async (req: Request<{ id: string }>, res: Response) => {
+  const t = await LeaveRequest.sequelize!.transaction();
+  const fail = async (code: number, message: string) => {
+    await t.rollback();
+    res.status(code).json({ message });
+  };
+  try {
+    const row = await LeaveRequest.findByPk(decodeId(req), { transaction: t, lock: t.LOCK.UPDATE });
+    if (!row) return fail(404, "ບໍ່ພົບຄຳຂໍລາພັກ");
+    if (Number(row.status) !== APPROVED) return fail(400, "ຖອນໄດ້ສະເພາະຄຳຂໍທີ່ອະນຸມັດແລ້ວ");
+    const start = String(row.start_date);
+    const end = String(row.end_date);
+    const locked = await lockedPeriod(start, end, t);
+    if (locked) return fail(400, lockedMessage(locked));
+    await Attendance.destroy({
+      where: {
+        employee_id: row.employee_id,
+        work_date: { [Op.between]: [start, end] },
+        status: { [Op.in]: LEAVE_TYPES },
+        source: BY_HR,
+        note: { [Op.like]: "ລາພັກ:%" },
+      },
+      transaction: t,
+    });
+    const actor = Number(actorOf(req)) || null;
+    const note = text(req.body?.note);
+    await row.update({ status: CANCELLED, review_note: note, reviewedbyid: actor, reviewedAt: new Date(), updatedAt: new Date() }, { transaction: t });
+    await t.commit();
+    await syncDraftPayrollForDates(datesBetween(start, end), [Number(row.employee_id)]);
+    await notifyLeave(row, "HR ຖອນການອະນຸມັດລາພັກ", [`${dayText(start)} – ${dayText(end)}`, note], actor);
+    const saved = await findWithEmployee(row._uuid);
+    res.status(200).json({ message: "ຖອນການອະນຸມັດແລ້ວ", data: saved && present(saved) });
+  } catch (error) {
+    await t.rollback();
+    sendError(res, error, "Error revoking leave request");
   }
 };
 

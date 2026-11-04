@@ -52,6 +52,7 @@ export const ROLES: Record<string, { groups: number[]; label: string }> = {
   SSO_PAYABLE: { groups: [2], label: "ປະກັນສັງຄົມຄ້າງຈ່າຍ" },
   PIT_PAYABLE: { groups: [2], label: "ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ" },
   PAYROLL_DEDUCTION: { groups: [1, 2], label: "ຍອດຫັກອື່ນຈາກເງິນເດືອນ" },
+  EMPLOYEE_ADVANCE: { groups: [1], label: "ເງິນລ່ວງໜ້າພະນັກງານ" },
 };
 
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */

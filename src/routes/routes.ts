@@ -87,7 +87,7 @@ import {
   previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll,
 } from "../controllers/hr/payrollController";
 import {
-  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave,
+  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave, revokeLeave,
 } from "../controllers/hr/leaveController";
 import { getLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType } from "../controllers/hr/leaveTypeController";
 import { createOvertime, deleteOvertime, getMyOvertime, getOvertimes, updateOvertime } from "../controllers/hr/overtimeController";
@@ -97,6 +97,15 @@ import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
 import { companyLogoUpload, documentUpload, profileUpload, receiptUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import {
+  approveAdvance, cancelAdvance, cancelMyAdvance, createAdvance, createMyAdvance, deleteAdvanceRepayment, getAdvance, getAdvances, getMyAdvances,
+  payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
+} from "../controllers/hr/advanceController";
+import { getEmployeeSummary, getHrPending } from "../controllers/hr/hrSummaryController";
+import {
+  bulkTasks, createTask, createTaskProject, deleteTaskProject, getMyTasks, getTask, getTaskProjects, getTasks, toggleTaskStar,
+  updateMyTaskItem, updateMyTaskStatus, updateTask, updateTaskItem, updateTaskProject, updateTaskStatus,
+} from "../controllers/hr/taskController";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
 
@@ -323,6 +332,7 @@ router.get("/money/me/entries/:id/photo", getMyMoneyEntryPhoto);
 router.put("/money/me/entries/:id", receiptUpload, updateMyMoneyEntry);
 router.delete("/money/me/entries/:id", deleteMyMoneyEntry);
 router.get("/money/me/summary", getMyMoneySummary);
+router.get("/employee/summary/:id", getEmployeeSummary);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
@@ -391,6 +401,7 @@ router.post("/leave/fetch", requirePermission("updates"), getLeaves);
 router.post("/leave/balance", requirePermission("updates"), getLeaveBalance);
 router.put("/leave/approve/:id", requirePermission("updates"), approveLeave);
 router.put("/leave/reject/:id", requirePermission("updates"), rejectLeave);
+router.put("/leave/revoke/:id", requirePermission("updates"), revokeLeave);
 // ປະເພດການລາພັກ (HR) — ຊື່, ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ, ຂີດຈຳກັດມື້ຕໍ່ປີ / ຕໍ່ຄັ້ງ
 router.get("/leave-type/fetch", getLeaveTypes);
 router.post("/leave-type/create", requirePermission("creates"), createLeaveType);
@@ -404,6 +415,40 @@ router.post("/correction/fetch", requirePermission("updates"), getCorrections);
 router.put("/correction/approve/:id", requirePermission("updates"), approveCorrection);
 router.put("/correction/reject/:id", requirePermission("updates"), rejectCorrection);
 // ========= ເງິນເດືອນ — /setting ແລະ /line/:id ກ່ອນ /:id; ຈ່າຍ = ເງິນອອກຈາກບັນຊີເງິນຄັງ + ລົງບັນຊີຄູ່
+// ================= ເງິນເບີກລ່ວງໜ້າ — ພະນັກງານຂໍຜ່ານ app; HR ອະນຸມັດ, ຈ່າຍເງິນ, ຫັກຄືນຜ່ານເງິນເດືອນ
+router.get("/advance/me", getMyAdvances);
+router.post("/advance/me", createMyAdvance);
+router.put("/advance/me/cancel/:id", cancelMyAdvance);
+router.post("/advance/fetch", requirePermission("updates"), getAdvances);
+router.post("/advance/create", requirePermission("creates"), createAdvance);
+router.put("/advance/approve/:id", requirePermission("updates"), approveAdvance);
+router.put("/advance/reject/:id", requirePermission("updates"), rejectAdvance);
+router.put("/advance/cancel/:id", requirePermission("updates"), cancelAdvance);
+router.put("/advance/pay/:id", requirePermission("updates"), payAdvance);
+router.put("/advance/unpay/:id", requirePermission("updates"), unpayAdvance);
+router.put("/advance/schedule/:id", requirePermission("updates"), updateAdvanceSchedule);
+router.post("/advance/repay/:id", requirePermission("updates"), repayAdvance);
+router.delete("/advance/repayment/:id", requirePermission("deletes"), deleteAdvanceRepayment);
+router.get("/advance/:id", requirePermission("updates"), getAdvance);
+// ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
+router.get("/task/me", getMyTasks);
+router.put("/task/me/status/:id", updateMyTaskStatus);
+router.put("/task/me/item/:id", updateMyTaskItem);
+router.get("/task/project/fetch", getTaskProjects);
+router.post("/task/project/create", requirePermission("creates"), createTaskProject);
+router.put("/task/project/:id", requirePermission("updates"), updateTaskProject);
+router.delete("/task/project/:id", requirePermission("deletes"), deleteTaskProject);
+router.post("/task/fetch", getTasks);
+router.post("/task/create", requirePermission("creates"), createTask);
+router.post("/task/bulk", requirePermission("updates"), bulkTasks);
+router.put("/task/status/:id", requirePermission("updates"), updateTaskStatus);
+router.put("/task/star/:id", toggleTaskStar);
+router.put("/task/item/:id", requirePermission("updates"), updateTaskItem);
+router.get("/task/:id", getTask);
+router.put("/task/:id", requirePermission("updates"), updateTask);
+// ຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop)
+router.get("/hr/pending", requirePermission("updates"), getHrPending);
+
 router.get("/payroll/setting", getPayrollSetting);
 router.put("/payroll/setting", requirePermission("updates"), savePayrollSetting);
 router.post("/payroll/fetch", getPayrolls);

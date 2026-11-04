@@ -5,6 +5,13 @@ import { Op } from "sequelize";
 import bcrypt from "bcryptjs";
 import Employee from "../../models/employee";
 import EmployeeDocument from "../../models/employeeDocument";
+import Attendance from "../../models/attendance";
+import AttendanceRequest from "../../models/attendanceRequest";
+import LeaveRequest from "../../models/leaveRequest";
+import Overtime from "../../models/overtime";
+import Payroll from "../../models/payroll";
+import PayrollLine from "../../models/payrollLine";
+import SalaryAdvance from "../../models/salaryAdvance";
 import Department from "../../models/department";
 import Position from "../../models/position";
 import District from "../../models/district";
@@ -18,14 +25,21 @@ import {
   removeQuietly,
 } from "./hrHelpers";
 import { selfEmployee } from "./attendanceController";
+import { advanceBalanceOf, closeAdvancesOfResigned } from "./advanceController";
+import { syncDraftPayrolls } from "./payrollController";
 
 /**
  * ພະນັກງານ — ຂໍ້ມູນສ່ວນຕົວ, ວຽກ (ພະແນກ / ຕຳແໜ່ງ / ວັນເຂົ້າວຽກ / ເງິນເດືອນ), ທີ່ຢູ່, ຮູບ ແລະ ເອກະສານຄັດຕິດ.
- * ລາອອກ (work_status 2) = ບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ຖືກປິດໃຫ້ອັດຕະໂນມັດ. ລຶບໄດ້ສະເພາະຄົນທີ່ບໍ່ມີບັນຊີຜູ້ໃຊ້
+ * ລາອອກ (work_status 2) = ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ ແລະ ຍົກເລີກຄຳຮ້ອງທີ່ຍັງຄ້າງ (ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນທີ່ຍັງບໍ່ໄດ້ຈ່າຍ) ໃຫ້ອັດຕະໂນມັດ;
+ * ຍອດເບີກທີ່ຄ້າງ ຫັກໃນເງິນເດືອນງວດສຸດທ້າຍ. ລຶບໄດ້ສະເພາະຄົນທີ່ບໍ່ມີບັນຊີຜູ້ໃຊ້ ແລະ ບໍ່ມີປະຫວັດ (ການເຂົ້າວຽກ, ລາພັກ, OT, ເງິນເດືອນ, ເບີກເງິນ)
  */
 
 const WORKING = 1;
 const RESIGNED = 2;
+/** status ຂອງ tbl_leave_request / tbl_attendance_request */
+const REQUEST_PENDING = 1;
+const REQUEST_CANCELLED = 4;
+const PAYROLL_PAID = 2;
 const CODE_PREFIX = "EMP-";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** ເລກບັນຊີທະນາຄານ — ຕົວເລກ ແລະ ຂີດ ເຊັ່ນ 010-12-00-01234567-001 */
@@ -265,10 +279,15 @@ const discardProfile = (req: Request) => {
   if (name) deleteFile(PROFILE_FOLDER, name);
 };
 
-/** ລາອອກ → ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ (login ບໍ່ໄດ້ອີກ) */
+/** ລາອອກ → ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ (login ບໍ່ໄດ້ອີກ) + ຍົກເລີກຄຳຮ້ອງທີ່ຍັງຄ້າງ (ບໍ່ມີໃຜມາອະນຸມັດໃຫ້ຄົນທີ່ອອກແລ້ວ) */
 const closeAccountIfResigned = async (employeeId: number, status: unknown) => {
   if (Number(status) !== RESIGNED) return;
   await Users.update({ status: 0, updatedAt: new Date() } as any, { where: { employee_id: employeeId, status: 1 } });
+  const closed = { status: REQUEST_CANCELLED, review_note: "ພະນັກງານລາອອກ", updatedAt: new Date() } as any;
+  const pending = { where: { employee_id: employeeId, status: REQUEST_PENDING } };
+  await LeaveRequest.update(closed, pending);
+  await AttendanceRequest.update(closed, pending);
+  await closeAdvancesOfResigned(employeeId);
 };
 
 /** POST /employee/create (multipart, ຮູບ field "profile") — emp_code ບໍ່ປ້ອນ = ອອກເລກໃຫ້ */
@@ -333,7 +352,14 @@ export const updateEmployee = async (req: Request<{ id: string }>, res: Response
     await row.update({ ...input, updatedAt: new Date() });
     if (oldProfile) deleteFile(PROFILE_FOLDER, oldProfile);
     await closeAccountIfResigned(row._uuid, row.work_status);
-    res.status(200).json({ message: "Successfully updated employee", data: await findFull(row._uuid) });
+    // ເງິນເດືອນພື້ນຖານ / ບັນຊີທະນາຄານ / ວັນເຂົ້າ-ອອກ ປ່ຽນ = ໃບເງິນເດືອນຮ່າງຂອງຄົນນີ້ຕາມທັນທີ
+    await syncDraftPayrolls([row._uuid]);
+    const advanceBalance = Number(row.work_status) === RESIGNED ? await advanceBalanceOf(row._uuid) : 0;
+    res.status(200).json({
+      message: "Successfully updated employee",
+      data: await findFull(row._uuid),
+      ...(advanceBalance > 0 ? { warning: `ຍັງມີເງິນເບີກຄ້າງ ₭ ${advanceBalance.toLocaleString("en-US")} — ຈະຫັກໃນເງິນເດືອນງວດສຸດທ້າຍ, ສ່ວນທີ່ຫັກບໍ່ໝົດ ຮັບຄືນເປັນເງິນສົດ` } : {}),
+    });
   } catch (error) {
     discardProfile(req);
     sendError(res, error, "Error updating employee");
@@ -354,10 +380,32 @@ export const deleteEmployee = async (req: Request<{ id: string }>, res: Response
       });
       return;
     }
+    // ມີປະຫວັດແລ້ວ ຫ້າມລຶບ — ບໍ່ດັ່ງນັ້ນເງິນເດືອນ / ການເຂົ້າວຽກ / ເງິນເບີກ ຈະກາຍເປັນຂໍ້ມູນທີ່ບໍ່ມີເຈົ້າຂອງ
+    const history = [
+      [Attendance, "ການເຂົ້າວຽກ"], [LeaveRequest, "ລາພັກ"], [AttendanceRequest, "ແຈ້ງລືມສະແກນ"], [Overtime, "OT"], [SalaryAdvance, "ເງິນເບີກ"],
+    ] as const;
+    const used: string[] = [];
+    for (const [model, label] of history) {
+      if (await (model as any).count({ where: { employee_id: id }, transaction: t })) used.push(label);
+    }
+    const paidLines = await PayrollLine.count({
+      where: { employee_id: id },
+      include: [{ model: Payroll, as: "payroll", required: true, where: { status: PAYROLL_PAID }, attributes: [] }],
+      transaction: t,
+    });
+    if (paidLines) used.push("ເງິນເດືອນ");
+    if (used.length) {
+      await t.rollback();
+      res.status(400).json({ message: `ລຶບບໍ່ໄດ້ — ມີປະຫວັດ${used.join(", ")}ແລ້ວ (ຕັ້ງເປັນລາອອກແທນ)` });
+      return;
+    }
     const documents = await EmployeeDocument.findAll({ where: { employee_id: id }, transaction: t });
     await EmployeeDocument.destroy({ where: { employee_id: id }, transaction: t });
+    // ເຫຼືອແຕ່ແຖວຂອງໃບເງິນເດືອນຮ່າງ (ຍັງບໍ່ໄດ້ຈ່າຍ) — ເອົາອອກພ້ອມກັນ ແລ້ວຄິດຍອດລວມຂອງໃບໃໝ່ຂ້າງລຸ່ມ
+    await PayrollLine.destroy({ where: { employee_id: id }, transaction: t });
     await row.destroy({ transaction: t });
     await t.commit();
+    await syncDraftPayrolls();
     if (row.profile) deleteFile(PROFILE_FOLDER, row.profile);
     documents.forEach((d) => removeQuietly(path.join(DOCUMENT_DIR, d.file_name)));
     res.status(200).json({ message: "Successfully deleted employee" });
