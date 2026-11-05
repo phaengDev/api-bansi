@@ -89,6 +89,7 @@ const ROLE_CODES = {
     SSO_PAYABLE: "2145",
     PIT_PAYABLE: "2140",
     PAYROLL_DEDUCTION: "1170",
+    EMPLOYEE_ADVANCE: "1170",
 };
 /**
  * ບັນຊີທີ່ເພີ່ມພາຍຫຼັງ — ຜັງທີ່ສ້າງໄປແລ້ວບໍ່ມີ: ໃສ່ໃຕ້ບັນຊີຫົວ (parent) ເມື່ອຍັງບໍ່ມີລະຫັດນີ້ ແລະ ມີບັນຊີຫົວ

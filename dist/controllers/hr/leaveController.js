@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectLeave = exports.approveLeave = exports.getLeaveBalance = exports.getLeaves = exports.cancelMyLeave = exports.createMyLeave = exports.getMyLeaves = void 0;
+exports.rejectLeave = exports.revokeLeave = exports.approveLeave = exports.getLeaveBalance = exports.getLeaves = exports.cancelMyLeave = exports.createMyLeave = exports.getMyLeaves = exports.balancesOf = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
@@ -17,12 +17,13 @@ const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const attendanceController_1 = require("./attendanceController");
 const notificationController_1 = require("./notificationController");
+const payrollController_1 = require("./payrollController");
 const workCalendar_1 = require("./workCalendar");
 /**
  * ຄຳຂໍລາພັກ:
  * - ພະນັກງານ (app ມືຖື): GET/POST /leave/me, PUT /leave/me/cancel/:id — ສະເພາະຄຳຂໍຂອງຕົນເອງ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
  * - HR: POST /leave/fetch, POST /leave/balance, PUT /leave/approve/:id (ບັນທຶກລາພັກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງ),
- *   PUT /leave/reject/:id
+ *   PUT /leave/reject/:id, PUT /leave/revoke/:id (ຖອນການອະນຸມັດ — ລຶບມື້ລາອອກຈາກການເຂົ້າວຽກ)
  * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ).
  * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ) — ເກີນ = ຍັງຂໍໄດ້ ແລະ ແຈ້ງພະນັກງານ;
  * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid)
@@ -243,6 +244,7 @@ const balancesOf = async (employeeId, year, exceptId) => {
         };
     }));
 };
+exports.balancesOf = balancesOf;
 /** ຄຳຂໍທີ່ລໍຖ້າ / ອະນຸມັດແລ້ວ ທີ່ຊ້ອນກັບຊ່ວງນີ້ */
 const overlappingLeave = (employeeId, start, end, t) => leaveRequest_1.default.findOne({
     where: {
@@ -283,7 +285,7 @@ const getMyLeaves = async (req, res) => {
                 include: [typeInclude],
                 order: [["start_date", "DESC"], ["_uuid", "DESC"]],
             }),
-            balancesOf(self.employee._uuid, year),
+            (0, exports.balancesOf)(self.employee._uuid, year),
         ]);
         const data = rows.map(present);
         const approvedDays = (type) => data
@@ -434,7 +436,7 @@ const getLeaveBalance = async (req, res) => {
             return;
         }
         const year = String(row.start_date).slice(0, 4);
-        res.status(200).json({ year, data: await balancesOf(Number(row.employee_id), year, row._uuid) });
+        res.status(200).json({ year, data: await (0, exports.balancesOf)(Number(row.employee_id), year, row._uuid) });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error getting leave balance");
@@ -497,6 +499,7 @@ const approveLeave = async (req, res) => {
         }, { transaction: t });
         await t.commit();
         done = true;
+        await (0, payrollController_1.syncDraftPayrollForDates)(applied, [Number(row.employee_id)]);
         await notifyLeave(row, "ຄຳຂໍລາພັກໄດ້ຮັບການອະນຸມັດແລ້ວ ✅", [
             [type?.name, `${dayText(row.start_date)} – ${dayText(row.end_date)} · ${applied.length} ມື້`].filter(Boolean).join(" · "),
             leaveType === workCalendar_1.PAID_LEAVE ? "ໄດ້ເງິນເດືອນ" : "ບໍ່ໄດ້ເງິນເດືອນ (ຫັກເງິນເດືອນ)",
@@ -521,6 +524,53 @@ const approveLeave = async (req, res) => {
     }
 };
 exports.approveLeave = approveLeave;
+/**
+ * PUT /leave/revoke/:id { note? } — ຖອນການອະນຸມັດ (ເຊັ່ນ ພະນັກງານຍົກເລີກການລາ / ອະນຸມັດຜິດ): ລຶບມື້ລາທີ່ບັນທຶກຕອນອະນຸມັດອອກຈາກ
+ * tbl_attendance (ມື້ທີ່ບໍ່ມີແຖວ = ຂາດວຽກ ຖ້າຮອດມື້ແລ້ວ; HR ບັນທຶກການເຂົ້າວຽກແທນໄດ້), ຄືນໂຄຕາ ແລະ ແຈ້ງພະນັກງານ.
+ * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຖອນບໍ່ໄດ້
+ */
+const revokeLeave = async (req, res) => {
+    const t = await leaveRequest_1.default.sequelize.transaction();
+    const fail = async (code, message) => {
+        await t.rollback();
+        res.status(code).json({ message });
+    };
+    try {
+        const row = await leaveRequest_1.default.findByPk((0, bansiHelpers_1.decodeId)(req), { transaction: t, lock: t.LOCK.UPDATE });
+        if (!row)
+            return fail(404, "ບໍ່ພົບຄຳຂໍລາພັກ");
+        if (Number(row.status) !== APPROVED)
+            return fail(400, "ຖອນໄດ້ສະເພາະຄຳຂໍທີ່ອະນຸມັດແລ້ວ");
+        const start = String(row.start_date);
+        const end = String(row.end_date);
+        const locked = await lockedPeriod(start, end, t);
+        if (locked)
+            return fail(400, lockedMessage(locked));
+        await attendance_1.default.destroy({
+            where: {
+                employee_id: row.employee_id,
+                work_date: { [sequelize_1.Op.between]: [start, end] },
+                status: { [sequelize_1.Op.in]: LEAVE_TYPES },
+                source: workCalendar_1.BY_HR,
+                note: { [sequelize_1.Op.like]: "ລາພັກ:%" },
+            },
+            transaction: t,
+        });
+        const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
+        const note = text(req.body?.note);
+        await row.update({ status: CANCELLED, review_note: note, reviewedbyid: actor, reviewedAt: new Date(), updatedAt: new Date() }, { transaction: t });
+        await t.commit();
+        await (0, payrollController_1.syncDraftPayrollForDates)(datesBetween(start, end), [Number(row.employee_id)]);
+        await notifyLeave(row, "HR ຖອນການອະນຸມັດລາພັກ", [`${dayText(start)} – ${dayText(end)}`, note], actor);
+        const saved = await findWithEmployee(row._uuid);
+        res.status(200).json({ message: "ຖອນການອະນຸມັດແລ້ວ", data: saved && present(saved) });
+    }
+    catch (error) {
+        await t.rollback();
+        (0, bansiHelpers_1.sendError)(res, error, "Error revoking leave request");
+    }
+};
+exports.revokeLeave = revokeLeave;
 /** PUT /leave/reject/:id { note? } — ປະຕິເສດ (ສະເພາະທີ່ຍັງລໍຖ້າ) */
 const rejectLeave = async (req, res) => {
     try {

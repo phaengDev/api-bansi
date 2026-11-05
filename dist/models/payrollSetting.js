@@ -12,6 +12,8 @@ const autoSync_1 = require("../utils/autoSync");
  * [{ upto, rate }] ຂັ້ນສຸດທ້າຍ upto = null), ເງິນເດືອນສູງສຸດທີ່ຄ່າລ່ວງເວລາບໍ່ເສຍອາກອນ (0 = ເສຍທຸກຄົນ),
  * ນາທີຜ່ອນຜັນມາຊ້າ/ອອກກ່ອນ ແລະ ຫັກຂາດວຽກ/ມາຊ້າ ອັດຕະໂນມັດ ຫຼື ບໍ່; ຄ່າລ່ວງເວລາ (OT): ຊົ່ວໂມງເຮັດວຽກຕໍ່ມື້
  * (ຄິດຄ່າແຮງຕໍ່ຊົ່ວໂມງ) ແລະ % ຂອງຄ່າແຮງຕໍ່ຊົ່ວໂມງ ຕາມປະເພດ OT (tbl_overtime.kind). ຍັງບໍ່ມີແຖວ = ໃຊ້ຄ່າເລີ່ມຕົ້ນ (hr/payrollRules.ts)
+ * ເບີກລ່ວງໜ້າ: advance_enabled (ພະນັກງານຂໍຜ່ານ app ໄດ້ບໍ່), advance_max_percent (% ຂອງເງິນເດືອນພື້ນຖານ, 0 = ບໍ່ຈຳກັດ), advance_max_installments.
+ * budget_category_id = ໝວດລາຍຈ່າຍທີ່ເງິນເດືອນນັບເຂົ້າງົບປະມານ (null = ບໍ່ນັບ)
  */
 class PayrollSetting extends sequelize_1.Model {
 }
@@ -95,6 +97,22 @@ PayrollSetting.init({
         allowNull: false,
         defaultValue: 300
     },
+    advance_enabled: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 1
+    },
+    advance_max_percent: {
+        type: sequelize_1.DataTypes.DECIMAL(5, 2),
+        allowNull: false,
+        defaultValue: 50
+    },
+    advance_max_installments: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 3
+    },
+    budget_category_id: sequelize_1.DataTypes.INTEGER,
     updatedbyid: sequelize_1.DataTypes.INTEGER,
     createdAt: {
         type: sequelize_1.DataTypes.DATE,

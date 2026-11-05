@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unpayPayroll = exports.payPayroll = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftOvertime = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
+exports.unpayPayroll = exports.payPayroll = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftPayrolls = exports.syncDraftPayrollForDates = exports.syncDraftPayroll = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const payroll_1 = __importDefault(require("../../models/payroll"));
@@ -26,26 +26,29 @@ const workCalendar_1 = require("./workCalendar");
 const attendanceController_1 = require("./attendanceController");
 const hrHelpers_1 = require("./hrHelpers");
 const notificationController_1 = require("./notificationController");
+const advanceController_1 = require("./advanceController");
 /**
  * ເງິນເດືອນປະຈຳເດືອນ: ສ້າງໃບ (ຄິດຈາກເງິນເດືອນພື້ນຖານ + ການເຂົ້າວຽກ) → ແກ້ລາຍຄົນ (ເງິນເພີ່ມ / ຫັກ / ປກສ / ອາກອນ)
- * → ຈ່າຍ (ເງິນອອກຈາກບັນຊີເງິນຄັງສະກຸນກີບ + ລົງບັນຊີຄູ່). ແກ້ໄຂໄດ້ສະເພາະໃບຮ່າງ; ຍົກເລີກການຈ່າຍ = ກັບເປັນຮ່າງ
+ * → ຈ່າຍ (ເງິນອອກຈາກບັນຊີເງິນຄັງສະກຸນກີບ + ລົງບັນຊີຄູ່ + ຕັດຍອດເງິນເບີກລ່ວງໜ້າ). ແກ້ໄຂໄດ້ສະເພາະໃບຮ່າງ; ຍົກເລີກການຈ່າຍ = ກັບເປັນຮ່າງ.
+ * ໃບຮ່າງຕາມຂໍ້ມູນຕົ້ນທາງທັນທີ (syncDraftPayroll): ການເຂົ້າວຽກ, ລາພັກ, ວັນພັກ, OT, ເງິນເບີກ, ຂໍ້ມູນພະນັກງານ ແລະ ຕັ້ງຄ່າ
  */
 const DRAFT = 1;
 const PAID = 2;
-const MONEY_FIELDS = ["allowance", "overtime", "bonus", "other_deduction", "absence_deduction", "late_deduction", "sso_employee", "sso_employer", "tax"];
+const MONEY_FIELDS = ["allowance", "overtime", "bonus", "other_deduction", "advance_deduction", "absence_deduction", "late_deduction", "sso_employee", "sso_employer", "tax"];
 /** ນະໂຍບາຍສະເພາະຄົນຂອງແຕ່ລະກຸ່ມການຫັກ (MODE_* ໃນ payrollRules) */
 const MODE_FIELDS = ["deduction_mode", "sso_mode", "tax_mode"];
-/** ຖັນທີ່ຜູ້ໃຊ້ປ້ອນ/ເລືອກເອງ — ຄິດໄລ່ໃໝ່ຈາກການເຂົ້າວຽກແລ້ວຍັງຢູ່ຄືເກົ່າ (overtime_mode: 1 ຈາກບັນທຶກ OT, 0 ປ້ອນເອງ) */
-const MANUAL_FIELDS = [...MONEY_FIELDS, ...MODE_FIELDS, "overtime_mode", "note"];
+/** ຖັນທີ່ຜູ້ໃຊ້ປ້ອນ/ເລືອກເອງ — ຄິດໄລ່ໃໝ່ຈາກການເຂົ້າວຽກແລ້ວຍັງຢູ່ຄືເກົ່າ (overtime_mode: 1 ຈາກບັນທຶກ OT, 0 ປ້ອນເອງ; advance_mode: 1 ຕາມງວດ, 0 ປ້ອນເອງ) */
+const MANUAL_FIELDS = [...MONEY_FIELDS, ...MODE_FIELDS, "overtime_mode", "advance_mode", "note"];
 const periodText = (period) => (0, moment_1.default)(`${period}-01`).format("MM/YYYY");
 const lineOrder = [[{ model: payrollLine_1.default, as: "lines" }, "emp_code", "ASC"]];
 const NUMBER_FIELDS = [
     "total_base", "total_attendance_deduction", "total_additions", "total_gross", "total_sso_employee",
-    "total_sso_employer", "total_tax", "total_other_deduction", "total_net",
+    "total_sso_employer", "total_tax", "total_other_deduction", "total_advance_deduction", "total_net",
 ];
 const LINE_NUMBER_FIELDS = [
     "basic_salary", "base_pay", "absence_deduction", "late_deduction", "allowance", "overtime", "bonus", "gross",
-    "sso_base", "sso_employee", "sso_employer", "taxable", "tax", "other_deduction", "net", "ot_hours", "ot_weighted_hours", "ot_fixed_amount",
+    "sso_base", "sso_employee", "sso_employer", "taxable", "tax", "other_deduction", "advance_due", "advance_balance", "advance_deduction", "net",
+    "ot_hours", "ot_weighted_hours", "ot_fixed_amount",
 ];
 const numbers = (r, fields) => Object.fromEntries(fields.map((f) => [f, Number(r[f]) || 0]));
 const presentLine = (row) => {
@@ -101,10 +104,10 @@ const contextOf = async (period, t) => {
 /** ມື້ເຮັດວຽກທັງເດືອນ (ບໍ່ລວມວັນພັກປະຈຳອາທິດ ແລະ ວັນພັກລັດຖະການ) */
 const workdaysOf = (ctx) => ctx.dates.filter((d) => (0, workCalendar_1.isWorkday)(d, ctx.rules, ctx.holidays)).length;
 /**
- * ແຖວເງິນເດືອນຂອງພະນັກງານ: ສຳເນົາຂໍ້ມູນພະນັກງານ + ສະຖິຕິການເຂົ້າວຽກ + OT ຂອງເດືອນ + ຄ່າທີ່ປ້ອນເອງ (ຈາກແຖວເດີມ ຖ້າມີ)
- * → ຄິດໃໝ່ທັງແຖວ
+ * ແຖວເງິນເດືອນຂອງພະນັກງານ: ສຳເນົາຂໍ້ມູນພະນັກງານ + ສະຖິຕິການເຂົ້າວຽກ + OT ແລະ ງວດເງິນເບີກຂອງເດືອນ + ຄ່າທີ່ປ້ອນເອງ (ຈາກແຖວເດີມ ຖ້າມີ)
+ * → ຄິດໃໝ່ທັງແຖວ. ລາອອກແລ້ວ = ຫັກເງິນເບີກທີ່ຄ້າງທັງໝົດໃນເງິນເດືອນງວດນີ້ (ຫັກບໍ່ໝົດ HR ຮັບຄືນເງິນສົດ)
  */
-const buildLine = (emp, attendance, ctx, existing, ot = payrollRules_1.NO_OVERTIME) => {
+const buildLine = (emp, attendance, ctx, existing, ot = payrollRules_1.NO_OVERTIME, advance = payrollRules_1.NO_ADVANCE) => {
     const { stats } = (0, workCalendar_1.monthStatsOf)(emp, attendance, ctx.dates, ctx.rules, ctx.holidays, ctx.today, ctx.settings.late_grace_minutes);
     const manual = existing
         ? Object.fromEntries(MANUAL_FIELDS.map((f) => [f, existing[f]]))
@@ -112,6 +115,7 @@ const buildLine = (emp, attendance, ctx, existing, ot = payrollRules_1.NO_OVERTI
             ...Object.fromEntries(MONEY_FIELDS.map((f) => [f, 0])),
             ...Object.fromEntries(MODE_FIELDS.map((f) => [f, payrollRules_1.MODE_POLICY])),
             overtime_mode: payrollRules_1.MODE_POLICY,
+            advance_mode: payrollRules_1.MODE_POLICY,
             note: null,
         };
     const snapshot = {
@@ -135,9 +139,13 @@ const buildLine = (emp, attendance, ctx, existing, ot = payrollRules_1.NO_OVERTI
         ot_hours: ot.hours,
         ot_weighted_hours: ot.weighted,
         ot_fixed_amount: ot.fixed,
+        advance_due: advanceDueOf(emp, advance),
+        advance_balance: advance.balance,
     };
     return { ...snapshot, ...manual, ...(0, payrollRules_1.computeLine)({ ...snapshot, ...manual }, ctx.settings, ctx.rules.minutesPerDay) };
 };
+/** ງວດເງິນເບີກທີ່ຕ້ອງຫັກເດືອນນີ້ — ລາອອກແລ້ວ = ຍອດຄ້າງທັງໝົດ */
+const advanceDueOf = (emp, advance) => (Number(emp.work_status) === workCalendar_1.RESIGNED ? advance.balance : advance.due);
 /** ຄິດຍອດລວມຂອງໃບຈາກທຸກແຖວ */
 const refreshTotals = async (payroll, t) => {
     const lines = await payrollLine_1.default.findAll({ where: { payroll_id: payroll._uuid }, transaction: t });
@@ -153,6 +161,7 @@ const refreshTotals = async (payroll, t) => {
         total_sso_employer: sum((l) => n(l.sso_employer)),
         total_tax: sum((l) => n(l.tax)),
         total_other_deduction: sum((l) => n(l.other_deduction)),
+        total_advance_deduction: sum((l) => n(l.advance_deduction)),
         total_net: sum((l) => n(l.net)),
         updatedAt: new Date(),
     }, { transaction: t });
@@ -228,6 +237,12 @@ const savePayrollSetting = async (req, res) => {
         };
         if (Object.values(otRates).some((r) => r === null))
             return fail("ອັດຕາຄ່າລ່ວງເວລາຕ້ອງຢູ່ລະຫວ່າງ 0–1000%");
+        const advancePercent = rate(body.advance_max_percent ?? payrollRules_1.DEFAULT_SETTINGS.advance_max_percent);
+        if (advancePercent === null)
+            return fail("ເພດານເບີກລ່ວງໜ້າຕ້ອງຢູ່ລະຫວ່າງ 0–100%");
+        const advanceInstallments = Number(body.advance_max_installments ?? payrollRules_1.DEFAULT_SETTINGS.advance_max_installments);
+        if (!Number.isInteger(advanceInstallments) || advanceInstallments < 1 || advanceInstallments > 36)
+            return fail("ຈຳນວນງວດຜ່ອນເງິນເບີກຕ້ອງຢູ່ລະຫວ່າງ 1–36 ເດືອນ");
         const flag = (value) => (Number(value) === 1 || value === true ? 1 : 0);
         const values = {
             sso_enabled: flag(body.sso_enabled),
@@ -242,10 +257,15 @@ const savePayrollSetting = async (req, res) => {
             deduct_late: flag(body.deduct_late),
             ot_hours_per_day: Math.round(hoursPerDay * 100) / 100,
             ...otRates,
+            advance_enabled: flag(body.advance_enabled ?? 1),
+            advance_max_percent: advancePercent,
+            advance_max_installments: advanceInstallments,
+            budget_category_id: Number(body.budget_category_id) || null,
             updatedbyid: Number((0, bansiHelpers_1.actorOf)(req)) || null,
         };
         const row = await (0, payrollRules_1.findPayrollSetting)();
         const saved = row ? await row.update({ ...values, updatedAt: new Date() }) : await payrollSetting_1.default.create(values);
+        await (0, exports.syncDraftPayrolls)();
         res.status(200).json({ message: "Successfully saved payroll setting", data: (0, payrollRules_1.presentSettings)(saved) });
     }
     catch (error) {
@@ -328,14 +348,15 @@ const getMyPayrollPreview = async (req, res) => {
             contextOf(period),
         ]);
         const existing = payroll ? await payrollLine_1.default.findOne({ where: { payroll_id: payroll._uuid, employee_id: employeeId } }) : null;
-        const [attendance, overtime] = await Promise.all([
+        const [attendance, overtime, advances] = await Promise.all([
             (0, workCalendar_1.attendanceByEmployee)([employeeId], ctx.start, ctx.end),
             (0, payrollRules_1.overtimeByEmployee)([employeeId], ctx.start, ctx.end, ctx.settings),
+            (0, payrollRules_1.advancesByEmployee)([employeeId], period),
         ]);
         const rows = attendance.get(employeeId) ?? new Map();
         const { stats } = (0, workCalendar_1.monthStatsOf)(employee, rows, ctx.dates, ctx.rules, ctx.holidays, ctx.today, ctx.settings.late_grace_minutes);
         const paid = !!payroll && Number(payroll.status) === PAID && !!existing;
-        const line = paid ? existing : buildLine(employee, rows, ctx, existing ?? undefined, overtime.get(employeeId));
+        const line = paid ? existing : buildLine(employee, rows, ctx, existing ?? undefined, overtime.get(employeeId), advances.get(employeeId));
         const { settings } = ctx;
         res.status(200).json({
             period,
@@ -397,13 +418,14 @@ const createPayroll = async (req, res) => {
         const ids = employees.map((e) => e._uuid);
         const attendance = await (0, workCalendar_1.attendanceByEmployee)(ids, ctx.start, ctx.end, t);
         const overtime = await (0, payrollRules_1.overtimeByEmployee)(ids, ctx.start, ctx.end, ctx.settings, t);
+        const advances = await (0, payrollRules_1.advancesByEmployee)(ids, period, t);
         const payroll = await payroll_1.default.create({
             period,
             workdays: workdaysOf(ctx),
             status: DRAFT,
             createdbyid: Number((0, bansiHelpers_1.actorOf)(req)) || null,
         }, { transaction: t });
-        await payrollLine_1.default.bulkCreate(employees.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid)) })), { transaction: t });
+        await payrollLine_1.default.bulkCreate(employees.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid), advances.get(e._uuid)) })), { transaction: t });
         await refreshTotals(payroll, t);
         await t.commit();
         await reply(res, payroll._uuid, "Successfully created payroll");
@@ -439,18 +461,19 @@ const recalcPayroll = async (req, res) => {
         const employees = new Map([...eligible, ...extra].map((e) => [e._uuid, e]));
         const attendance = await (0, workCalendar_1.attendanceByEmployee)([...employees.keys()], ctx.start, ctx.end, t);
         const overtime = await (0, payrollRules_1.overtimeByEmployee)([...employees.keys()], ctx.start, ctx.end, ctx.settings, t);
+        const advances = await (0, payrollRules_1.advancesByEmployee)([...employees.keys()], payroll.period, t);
         for (const line of lines) {
             const emp = employees.get(Number(line.employee_id));
             if (!emp)
                 continue; // ພະນັກງານຖືກລຶບ — ແຖວຢູ່ຄືເກົ່າ
             await line.update({
-                ...buildLine(emp, attendance.get(emp._uuid) ?? new Map(), ctx, line, overtime.get(emp._uuid)),
+                ...buildLine(emp, attendance.get(emp._uuid) ?? new Map(), ctx, line, overtime.get(emp._uuid), advances.get(emp._uuid)),
                 updatedAt: new Date(),
             }, { transaction: t });
         }
         const missing = eligible.filter((e) => !lineEmployeeIds.includes(e._uuid));
         if (missing.length) {
-            await payrollLine_1.default.bulkCreate(missing.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid)) })), { transaction: t });
+            await payrollLine_1.default.bulkCreate(missing.map((e) => ({ payroll_id: payroll._uuid, ...buildLine(e, attendance.get(e._uuid) ?? new Map(), ctx, undefined, overtime.get(e._uuid), advances.get(e._uuid)) })), { transaction: t });
         }
         await payroll.update({ workdays: workdaysOf(ctx) }, { transaction: t });
         await refreshTotals(payroll, t);
@@ -488,55 +511,101 @@ const manualOf = (line, body) => {
             return { error: "ວິທີຄິດລ່ວງເວລາບໍ່ຖືກຕ້ອງ" };
         manual.overtime_mode = mode;
     }
+    if (body.advance_mode !== undefined) {
+        const mode = Number(body.advance_mode);
+        if (mode !== payrollRules_1.MODE_MANUAL && mode !== payrollRules_1.MODE_POLICY)
+            return { error: "ວິທີຫັກເງິນເບີກບໍ່ຖືກຕ້ອງ" };
+        manual.advance_mode = mode;
+    }
     if (body.note !== undefined)
         manual.note = String(body.note ?? "").trim().slice(0, 255) || null;
     return manual;
 };
 /** OT ຂອງຄົນໃນແຖວ ຕາມບັນທຶກ OT ປັດຈຸບັນຂອງເດືອນ → ຖັນ ot_* ຂອງແຖວ */
 const otFieldsOf = (ot = payrollRules_1.NO_OVERTIME) => ({ ot_hours: ot.hours, ot_weighted_hours: ot.weighted, ot_fixed_amount: ot.fixed });
-/** ຄິດແຖວໃໝ່ດ້ວຍຕັ້ງຄ່າ, ເວລາເຮັດວຽກ ແລະ ບັນທຶກ OT ປັດຈຸບັນ (ບັນທຶກ OT ຫຼັງສ້າງໃບ ກໍ່ຂຶ້ນທັນທີ) */
+/** ຄິດແຖວໃໝ່ດ້ວຍຕັ້ງຄ່າ, ເວລາເຮັດວຽກ, ບັນທຶກ OT ແລະ ເງິນເບີກປັດຈຸບັນ (ບັນທຶກຫຼັງສ້າງໃບ ກໍ່ຂຶ້ນທັນທີ) */
 const recompute = async (line, manual, t) => {
-    const [settings, company, payroll] = await Promise.all([
+    const employeeId = Number(line.employee_id);
+    const [settings, company, payroll, employee] = await Promise.all([
         (0, payrollRules_1.loadPayrollSettings)(t),
         (0, workCalendar_1.findCompany)(t),
         payroll_1.default.findByPk(line.payroll_id, { attributes: ["period"], transaction: t }),
+        employee_1.default.findByPk(employeeId, { attributes: ["work_status"], transaction: t }),
     ]);
     const month = payroll ? (0, workCalendar_1.monthOf)(payroll.period) : null;
-    const ot = otFieldsOf(month
-        ? (await (0, payrollRules_1.overtimeByEmployee)([Number(line.employee_id)], month.start, month.end, settings, t)).get(Number(line.employee_id))
-        : undefined);
-    return { ...ot, ...(0, payrollRules_1.computeLine)({ ...line.get({ plain: true }), ...manual, ...ot }, settings, (0, workCalendar_1.workRulesOf)(company).minutesPerDay) };
+    const ot = otFieldsOf(month ? (await (0, payrollRules_1.overtimeByEmployee)([employeeId], month.start, month.end, settings, t)).get(employeeId) : undefined);
+    const advance = payroll ? (await (0, payrollRules_1.advancesByEmployee)([employeeId], payroll.period, t)).get(employeeId) ?? payrollRules_1.NO_ADVANCE : payrollRules_1.NO_ADVANCE;
+    const advanceFields = { advance_due: advanceDueOf(employee ?? {}, advance), advance_balance: advance.balance };
+    return { ...ot, ...advanceFields, ...(0, payrollRules_1.computeLine)({ ...line.get({ plain: true }), ...manual, ...ot, ...advanceFields }, settings, (0, workCalendar_1.workRulesOf)(company).minutesPerDay) };
 };
 /**
- * ຫຼັງບັນທຶກ / ແກ້ / ລຶບ OT — ໃບເງິນເດືອນຮ່າງຂອງເດືອນນັ້ນ ຄິດ OT ຂອງຄົນເຫຼົ່ານັ້ນໃໝ່ທັນທີ (ບໍ່ຕ້ອງກົດຄິດໄລ່ໃໝ່);
- * ແຖວທີ່ປ້ອນ OT ເອງ ອັບເດດສະເພາະຊົ່ວໂມງ (ຍອດເງິນຄືເກົ່າ). ໃບທີ່ຈ່າຍແລ້ວບໍ່ປ່ຽນ
+ * ໃຫ້ໃບເງິນເດືອນຮ່າງຂອງເດືອນ ຕາມຂໍ້ມູນຕົ້ນທາງທັນທີ (ບໍ່ຕ້ອງກົດຄິດໄລ່ໃໝ່) — ເອີ້ນຫຼັງ ການເຂົ້າວຽກ / ລາພັກ / ວັນພັກ / OT /
+ * ເງິນເບີກ / ຂໍ້ມູນພະນັກງານ / ຕັ້ງຄ່າ ປ່ຽນ. employeeIds = null ທຸກແຖວຂອງໃບ. ສະເພາະແຖວທີ່ມີຢູ່ (ຄົນທີ່ HR ເອົາອອກບໍ່ກັບມາເອງ);
+ * ຄ່າທີ່ປ້ອນເອງຢູ່ຄືເກົ່າ. ບໍ່ມີໃບຮ່າງ / ໃບຈ່າຍແລ້ວ = ບໍ່ເຮັດຫຍັງ. ບໍ່ throw — ວຽກຫຼັກບັນທຶກແລ້ວ, HR ຍັງກົດຄິດໄລ່ໃໝ່ໄດ້
  */
-const syncDraftOvertime = async (period, employeeIds) => {
-    if (!employeeIds.length)
+const syncDraftPayroll = async (period, employeeIds = null) => {
+    if (employeeIds && !employeeIds.length)
         return;
     const t = await payroll_1.default.sequelize.transaction();
     try {
         const payroll = await payroll_1.default.findOne({ where: { period, status: DRAFT }, transaction: t, lock: t.LOCK.UPDATE });
         const lines = payroll
-            ? await payrollLine_1.default.findAll({ where: { payroll_id: payroll._uuid, employee_id: { [sequelize_1.Op.in]: employeeIds } }, transaction: t })
+            ? await payrollLine_1.default.findAll({
+                where: { payroll_id: payroll._uuid, ...(employeeIds ? { employee_id: { [sequelize_1.Op.in]: employeeIds } } : {}) },
+                transaction: t,
+            })
             : [];
         if (!payroll || !lines.length) {
             await t.rollback();
             return;
         }
+        const ids = lines.map((l) => Number(l.employee_id));
+        const ctx = await contextOf(period, t);
+        const [employees, attendance, overtime, advances] = await Promise.all([
+            employee_1.default.findAll({ where: { _uuid: { [sequelize_1.Op.in]: ids } }, include: employeeInclude, transaction: t }),
+            (0, workCalendar_1.attendanceByEmployee)(ids, ctx.start, ctx.end, t),
+            (0, payrollRules_1.overtimeByEmployee)(ids, ctx.start, ctx.end, ctx.settings, t),
+            (0, payrollRules_1.advancesByEmployee)(ids, period, t),
+        ]);
+        const byId = new Map(employees.map((e) => [e._uuid, e]));
         for (const line of lines) {
-            const values = await recompute(line, {}, t);
-            await line.update({ ...values, updatedAt: new Date() }, { transaction: t });
+            const id = Number(line.employee_id);
+            const emp = byId.get(id);
+            if (!emp)
+                continue; // ພະນັກງານຖືກລຶບ — ແຖວຢູ່ຄືເກົ່າ
+            await line.update({
+                ...buildLine(emp, attendance.get(id) ?? new Map(), ctx, line, overtime.get(id), advances.get(id)),
+                updatedAt: new Date(),
+            }, { transaction: t });
         }
+        await payroll.update({ workdays: workdaysOf(ctx) }, { transaction: t });
         await refreshTotals(payroll, t);
         await t.commit();
     }
     catch (error) {
         await t.rollback();
-        console.error("❌ syncDraftOvertime:", error);
+        console.error("❌ syncDraftPayroll:", error);
     }
 };
-exports.syncDraftOvertime = syncDraftOvertime;
+exports.syncDraftPayroll = syncDraftPayroll;
+/** ຫຼາຍເດືອນຈາກລາຍການວັນທີ (ລາພັກຂ້າມເດືອນ, ວັນພັກຫຼາຍວັນ) */
+const syncDraftPayrollForDates = async (dates, employeeIds = null) => {
+    for (const period of new Set(dates.map((d) => String(d).slice(0, 7))))
+        await (0, exports.syncDraftPayroll)(period, employeeIds);
+};
+exports.syncDraftPayrollForDates = syncDraftPayrollForDates;
+/** ທຸກໃບຮ່າງ — ຕັ້ງຄ່າ / ເວລາເຮັດວຽກ ປ່ຽນ, ຫຼື ຂໍ້ມູນພະນັກງານ / ເງິນເບີກຂອງຄົນ ປ່ຽນ */
+const syncDraftPayrolls = async (employeeIds = null) => {
+    try {
+        const drafts = await payroll_1.default.findAll({ where: { status: DRAFT }, attributes: ["period"], raw: true });
+        for (const row of drafts)
+            await (0, exports.syncDraftPayroll)(String(row.period), employeeIds);
+    }
+    catch (error) {
+        console.error("❌ syncDraftPayrolls:", error);
+    }
+};
+exports.syncDraftPayrolls = syncDraftPayrolls;
 const negativeNet = (net) => `ເງິນເດືອນສຸດທິຕິດລົບ (${net.toLocaleString("en-US")}) — ກວດຍອດຫັກ`;
 /**
  * POST /payroll/line/preview/:id { …ຄືກັບ PUT /payroll/line/:id } — ຜົນການຄິດໂດຍບໍ່ບັນທຶກ (ຟອມແກ້ລາຍຄົນສະແດງທັນທີ)
@@ -693,6 +762,8 @@ const payPayroll = async (req, res) => {
         await payroll.update({
             status: PAID, number, pay_date: payDate.date, account_id: accountId, description, paidbyid: actor, paidAt: new Date(), updatedAt: new Date(),
         }, { transaction: t });
+        // ຫັກເງິນເບີກລ່ວງໜ້າ: ຕັດຍອດຄ້າງຂອງແຕ່ລະຄົນ
+        const settledAdvances = await (0, advanceController_1.applyPayrollRepayments)(payroll, lines, payDate.date, actor, t);
         // ລົງບັນຊີຄູ່ — ບໍ່ສຳເລັດ (ເຊັ່ນ ຍັງບໍ່ຜູກບັນຊີ, ປີປິດແລ້ວ) = ບໍ່ຈ່າຍ
         await (0, glPosting_1.postPayroll)(payroll, t, actor);
         await t.commit();
@@ -701,22 +772,27 @@ const payPayroll = async (req, res) => {
             employee_id: Number(l.employee_id),
             type: "payroll",
             title: `ເງິນເດືອນ ${periodText(payroll.period)} ໂອນແລ້ວ 💰`,
-            body: `ຍອດສຸດທິ ₭ ${Math.round(Number(l.net) || 0).toLocaleString("en-US")} — ເບິ່ງສະລິບເງິນເດືອນໄດ້ໃນແອັບ`,
+            body: `ຍອດສຸດທິ ₭ ${Math.round(Number(l.net) || 0).toLocaleString("en-US")}${Number(l.advance_deduction) > 0 ? ` (ຫັກເງິນເບີກ ₭ ${Math.round(Number(l.advance_deduction)).toLocaleString("en-US")})` : ""} — ເບິ່ງສະລິບເງິນເດືອນໄດ້ໃນແອັບ`,
             ref: `payroll:${payroll.period}`,
             createdbyid: actor,
             push: true,
         })));
+        await (0, advanceController_1.notifyAdvancesSettled)(settledAdvances, actor);
         await reply(res, payroll._uuid, "Successfully paid payroll");
     }
     catch (error) {
         await t.rollback();
+        if (error instanceof advanceController_1.AdvanceMismatch) {
+            res.status(400).json({ message: error.message });
+            return;
+        }
         if ((0, glCore_1.replyGlError)(res, error))
             return;
         (0, bansiHelpers_1.sendError)(res, error, "Error paying payroll");
     }
 };
 exports.payPayroll = payPayroll;
-/** PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ ແລ້ວກັບເປັນໃບຮ່າງ */
+/** PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ + ຖອນການຫັກເງິນເບີກ ແລ້ວກັບເປັນໃບຮ່າງ */
 const unpayPayroll = async (req, res) => {
     const t = await payroll_1.default.sequelize.transaction();
     const fail = async (code, message) => {
@@ -740,6 +816,7 @@ const unpayPayroll = async (req, res) => {
             }, t);
         }
         await (0, glCore_1.reverseSource)("PAYROLL", payroll._uuid, t, actor);
+        await (0, advanceController_1.reversePayrollRepayments)(payroll._uuid, t);
         await payroll.update({
             status: DRAFT, number: null, pay_date: null, account_id: null, paidbyid: null, paidAt: null, updatedAt: new Date(),
         }, { transaction: t });

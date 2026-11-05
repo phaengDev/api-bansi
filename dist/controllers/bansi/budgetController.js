@@ -15,13 +15,16 @@ const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"))
 const typeTreasury_1 = __importDefault(require("../../models/typeTreasury"));
 const currencyModel_1 = __importDefault(require("../../models/currencyModel"));
 const exchangeRate_1 = __importDefault(require("../../models/exchangeRate"));
+const payroll_1 = __importDefault(require("../../models/payroll"));
 const bansiHelpers_1 = require("./bansiHelpers");
 const journalHelpers_1 = require("./journalHelpers");
 const glCore_1 = require("./glCore");
+const payrollRules_1 = require("../hr/payrollRules");
 /**
  * ງົບປະມານລາຍຈ່າຍ — ຕັ້ງຕາມໝວດລາຍຈ່າຍ ຕໍ່ປີການເງິນ (ແບ່ງລາຍເດືອນໄດ້), ເປັນ LAK.
  * ຍອດໃຊ້ຈິງ = ຍອດຈ່າຍອອກແທ້ (balance_expense ລວມອາກອນ) ຂອງລາຍຈ່າຍທີ່ໃຊ້ງານ ຕາມວັນທີຈ່າຍ, ແປງເປັນ LAK
- * ດ້ວຍອັດຕາແລກປ່ຽນຂອງວັນນັ້ນ (ຄືກັບການລົງບັນຊີ GL). ເກີນງົບ = ເຕືອນເທົ່ານັ້ນ ບໍ່ກັ້ນການບັນທຶກລາຍຈ່າຍ
+ * ດ້ວຍອັດຕາແລກປ່ຽນຂອງວັນນັ້ນ (ຄືກັບການລົງບັນຊີ GL) + ເງິນເດືອນທີ່ຈ່າຍແລ້ວ ໃນໝວດທີ່ຕັ້ງໄວ້ຢູ່ຕັ້ງຄ່າເງິນເດືອນ (budget_category_id).
+ * ເກີນງົບ = ເຕືອນເທົ່ານັ້ນ ບໍ່ກັ້ນການບັນທຶກລາຍຈ່າຍ
  * (ຟອມລາຍຈ່າຍຖາມ POST /budget/check)
  */
 /** ປະເພດລາຍຈ່າຍ = tbl_finance_categories.typestatus 2 */
@@ -122,6 +125,35 @@ const spendOf = (rows, convert) => {
     }
     return { byCategory, missingRate };
 };
+/** ຄ່າໃຊ້ຈ່າຍເງິນເດືອນຂອງບໍລິສັດ = ເງິນເດືອນລວມ + ປກສ ສ່ວນບໍລິສັດ (ກົງກັບແຖວລາຍຈ່າຍໃນໃບລົງບັນຊີ PAYROLL) */
+const payrollCost = (row) => (0, glCore_1.round2)((Number(row.total_gross) || 0) + (Number(row.total_sso_employer) || 0));
+/** ໃບເງິນເດືອນທີ່ຈ່າຍແລ້ວໃນປີການເງິນ ຖ້າໝວດນີ້ (ຫຼື ທຸກໝວດ) ຮັບເງິນເດືອນ — ຍັງບໍ່ໄດ້ຕັ້ງໝວດ = ບໍ່ນັບ */
+const payrollsIn = async (fiscal, onlyCategory) => {
+    const { budget_category_id: categoryId } = await (0, payrollRules_1.loadPayrollSettings)();
+    if (!categoryId || (onlyCategory && onlyCategory !== categoryId))
+        return { categoryId: null, rows: [] };
+    const rows = await payroll_1.default.findAll({
+        where: { status: 2, pay_date: { [sequelize_1.Op.between]: [fiscal.start_date, fiscal.end_date] } },
+        attributes: ["_uuid", "number", "pay_date", "period", "description", "total_gross", "total_sso_employer"],
+        order: [["pay_date", "DESC"]],
+        raw: true,
+    });
+    return { categoryId, rows: rows };
+};
+/** ບວກເງິນເດືອນເຂົ້າຍອດໃຊ້ຈິງຂອງໝວດ */
+const addPayrollSpend = (byCategory, payroll) => {
+    if (!payroll.categoryId || !payroll.rows.length)
+        return;
+    const item = byCategory.get(payroll.categoryId) ?? { total: 0, months: {}, count: 0 };
+    for (const row of payroll.rows) {
+        const cost = payrollCost(row);
+        const period = String(row.pay_date).slice(0, 7);
+        item.total = (0, glCore_1.round2)(item.total + cost);
+        item.months[period] = (0, glCore_1.round2)((item.months[period] ?? 0) + cost);
+        item.count += 1;
+    }
+    byCategory.set(payroll.categoryId, item);
+};
 const monthMap = (months = []) => Object.fromEntries(months.map((m) => [m.period, Number(m.amount) || 0]));
 const byCode = (a, b) => String(a.category?.type_code ?? "").localeCompare(String(b.category?.type_code ?? ""), undefined, { numeric: true });
 /**
@@ -135,12 +167,14 @@ const getBudgets = async (req, res) => {
             res.status(404).json({ message: "ບໍ່ພົບປີການເງິນ — ສ້າງຢູ່ ຕັ້ງຄ່າບັນຊີ → ປີການເງິນ" });
             return;
         }
-        const [budgets, expenses, convert] = await Promise.all([
+        const [budgets, expenses, convert, payroll] = await Promise.all([
             budget_1.default.findAll({ where: { fiscal_id: fiscal._uuid }, include: [categoryInclude, { model: budgetMonth_1.default, as: "months" }] }),
             expensesIn(fiscal),
             lakConverter(fiscal.end_date),
+            payrollsIn(fiscal),
         ]);
         const { byCategory, missingRate } = spendOf(expenses, convert);
+        addPayrollSpend(byCategory, payroll);
         const data = budgets.map((budget) => {
             const r = budget.get({ plain: true });
             const spend = byCategory.get(Number(r.category_id)) ?? NO_SPEND;
@@ -319,8 +353,23 @@ const getBudgetExpenses = async (req, res) => {
             res.status(400).json({ message: "ກະລຸນາເລືອກປີການເງິນ ແລະ ປະເພດລາຍຈ່າຍ" });
             return;
         }
-        const [rows, convert] = await Promise.all([expensesIn(fiscal, { type_expense_fk: categoryId }), lakConverter(fiscal.end_date)]);
-        const data = rows.map((row) => {
+        const [rows, convert, payroll] = await Promise.all([
+            expensesIn(fiscal, { type_expense_fk: categoryId }),
+            lakConverter(fiscal.end_date),
+            payrollsIn(fiscal, categoryId),
+        ]);
+        const salaries = payroll.rows.map((r) => ({
+            _uuid: `payroll-${r._uuid}`,
+            number: r.number,
+            expense_date: r.pay_date,
+            expense_title: r.description ?? `ເງິນເດືອນ ${r.period}`,
+            payee_name: null,
+            account_name: null,
+            currency: { name: glCore_1.BASE_CURRENCY },
+            balance_expense: payrollCost(r),
+            amount_lak: payrollCost(r),
+        }));
+        const expenses = rows.map((row) => {
             const r = row.get({ plain: true });
             return {
                 _uuid: r._uuid,
@@ -334,6 +383,7 @@ const getBudgetExpenses = async (req, res) => {
                 amount_lak: lakOf(r, convert),
             };
         });
+        const data = [...salaries, ...expenses].sort((a, b) => String(b.expense_date).localeCompare(String(a.expense_date)));
         res.status(200).json({ data });
     }
     catch (error) {
@@ -368,11 +418,13 @@ const checkBudget = async (req, res) => {
             return;
         }
         const excludeId = Number(body.exclude_id);
-        const [rows, convert] = await Promise.all([
+        const [rows, convert, payroll] = await Promise.all([
             expensesIn(fiscal, { type_expense_fk: categoryId, ...(excludeId > 0 ? { _uuid: { [sequelize_1.Op.ne]: excludeId } } : {}) }),
             lakConverter(fiscal.end_date),
+            payrollsIn(fiscal, categoryId),
         ]);
         const { byCategory, missingRate } = spendOf(rows, convert);
+        addPayrollSpend(byCategory, payroll);
         const spend = byCategory.get(categoryId) ?? NO_SPEND;
         const amount = Number(body.amount) || 0;
         let amountLak = 0;

@@ -10,6 +10,13 @@ const sequelize_1 = require("sequelize");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const employee_1 = __importDefault(require("../../models/employee"));
 const employeeDocument_1 = __importDefault(require("../../models/employeeDocument"));
+const attendance_1 = __importDefault(require("../../models/attendance"));
+const attendanceRequest_1 = __importDefault(require("../../models/attendanceRequest"));
+const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
+const overtime_1 = __importDefault(require("../../models/overtime"));
+const payroll_1 = __importDefault(require("../../models/payroll"));
+const payrollLine_1 = __importDefault(require("../../models/payrollLine"));
+const salaryAdvance_1 = __importDefault(require("../../models/salaryAdvance"));
 const department_1 = __importDefault(require("../../models/department"));
 const position_1 = __importDefault(require("../../models/position"));
 const district_1 = __importDefault(require("../../models/district"));
@@ -20,12 +27,19 @@ const uploadFile_1 = require("../../utils/uploadFile");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const attendanceController_1 = require("./attendanceController");
+const advanceController_1 = require("./advanceController");
+const payrollController_1 = require("./payrollController");
 /**
  * ພະນັກງານ — ຂໍ້ມູນສ່ວນຕົວ, ວຽກ (ພະແນກ / ຕຳແໜ່ງ / ວັນເຂົ້າວຽກ / ເງິນເດືອນ), ທີ່ຢູ່, ຮູບ ແລະ ເອກະສານຄັດຕິດ.
- * ລາອອກ (work_status 2) = ບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ຖືກປິດໃຫ້ອັດຕະໂນມັດ. ລຶບໄດ້ສະເພາະຄົນທີ່ບໍ່ມີບັນຊີຜູ້ໃຊ້
+ * ລາອອກ (work_status 2) = ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ ແລະ ຍົກເລີກຄຳຮ້ອງທີ່ຍັງຄ້າງ (ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນທີ່ຍັງບໍ່ໄດ້ຈ່າຍ) ໃຫ້ອັດຕະໂນມັດ;
+ * ຍອດເບີກທີ່ຄ້າງ ຫັກໃນເງິນເດືອນງວດສຸດທ້າຍ. ລຶບໄດ້ສະເພາະຄົນທີ່ບໍ່ມີບັນຊີຜູ້ໃຊ້ ແລະ ບໍ່ມີປະຫວັດ (ການເຂົ້າວຽກ, ລາພັກ, OT, ເງິນເດືອນ, ເບີກເງິນ)
  */
 const WORKING = 1;
 const RESIGNED = 2;
+/** status ຂອງ tbl_leave_request / tbl_attendance_request */
+const REQUEST_PENDING = 1;
+const REQUEST_CANCELLED = 4;
+const PAYROLL_PAID = 2;
 const CODE_PREFIX = "EMP-";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** ເລກບັນຊີທະນາຄານ — ຕົວເລກ ແລະ ຂີດ ເຊັ່ນ 010-12-00-01234567-001 */
@@ -278,11 +292,16 @@ const discardProfile = (req) => {
     if (name)
         (0, uploadFile_1.deleteFile)(hrHelpers_1.PROFILE_FOLDER, name);
 };
-/** ລາອອກ → ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ (login ບໍ່ໄດ້ອີກ) */
+/** ລາອອກ → ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ (login ບໍ່ໄດ້ອີກ) + ຍົກເລີກຄຳຮ້ອງທີ່ຍັງຄ້າງ (ບໍ່ມີໃຜມາອະນຸມັດໃຫ້ຄົນທີ່ອອກແລ້ວ) */
 const closeAccountIfResigned = async (employeeId, status) => {
     if (Number(status) !== RESIGNED)
         return;
     await userModel_1.default.update({ status: 0, updatedAt: new Date() }, { where: { employee_id: employeeId, status: 1 } });
+    const closed = { status: REQUEST_CANCELLED, review_note: "ພະນັກງານລາອອກ", updatedAt: new Date() };
+    const pending = { where: { employee_id: employeeId, status: REQUEST_PENDING } };
+    await leaveRequest_1.default.update(closed, pending);
+    await attendanceRequest_1.default.update(closed, pending);
+    await (0, advanceController_1.closeAdvancesOfResigned)(employeeId);
 };
 /** POST /employee/create (multipart, ຮູບ field "profile") — emp_code ບໍ່ປ້ອນ = ອອກເລກໃຫ້ */
 const createEmployee = async (req, res) => {
@@ -350,7 +369,14 @@ const updateEmployee = async (req, res) => {
         if (oldProfile)
             (0, uploadFile_1.deleteFile)(hrHelpers_1.PROFILE_FOLDER, oldProfile);
         await closeAccountIfResigned(row._uuid, row.work_status);
-        res.status(200).json({ message: "Successfully updated employee", data: await findFull(row._uuid) });
+        // ເງິນເດືອນພື້ນຖານ / ບັນຊີທະນາຄານ / ວັນເຂົ້າ-ອອກ ປ່ຽນ = ໃບເງິນເດືອນຮ່າງຂອງຄົນນີ້ຕາມທັນທີ
+        await (0, payrollController_1.syncDraftPayrolls)([row._uuid]);
+        const advanceBalance = Number(row.work_status) === RESIGNED ? await (0, advanceController_1.advanceBalanceOf)(row._uuid) : 0;
+        res.status(200).json({
+            message: "Successfully updated employee",
+            data: await findFull(row._uuid),
+            ...(advanceBalance > 0 ? { warning: `ຍັງມີເງິນເບີກຄ້າງ ₭ ${advanceBalance.toLocaleString("en-US")} — ຈະຫັກໃນເງິນເດືອນງວດສຸດທ້າຍ, ສ່ວນທີ່ຫັກບໍ່ໝົດ ຮັບຄືນເປັນເງິນສົດ` } : {}),
+        });
     }
     catch (error) {
         discardProfile(req);
@@ -372,10 +398,34 @@ const deleteEmployee = async (req, res) => {
             });
             return;
         }
+        // ມີປະຫວັດແລ້ວ ຫ້າມລຶບ — ບໍ່ດັ່ງນັ້ນເງິນເດືອນ / ການເຂົ້າວຽກ / ເງິນເບີກ ຈະກາຍເປັນຂໍ້ມູນທີ່ບໍ່ມີເຈົ້າຂອງ
+        const history = [
+            [attendance_1.default, "ການເຂົ້າວຽກ"], [leaveRequest_1.default, "ລາພັກ"], [attendanceRequest_1.default, "ແຈ້ງລືມສະແກນ"], [overtime_1.default, "OT"], [salaryAdvance_1.default, "ເງິນເບີກ"],
+        ];
+        const used = [];
+        for (const [model, label] of history) {
+            if (await model.count({ where: { employee_id: id }, transaction: t }))
+                used.push(label);
+        }
+        const paidLines = await payrollLine_1.default.count({
+            where: { employee_id: id },
+            include: [{ model: payroll_1.default, as: "payroll", required: true, where: { status: PAYROLL_PAID }, attributes: [] }],
+            transaction: t,
+        });
+        if (paidLines)
+            used.push("ເງິນເດືອນ");
+        if (used.length) {
+            await t.rollback();
+            res.status(400).json({ message: `ລຶບບໍ່ໄດ້ — ມີປະຫວັດ${used.join(", ")}ແລ້ວ (ຕັ້ງເປັນລາອອກແທນ)` });
+            return;
+        }
         const documents = await employeeDocument_1.default.findAll({ where: { employee_id: id }, transaction: t });
         await employeeDocument_1.default.destroy({ where: { employee_id: id }, transaction: t });
+        // ເຫຼືອແຕ່ແຖວຂອງໃບເງິນເດືອນຮ່າງ (ຍັງບໍ່ໄດ້ຈ່າຍ) — ເອົາອອກພ້ອມກັນ ແລ້ວຄິດຍອດລວມຂອງໃບໃໝ່ຂ້າງລຸ່ມ
+        await payrollLine_1.default.destroy({ where: { employee_id: id }, transaction: t });
         await row.destroy({ transaction: t });
         await t.commit();
+        await (0, payrollController_1.syncDraftPayrolls)();
         if (row.profile)
             (0, uploadFile_1.deleteFile)(hrHelpers_1.PROFILE_FOLDER, row.profile);
         documents.forEach((d) => (0, hrHelpers_1.removeQuietly)(path_1.default.join(hrHelpers_1.DOCUMENT_DIR, d.file_name)));

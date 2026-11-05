@@ -10,6 +10,7 @@ const district_1 = __importDefault(require("../../models/district"));
 const uploadFile_1 = require("../../utils/uploadFile");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
+const payrollController_1 = require("./payrollController");
 /**
  * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
  * ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກປະຈຳອາທິດ ແລະ ເຄື່ອງແບບປະຈຳວັນ
@@ -143,6 +144,8 @@ const saveCompany = async (req, res) => {
             await company_1.default.create({ ...input, updatedbyid: actor });
         if (oldLogo)
             (0, uploadFile_1.deleteFile)(hrHelpers_1.COMPANY_FOLDER, oldLogo);
+        // ເວລາເຮັດວຽກ / ວັນພັກປະຈຳອາທິດ ປ່ຽນ = ມື້ເຮັດວຽກຂອງໃບເງິນເດືອນຮ່າງປ່ຽນ
+        await (0, payrollController_1.syncDraftPayrolls)();
         res.status(200).json({ message: "Successfully saved company", data: present(await findCompany()) });
     }
     catch (error) {

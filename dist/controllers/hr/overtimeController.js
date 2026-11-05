@@ -14,6 +14,7 @@ const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const payrollRules_1 = require("./payrollRules");
 const payrollController_1 = require("./payrollController");
+const notificationController_1 = require("./notificationController");
 const attendanceController_1 = require("./attendanceController");
 const workCalendar_1 = require("./workCalendar");
 /**
@@ -268,7 +269,15 @@ const createOvertime = async (req, res) => {
         }
         const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const data = await overtime_1.default.bulkCreate(ids.map((employee_id) => ({ ...input, employee_id, createdbyid: actor, updatedbyid: actor })));
-        await (0, payrollController_1.syncDraftOvertime)(input.work_date.slice(0, 7), ids);
+        await (0, payrollController_1.syncDraftPayroll)(input.work_date.slice(0, 7), ids);
+        await (0, notificationController_1.notify)(ids.map((employee_id) => ({
+            employee_id,
+            type: "overtime",
+            title: "HR ບັນທຶກ OT ໃຫ້ທ່ານແລ້ວ",
+            body: `ວັນທີ ${(0, moment_1.default)(input.work_date).format("DD/MM/YYYY")} · ${input.hours} ຊົ່ວໂມງ`,
+            ref: `overtime:${input.work_date}`,
+            createdbyid: actor,
+        })));
         res.status(200).json({ message: `ບັນທຶກ OT ແລ້ວ ${data.length} ຄົນ · ${input.hours} ຊົ່ວໂມງ`, data });
     }
     catch (error) {
@@ -301,7 +310,7 @@ const updateOvertime = async (req, res) => {
         const before = String(row.work_date).slice(0, 7);
         await row.update({ ...input, updatedbyid: Number((0, bansiHelpers_1.actorOf)(req)) || null, updatedAt: new Date() });
         for (const period of new Set([before, input.work_date.slice(0, 7)]))
-            await (0, payrollController_1.syncDraftOvertime)(period, [Number(row.employee_id)]);
+            await (0, payrollController_1.syncDraftPayroll)(period, [Number(row.employee_id)]);
         res.status(200).json({ message: "Successfully updated overtime", data: row });
     }
     catch (error) {
@@ -322,7 +331,7 @@ const deleteOvertime = async (req, res) => {
             return;
         }
         await row.destroy();
-        await (0, payrollController_1.syncDraftOvertime)(String(row.work_date).slice(0, 7), [Number(row.employee_id)]);
+        await (0, payrollController_1.syncDraftPayroll)(String(row.work_date).slice(0, 7), [Number(row.employee_id)]);
         res.status(200).json({ message: "Successfully deleted overtime" });
     }
     catch (error) {

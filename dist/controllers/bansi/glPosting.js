@@ -3,12 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rebuildFromDocuments = exports.postAccountOpening = exports.accountOpeningId = exports.postPayroll = exports.postTransfer = exports.postExpense = exports.postIncome = void 0;
+exports.rebuildFromDocuments = exports.postAccountOpening = exports.accountOpeningId = exports.postAdvanceRepayment = exports.postAdvance = exports.postPayroll = exports.postTransfer = exports.postExpense = exports.postIncome = void 0;
 const moment_1 = __importDefault(require("moment"));
 const incomeModel_1 = __importDefault(require("../../models/incomeModel"));
 const expenseModel_1 = __importDefault(require("../../models/expenseModel"));
 const transferMoney_1 = __importDefault(require("../../models/transferMoney"));
 const payroll_1 = __importDefault(require("../../models/payroll"));
+const salaryAdvance_1 = __importDefault(require("../../models/salaryAdvance"));
+const salaryAdvanceRepayment_1 = __importDefault(require("../../models/salaryAdvanceRepayment"));
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
 const typeTreasury_1 = __importDefault(require("../../models/typeTreasury"));
 const journalEntry_1 = __importDefault(require("../../models/journalEntry"));
@@ -22,7 +24,9 @@ const glCore_1 = require("./glCore");
  * - TRANSFER: ໜີ້ ບັນຊີຮັບ                             / ມີ ບັນຊີໂອນອອກ
  * - OPENING:  ໜີ້ ເງິນສົດ/ທະນາຄານ (ຍອດເລີ່ມຕົ້ນຕອນເປີດບັນຊີເງິນຄັງ) / ມີ ທຶນຍອດຍົກມາ — source_id "TA-{id}"
  * - PAYROLL:  ໜີ້ ລາຍຈ່າຍເງິນເດືອນ (gross) + ໜີ້ ປກສ ສ່ວນບໍລິສັດ / ມີ ເງິນສົດ/ທະນາຄານ (ສຸດທິ) + ມີ ປກສ ຄ້າງຈ່າຍ
- *             (ພະນັກງານ + ບໍລິສັດ) + ມີ ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ + ມີ ຍອດຫັກອື່ນ
+ *             (ພະນັກງານ + ບໍລິສັດ) + ມີ ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ + ມີ ຍອດຫັກອື່ນ + ມີ ເງິນລ່ວງໜ້າພະນັກງານ (ຫັກເງິນເບີກ)
+ * - ADVANCE:  ໜີ້ ເງິນລ່ວງໜ້າພະນັກງານ / ມີ ເງິນສົດ/ທະນາຄານ (ຈ່າຍເງິນເບີກ)
+ * - ADVANCE_REPAY: ໜີ້ ເງິນສົດ/ທະນາຄານ / ມີ ເງິນລ່ວງໜ້າພະນັກງານ (ຮັບຄືນເງິນເບີກເປັນເງິນສົດ)
  * ຍອດຍົກມາຕົ້ນປີ (tbl_opening_balance) ເປັນພຽງພາບຖ່າຍຂອງຍອດທີ່ຍົກມາຈາກປີກ່ອນ ຈຶ່ງບໍ່ລົງບັນຊີ (ລົງແລ້ວຈະນັບຊ້ຳ).
  * ທຸກຟັງຊັນບໍ່ເຮັດຫຍັງ ຖ້າຍັງບໍ່ໄດ້ສ້າງຕາຕະລາງ (glReady)
  */
@@ -125,11 +129,46 @@ const postPayroll = async (row, t, actorId) => {
     await add("SSO_PAYABLE", glCore_1.CREDIT, (0, glCore_1.round2)(value("total_sso_employee") + employer));
     await add("PIT_PAYABLE", glCore_1.CREDIT, value("total_tax"));
     await add("PAYROLL_DEDUCTION", glCore_1.CREDIT, value("total_other_deduction"));
+    await add("EMPLOYEE_ADVANCE", glCore_1.CREDIT, value("total_advance_deduction"));
     return (0, glCore_1.postSource)({
         date, sourceType: "PAYROLL", sourceId: row._uuid, reference: row.number, description: row.description, lines, actorId,
     }, t);
 };
 exports.postPayroll = postPayroll;
+/** ຈ່າຍເງິນເບີກລ່ວງໜ້າໃຫ້ພະນັກງານ (ບັນຊີສະກຸນກີບເທົ່ານັ້ນ) */
+const postAdvance = async (row, t, actorId) => {
+    if (!(await (0, glCore_1.glReady)(t)))
+        return null;
+    const date = row.pay_date;
+    const amount = (0, glCore_1.round2)(Number(row.amount) || 0);
+    const cash = await treasurySide(Number(row.account_id), date, t);
+    return (0, glCore_1.postSource)({
+        date, sourceType: "ADVANCE", sourceId: row._uuid, reference: row.number, description: row.reason,
+        lines: [
+            { accountId: await (0, glCore_1.roleAccountId)("EMPLOYEE_ADVANCE", t), side: glCore_1.DEBIT, amount },
+            { accountId: cash.accountId, side: glCore_1.CREDIT, amount, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: Number(row.account_id) },
+        ],
+        actorId,
+    }, t);
+};
+exports.postAdvance = postAdvance;
+/** ຮັບຄືນເງິນເບີກລ່ວງໜ້າເປັນເງິນສົດ / ໂອນ — row = ແຖວ tbl_salary_advance_repayment (kind 2) */
+const postAdvanceRepayment = async (row, reference, t, actorId) => {
+    if (!(await (0, glCore_1.glReady)(t)))
+        return null;
+    const date = row.repay_date;
+    const amount = (0, glCore_1.round2)(Number(row.amount) || 0);
+    const cash = await treasurySide(Number(row.account_id), date, t);
+    return (0, glCore_1.postSource)({
+        date, sourceType: "ADVANCE_REPAY", sourceId: row._uuid, reference, description: row.note,
+        lines: [
+            { accountId: cash.accountId, side: glCore_1.DEBIT, amount, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: Number(row.account_id) },
+            { accountId: await (0, glCore_1.roleAccountId)("EMPLOYEE_ADVANCE", t), side: glCore_1.CREDIT, amount },
+        ],
+        actorId,
+    }, t);
+};
+exports.postAdvanceRepayment = postAdvanceRepayment;
 /** source_id ຂອງໃບຍອດເລີ່ມຕົ້ນຂອງບັນຊີເງິນຄັງ */
 const accountOpeningId = (treasuryId) => `TA-${treasuryId}`;
 exports.accountOpeningId = accountOpeningId;
@@ -228,6 +267,13 @@ const rebuildFromDocuments = async (actorId) => {
     const payrolls = await payroll_1.default.findAll({ where: { status: 2 }, order: [["_uuid", "ASC"]] });
     for (const row of payrolls)
         await run("PAYROLL", row._uuid, row.number ?? `PAYROLL #${row._uuid}`, (t) => (0, exports.postPayroll)(row, t, actorId));
+    // status 3 ກຳລັງຫັກຄືນ, 4 ຄືນຄົບແລ້ວ = ຈ່າຍເງິນແລ້ວ
+    const advances = await salaryAdvance_1.default.findAll({ where: { status: [3, 4] }, order: [["_uuid", "ASC"]] });
+    for (const row of advances)
+        await run("ADVANCE", row._uuid, row.number ?? `ADVANCE #${row._uuid}`, (t) => (0, exports.postAdvance)(row, t, actorId));
+    const repayments = await salaryAdvanceRepayment_1.default.findAll({ where: { kind: 2 }, order: [["_uuid", "ASC"]] });
+    for (const row of repayments)
+        await run("ADVANCE_REPAY", row._uuid, `ADVANCE_REPAY #${row._uuid}`, (t) => (0, exports.postAdvanceRepayment)(row, null, t, actorId));
     // ສຸດທ້າຍ: ຍອດເລີ່ມຕົ້ນຂອງແຕ່ລະບັນຊີເງິນຄັງ ໃຫ້ຍອດໃນສະໝຸດບັນຊີກົງກັບຍອດປັດຈຸບັນ (ຄິດໃໝ່ທຸກເທື່ອ)
     const accounts = await treasuryAcount_1.default.findAll({ order: [["_uuid", "ASC"]] });
     for (const account of accounts) {

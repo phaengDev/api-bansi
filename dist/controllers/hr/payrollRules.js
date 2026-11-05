@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.overtimeByEmployee = exports.NO_OVERTIME = exports.computeLine = exports.LINE_MODES = exports.MODE_ALWAYS = exports.MODE_NONE = exports.MODE_POLICY = exports.MODE_MANUAL = exports.progressiveTax = exports.loadPayrollSettings = exports.findPayrollSetting = exports.presentSettings = exports.parseBrackets = exports.otTotals = exports.otFixedOf = exports.OT_PAY_TYPES = exports.OT_PAY_LUMP = exports.OT_PAY_HOURLY = exports.OT_PAY_RATE = exports.otRateOf = exports.OT_KINDS = exports.DEFAULT_SETTINGS = exports.DEFAULT_TAX_BRACKETS = void 0;
+exports.advancesByEmployee = exports.NO_ADVANCE = exports.ADVANCE_ACTIVE = exports.overtimeByEmployee = exports.NO_OVERTIME = exports.computeLine = exports.LINE_MODES = exports.MODE_ALWAYS = exports.MODE_NONE = exports.MODE_POLICY = exports.MODE_MANUAL = exports.progressiveTax = exports.loadPayrollSettings = exports.findPayrollSetting = exports.presentSettings = exports.parseBrackets = exports.otTotals = exports.otFixedOf = exports.OT_PAY_TYPES = exports.OT_PAY_LUMP = exports.OT_PAY_HOURLY = exports.OT_PAY_RATE = exports.otRateOf = exports.OT_KINDS = exports.DEFAULT_SETTINGS = exports.DEFAULT_TAX_BRACKETS = void 0;
 const sequelize_1 = require("sequelize");
 const payrollSetting_1 = __importDefault(require("../../models/payrollSetting"));
 const overtime_1 = __importDefault(require("../../models/overtime"));
+const salaryAdvance_1 = __importDefault(require("../../models/salaryAdvance"));
 exports.DEFAULT_TAX_BRACKETS = [
     { upto: 2500000, rate: 0 },
     { upto: 5000000, rate: 5 },
@@ -31,6 +32,10 @@ exports.DEFAULT_SETTINGS = {
     ot_rate_night: 200,
     ot_rate_dayoff: 250,
     ot_rate_dayoff_night: 300,
+    advance_enabled: true,
+    advance_max_percent: 50,
+    advance_max_installments: 3,
+    budget_category_id: null,
     updatedAt: null,
 };
 /** ປະເພດ OT (tbl_overtime.kind) → ຖັນອັດຕາໃນຕັ້ງຄ່າ */
@@ -128,6 +133,10 @@ const presentSettings = (row) => {
         ot_rate_night: Number(row.ot_rate_night) || 0,
         ot_rate_dayoff: Number(row.ot_rate_dayoff) || 0,
         ot_rate_dayoff_night: Number(row.ot_rate_dayoff_night) || 0,
+        advance_enabled: Number(row.advance_enabled) === 1,
+        advance_max_percent: Number(row.advance_max_percent) || 0,
+        advance_max_installments: Number(row.advance_max_installments) || 1,
+        budget_category_id: Number(row.budget_category_id) || null,
         updatedAt: row.updatedAt ?? null,
     };
 };
@@ -178,7 +187,9 @@ const byMode = (mode, policyOn, computed, manual) => {
  * - gross = ເງິນເດືອນຕາມວັນ − ຫັກ + ເງິນອຸດໜູນ + ລ່ວງເວລາ + ໂບນັດ
  * - ປກສ ຄິດຈາກ gross (ບໍ່ເກີນເພດານ); ອາກອນຄິດຈາກ gross − ປກສ ພະນັກງານ (− ລ່ວງເວລາທີ່ຍົກເວັ້ນ)
  * - ແຕ່ລະກຸ່ມ (ຂາດ/ຊ້າ, ປກສ, ອາກອນ) ຕາມ *_mode ຂອງຄົນນັ້ນ: ຕາມນະໂຍບາຍບໍລິສັດ (ປິດ = 0), ຫັກສະເໝີ, ບໍ່ຫັກ ຫຼື ປ້ອນເອງ
- * - net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ
+ * - ຫັກເງິນເບີກລ່ວງໜ້າ = ງວດຂອງເດືອນ (ຫັກບໍ່ເກີນເງິນທີ່ເຫຼືອ — ສ່ວນທີ່ຫັກບໍ່ໄດ້ຍົກໄປເດືອນໜ້າ) ຫຼື ປ້ອນເອງ (ບໍ່ເກີນຍອດຄ້າງ);
+ *   ຫັກຫຼັງອາກອນ ບໍ່ກະທົບ gross / ປກສ / ອາກອນ
+ * - net = gross − ປກສ ພະນັກງານ − ອາກອນ − ຫັກອື່ນ − ຫັກເງິນເບີກ
  */
 const computeLine = (line, settings, minutesPerDay) => {
     const basic = kip(line.basic_salary);
@@ -203,10 +214,14 @@ const computeLine = (line, settings, minutesPerDay) => {
     const taxable = Math.max(0, gross - sso_employee - otFree);
     const tax = byMode(line.tax_mode, settings.tax_enabled, () => (0, exports.progressiveTax)(taxable, settings.tax_brackets), line.tax);
     const other_deduction = kip(line.other_deduction);
-    const net = gross - sso_employee - tax - other_deduction;
+    const beforeAdvance = gross - sso_employee - tax - other_deduction;
+    const advance_deduction = Number(line.advance_mode) === exports.MODE_MANUAL
+        ? Math.min(kip(line.advance_deduction), kip(line.advance_balance))
+        : Math.min(kip(line.advance_due), Math.max(0, beforeAdvance));
+    const net = beforeAdvance - advance_deduction;
     return {
         basic_salary: basic, base_pay, absence_deduction, late_deduction, allowance, overtime, bonus, gross,
-        sso_base, sso_employee, sso_employer, taxable, tax, other_deduction, net,
+        sso_base, sso_employee, sso_employer, taxable, tax, other_deduction, advance_deduction, net,
     };
 };
 exports.computeLine = computeLine;
@@ -232,3 +247,29 @@ const overtimeByEmployee = async (employeeIds, start, end, settings, t) => {
     return result;
 };
 exports.overtimeByEmployee = overtimeByEmployee;
+/** status ຂອງ tbl_salary_advance — ຈ່າຍເງິນແລ້ວ ກຳລັງຫັກຄືນ */
+exports.ADVANCE_ACTIVE = 3;
+exports.NO_ADVANCE = { due: 0, balance: 0 };
+/** ງວດທີ່ຕ້ອງຫັກໃນເດືອນ + ຍອດຄ້າງ ຂອງແຕ່ລະຄົນ → Map(employee_id, ...) — ໃຊ້ຄິດເງິນເດືອນ */
+const advancesByEmployee = async (employeeIds, period, t) => {
+    const result = new Map();
+    if (!employeeIds.length)
+        return result;
+    const rows = await salaryAdvance_1.default.findAll({
+        where: { employee_id: { [sequelize_1.Op.in]: employeeIds }, status: exports.ADVANCE_ACTIVE },
+        attributes: ["employee_id", "amount", "repaid", "monthly_deduction", "start_period"],
+        raw: true,
+        transaction: t,
+    });
+    for (const row of rows) {
+        const id = Number(row.employee_id);
+        const left = Math.max(0, Math.round((Number(row.amount) || 0) - (Number(row.repaid) || 0)));
+        const total = result.get(id) ?? { ...exports.NO_ADVANCE };
+        total.balance += left;
+        if (String(row.start_period) <= period)
+            total.due += Math.min(left, Math.round(Number(row.monthly_deduction) || 0));
+        result.set(id, total);
+    }
+    return result;
+};
+exports.advancesByEmployee = advancesByEmployee;

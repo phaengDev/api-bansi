@@ -49,6 +49,9 @@ const historyController_1 = require("../controllers/hr/historyController");
 const teamController_1 = require("../controllers/hr/teamController");
 const correctionController_1 = require("../controllers/hr/correctionController");
 const hrHelpers_1 = require("../controllers/hr/hrHelpers");
+const advanceController_1 = require("../controllers/hr/advanceController");
+const hrSummaryController_1 = require("../controllers/hr/hrSummaryController");
+const taskController_1 = require("../controllers/hr/taskController");
 const birthdayController_1 = require("../controllers/hr/birthdayController");
 const notificationController_1 = require("../controllers/hr/notificationController");
 const router = (0, express_1.Router)();
@@ -61,6 +64,8 @@ router.post("/app/otp/request", appAuthController_1.requestAppOtp);
 router.post("/app/otp/verify", appAuthController_1.verifyAppOtp);
 // Mac ທີ່ build ແອັບ ອັບໂຫຼດ APK ເອງຫຼັງ build — ກະແຈ APP_RELEASE_KEY ແທນ login
 router.post("/app-release/publish", appReleaseController_1.requireReleaseKey, appReleaseController_1.apkUpload, appReleaseController_1.createAppRelease);
+// app ພະນັກງານເປີດເອກະສານຂອງວຽກໃນ browser — ລິ້ງເຊັນຊົ່ວຄາວແທນ login (ອອກໂດຍ GET /task/me/file/:id)
+router.get("/task/file/open/:token", taskController_1.openTaskFile);
 router.get("/user/type", userController_1.getTypeUser);
 router.get("/currency", currencyController_1.getcurrency);
 router.use(auth_1.verifyToken);
@@ -265,6 +270,7 @@ router.get("/money/me/entries/:id/photo", myMoneyController_1.getMyMoneyEntryPho
 router.put("/money/me/entries/:id", hrHelpers_1.receiptUpload, myMoneyController_1.updateMyMoneyEntry);
 router.delete("/money/me/entries/:id", myMoneyController_1.deleteMyMoneyEntry);
 router.get("/money/me/summary", myMoneyController_1.getMyMoneySummary);
+router.get("/employee/summary/:id", hrSummaryController_1.getEmployeeSummary);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);
@@ -333,6 +339,7 @@ router.post("/leave/fetch", (0, permission_1.requirePermission)("updates"), leav
 router.post("/leave/balance", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaveBalance);
 router.put("/leave/approve/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.approveLeave);
 router.put("/leave/reject/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.rejectLeave);
+router.put("/leave/revoke/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.revokeLeave);
 // ປະເພດການລາພັກ (HR) — ຊື່, ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ, ຂີດຈຳກັດມື້ຕໍ່ປີ / ຕໍ່ຄັ້ງ
 router.get("/leave-type/fetch", leaveTypeController_1.getLeaveTypes);
 router.post("/leave-type/create", (0, permission_1.requirePermission)("creates"), leaveTypeController_1.createLeaveType);
@@ -346,6 +353,47 @@ router.post("/correction/fetch", (0, permission_1.requirePermission)("updates"),
 router.put("/correction/approve/:id", (0, permission_1.requirePermission)("updates"), correctionController_1.approveCorrection);
 router.put("/correction/reject/:id", (0, permission_1.requirePermission)("updates"), correctionController_1.rejectCorrection);
 // ========= ເງິນເດືອນ — /setting ແລະ /line/:id ກ່ອນ /:id; ຈ່າຍ = ເງິນອອກຈາກບັນຊີເງິນຄັງ + ລົງບັນຊີຄູ່
+// ================= ເງິນເບີກລ່ວງໜ້າ — ພະນັກງານຂໍຜ່ານ app; HR ອະນຸມັດ, ຈ່າຍເງິນ, ຫັກຄືນຜ່ານເງິນເດືອນ
+router.get("/advance/me", advanceController_1.getMyAdvances);
+router.post("/advance/me", advanceController_1.createMyAdvance);
+router.put("/advance/me/cancel/:id", advanceController_1.cancelMyAdvance);
+router.post("/advance/fetch", (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvances);
+router.post("/advance/create", (0, permission_1.requirePermission)("creates"), advanceController_1.createAdvance);
+router.put("/advance/approve/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.approveAdvance);
+router.put("/advance/reject/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.rejectAdvance);
+router.put("/advance/cancel/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.cancelAdvance);
+router.put("/advance/pay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.payAdvance);
+router.put("/advance/unpay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.unpayAdvance);
+router.put("/advance/schedule/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.updateAdvanceSchedule);
+router.post("/advance/repay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.repayAdvance);
+router.delete("/advance/repayment/:id", (0, permission_1.requirePermission)("deletes"), advanceController_1.deleteAdvanceRepayment);
+router.get("/advance/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvance);
+// ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
+router.get("/task/me", taskController_1.getMyTasks);
+router.put("/task/me/item/:id", taskController_1.updateMyTaskItem);
+router.get("/task/me/file/:id", taskController_1.getMyTaskFileLink);
+router.get("/task/me/comment/:id", taskController_1.getMyTaskComments);
+router.post("/task/me/comment/:id", taskController_1.createMyTaskComment);
+router.delete("/task/me/comment/:id", taskController_1.deleteMyTaskComment);
+router.get("/task/project/fetch", taskController_1.getTaskProjects);
+router.post("/task/project/create", (0, permission_1.requirePermission)("creates"), taskController_1.createTaskProject);
+router.put("/task/project/:id", (0, permission_1.requirePermission)("updates"), taskController_1.updateTaskProject);
+router.delete("/task/project/:id", (0, permission_1.requirePermission)("deletes"), taskController_1.deleteTaskProject);
+router.post("/task/file/:id", (0, permission_1.requirePermission)("creates", "updates"), hrHelpers_1.taskFileUpload, taskController_1.uploadTaskFiles);
+router.get("/task/file/download/:id", taskController_1.downloadTaskFile);
+router.delete("/task/file/:id", (0, permission_1.requirePermission)("updates"), taskController_1.deleteTaskFile);
+router.post("/task/comment/:id", taskController_1.createTaskComment);
+router.delete("/task/comment/:id", taskController_1.deleteTaskComment);
+router.post("/task/fetch", taskController_1.getTasks);
+router.post("/task/create", (0, permission_1.requirePermission)("creates"), taskController_1.createTask);
+router.post("/task/bulk", (0, permission_1.requirePermission)("updates"), taskController_1.bulkTasks);
+router.put("/task/status/:id", (0, permission_1.requirePermission)("updates"), taskController_1.updateTaskStatus);
+router.put("/task/star/:id", taskController_1.toggleTaskStar);
+router.put("/task/item/:id", (0, permission_1.requirePermission)("updates"), taskController_1.updateTaskItem);
+router.get("/task/:id", taskController_1.getTask);
+router.put("/task/:id", (0, permission_1.requirePermission)("updates"), taskController_1.updateTask);
+// ຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop)
+router.get("/hr/pending", (0, permission_1.requirePermission)("updates"), hrSummaryController_1.getHrPending);
 router.get("/payroll/setting", payrollController_1.getPayrollSetting);
 router.put("/payroll/setting", (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);
 router.post("/payroll/fetch", payrollController_1.getPayrolls);

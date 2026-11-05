@@ -16,6 +16,7 @@ const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const attendanceController_1 = require("./attendanceController");
 const notificationController_1 = require("./notificationController");
+const payrollController_1 = require("./payrollController");
 const workCalendar_1 = require("./workCalendar");
 /**
  * ຄຳຮ້ອງແຈ້ງລືມສະແກນ / ຂໍແກ້ເວລາເຂົ້າ-ອອກວຽກ:
@@ -264,6 +265,7 @@ const approveCorrection = async (req, res) => {
         await row.update({ status: APPROVED, review_note: note, reviewedbyid: actor, reviewedAt: new Date(), updatedAt: new Date() }, { transaction: t });
         await t.commit();
         done = true;
+        await (0, payrollController_1.syncDraftPayroll)(date.slice(0, 7), [Number(row.employee_id)]);
         await (0, notificationController_1.notify)([{
                 employee_id: Number(row.employee_id),
                 type: "attendance",

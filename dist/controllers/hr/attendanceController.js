@@ -15,6 +15,7 @@ const holiday_1 = __importDefault(require("../../models/holiday"));
 const payroll_1 = __importDefault(require("../../models/payroll"));
 const userModel_1 = __importDefault(require("../../models/userModel"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
+const payrollController_1 = require("./payrollController");
 const hrHelpers_1 = require("./hrHelpers");
 const auth_1 = require("../../middleware/auth");
 const companyController_1 = require("./companyController");
@@ -201,6 +202,8 @@ const scanAttendance = async (req, res) => {
                 }, { transaction: t });
             }
             await t.commit();
+            // ບໍ່ລໍຖ້າ — ການສະແກນຕ້ອງໄວ; ບໍ່ມີໃບຮ່າງຂອງເດືອນ = ບໍ່ເຮັດຫຍັງ
+            void (0, payrollController_1.syncDraftPayroll)(date.slice(0, 7), [employee._uuid]);
             const record = (0, exports.presentAttendance)(saved);
             res.status(200).json({
                 message: kind === "in" ? "ສະແກນເຂົ້າວຽກສຳເລັດ" : "ສະແກນອອກວຽກສຳເລັດ",
@@ -484,6 +487,7 @@ const saveAttendance = async (req, res) => {
         const saved = row
             ? await row.update({ ...values, updatedAt: new Date() })
             : await attendance_1.default.create({ employee_id: employeeId, work_date: date, ...values });
+        await (0, payrollController_1.syncDraftPayroll)(date.slice(0, 7), [employeeId]);
         res.status(200).json({ message: "Successfully saved attendance", data: (0, exports.presentAttendance)(saved) });
     }
     catch (error) {
@@ -504,6 +508,7 @@ const deleteAttendance = async (req, res) => {
             return;
         }
         await row.destroy();
+        await (0, payrollController_1.syncDraftPayroll)(String(row.work_date).slice(0, 7), [Number(row.employee_id)]);
         res.status(200).json({ message: "Successfully deleted attendance" });
     }
     catch (error) {
@@ -627,6 +632,13 @@ const createHoliday = async (req, res) => {
             }
             items.push({ holiday_date: date, name, kind });
         }
+        // ວັນພັກປ່ຽນມື້ເຮັດວຽກຂອງເດືອນ — ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ປ່ຽນບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ)
+        for (const date of new Set(items.map((x) => x.holiday_date.slice(0, 7)))) {
+            if (await paidPeriod(`${date}-01`)) {
+                res.status(400).json({ message: lockedMessage(`${date}-01`) });
+                return;
+            }
+        }
         const taken = await holiday_1.default.findOne({ where: { holiday_date: items.map((x) => x.holiday_date) } });
         if (taken) {
             res.status(400).json({ message: `ວັນທີ ${(0, moment_1.default)(taken.holiday_date).format("DD/MM/YYYY")} ເປັນວັນພັກຢູ່ແລ້ວ` });
@@ -634,6 +646,7 @@ const createHoliday = async (req, res) => {
         }
         const createdbyid = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const data = await holiday_1.default.bulkCreate(items.map((x) => ({ ...x, createdbyid })));
+        await (0, payrollController_1.syncDraftPayrollForDates)(items.map((x) => x.holiday_date));
         // ແຈ້ງພະນັກງານທຸກຄົນ
         const today = (0, workCalendar_1.todayLao)();
         const sorted = [...items].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
@@ -691,7 +704,12 @@ const deleteHoliday = async (req, res) => {
             res.status(404).json({ message: "ບໍ່ພົບວັນພັກ" });
             return;
         }
+        if (await paidPeriod(String(row.holiday_date))) {
+            res.status(400).json({ message: lockedMessage(String(row.holiday_date)) });
+            return;
+        }
         await row.destroy();
+        await (0, payrollController_1.syncDraftPayrollForDates)([String(row.holiday_date)]);
         res.status(200).json({ message: "Successfully deleted holiday" });
     }
     catch (error) {

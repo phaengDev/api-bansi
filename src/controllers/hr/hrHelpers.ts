@@ -85,15 +85,20 @@ export const receiptUpload = asJson(
   }).single("photo")
 );
 
-/** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" — ຮູບ, PDF, Word, Excel */
-export const documentUpload = asJson(
+/** ເອກະສານສູງສຸດ 5 ໄຟລ໌ຕໍ່ເທື່ອ field "files" */
+const documentsIn = (dir: string, types: RegExp, typesMessage: string) => asJson(
   multer({
-    storage: storageIn(DOCUMENT_DIR),
+    storage: storageIn(dir),
     limits: { fileSize: MAX_FILE, files: 5 },
-    fileFilter: (_req, file, cb) =>
-      DOCUMENT_TYPES.test(file.originalname) ? cb(null, true) : cb(new Error("ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel")),
+    fileFilter: (_req, file, cb) => (types.test(file.originalname) ? cb(null, true) : cb(new Error(typesMessage))),
   }).array("files", 5)
 );
+
+export const documentUpload = documentsIn(DOCUMENT_DIR, DOCUMENT_TYPES, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel");
+
+/** ເອກະສານຄັດຕິດຂອງວຽກ (ບໍ່ຢູ່ໃຕ້ /image) — ຄືກັບເອກະສານພະນັກງານ + PowerPoint */
+export const TASK_FILE_DIR = path.join(__dirname, "..", "..", "private", "task-files");
+export const taskFileUpload = documentsIn(TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|docx?|xlsx?|pptx?)$/i, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel, PowerPoint");
 
 /** ລຶບໄຟລ໌ໂດຍບໍ່ສົນວ່າມີຢູ່ຫຼືບໍ່ (ໃຊ້ຕອນ rollback / ລຶບຂໍ້ມູນ) */
 export const removeQuietly = (filePath: string) => {

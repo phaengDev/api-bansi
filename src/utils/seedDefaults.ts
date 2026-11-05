@@ -191,6 +191,9 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_task_assignee", "idx_task_assignee_employee", ["employee_id"], false],
   ["tbl_task_item", "idx_task_item_task", ["task_id"], false],
   ["tbl_task_star", "uq_task_star", ["user_id", "task_id"], true],
+  ["tbl_task_file", "idx_task_file_task", ["task_id"], false],
+  ["tbl_task_comment", "idx_task_comment_task", ["task_id"], false],
+  ["tbl_task_log", "idx_task_log_task", ["task_id"], false],
 ];
 
 /** [ຕາຕະລາງ, ຊື່ constraint, ຖັນ, ຕາຕະລາງປາຍທາງ, ຖັນປາຍທາງ] — sql/fix_tbl_transfer_money_fk.sql */

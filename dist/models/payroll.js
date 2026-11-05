@@ -50,6 +50,7 @@ Payroll.init({
     total_sso_employer: money(),
     total_tax: money(),
     total_other_deduction: money(),
+    total_advance_deduction: money(),
     total_net: money(),
     number: sequelize_1.DataTypes.STRING(30),
     pay_date: sequelize_1.DataTypes.DATEONLY,

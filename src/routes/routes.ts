@@ -96,15 +96,16 @@ import { getMyColleagues } from "../controllers/hr/teamController";
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyLogoUpload, documentUpload, profileUpload, receiptUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import { companyLogoUpload, documentUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import {
   approveAdvance, cancelAdvance, cancelMyAdvance, createAdvance, createMyAdvance, deleteAdvanceRepayment, getAdvance, getAdvances, getMyAdvances,
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
 } from "../controllers/hr/advanceController";
 import { getEmployeeSummary, getHrPending } from "../controllers/hr/hrSummaryController";
 import {
-  bulkTasks, createTask, createTaskProject, deleteTaskProject, getMyTasks, getTask, getTaskProjects, getTasks, toggleTaskStar,
-  updateMyTaskItem, updateMyTaskStatus, updateTask, updateTaskItem, updateTaskProject, updateTaskStatus,
+  bulkTasks, createMyTaskComment, createTask, createTaskComment, createTaskProject, deleteMyTaskComment, deleteTaskComment, deleteTaskFile,
+  deleteTaskProject, downloadTaskFile, getMyTaskComments, getMyTaskFileLink, getMyTasks, getTask, getTaskProjects, getTasks, openTaskFile,
+  toggleTaskStar, updateMyTaskItem, updateTask, updateTaskItem, updateTaskProject, updateTaskStatus, uploadTaskFiles,
 } from "../controllers/hr/taskController";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
@@ -120,6 +121,8 @@ router.post("/app/otp/request", requestAppOtp);
 router.post("/app/otp/verify", verifyAppOtp);
 // Mac ທີ່ build ແອັບ ອັບໂຫຼດ APK ເອງຫຼັງ build — ກະແຈ APP_RELEASE_KEY ແທນ login
 router.post("/app-release/publish", requireReleaseKey, apkUpload, createAppRelease);
+// app ພະນັກງານເປີດເອກະສານຂອງວຽກໃນ browser — ລິ້ງເຊັນຊົ່ວຄາວແທນ login (ອອກໂດຍ GET /task/me/file/:id)
+router.get("/task/file/open/:token", openTaskFile);
 router.get("/user/type", getTypeUser);
 router.get("/currency", getcurrency);
 
@@ -432,12 +435,20 @@ router.delete("/advance/repayment/:id", requirePermission("deletes"), deleteAdva
 router.get("/advance/:id", requirePermission("updates"), getAdvance);
 // ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
 router.get("/task/me", getMyTasks);
-router.put("/task/me/status/:id", updateMyTaskStatus);
 router.put("/task/me/item/:id", updateMyTaskItem);
+router.get("/task/me/file/:id", getMyTaskFileLink);
+router.get("/task/me/comment/:id", getMyTaskComments);
+router.post("/task/me/comment/:id", createMyTaskComment);
+router.delete("/task/me/comment/:id", deleteMyTaskComment);
 router.get("/task/project/fetch", getTaskProjects);
 router.post("/task/project/create", requirePermission("creates"), createTaskProject);
 router.put("/task/project/:id", requirePermission("updates"), updateTaskProject);
 router.delete("/task/project/:id", requirePermission("deletes"), deleteTaskProject);
+router.post("/task/file/:id", requirePermission("creates", "updates"), taskFileUpload, uploadTaskFiles);
+router.get("/task/file/download/:id", downloadTaskFile);
+router.delete("/task/file/:id", requirePermission("updates"), deleteTaskFile);
+router.post("/task/comment/:id", createTaskComment);
+router.delete("/task/comment/:id", deleteTaskComment);
 router.post("/task/fetch", getTasks);
 router.post("/task/create", requirePermission("creates"), createTask);
 router.post("/task/bulk", requirePermission("updates"), bulkTasks);

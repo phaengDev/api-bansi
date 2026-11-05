@@ -20,13 +20,13 @@ exports.hasPermission = hasPermission;
 const LABELS = { creates: "ເພີ່ມ", updates: "ແກ້ໄຂ", deletes: "ລຶບ" };
 /**
  * ກວດສິດຂອງຜູ້ໃຊ້ຈາກຖານຂໍ້ມູນທຸກເທື່ອ (ບໍ່ເຊື່ອຄ່າໃນ localStorage ຂອງໜ້າເວັບ) — ໃຊ້ຫຼັງ verifyToken.
- * ບໍ່ມີສິດ = 403
+ * ບໍ່ມີສິດ = 403; ໃຫ້ຫຼາຍ flag = ມີສິດໃດສິດໜຶ່ງກໍ່ຜ່ານ
  */
-const requirePermission = (flag) => async (req, res, next) => {
+const requirePermission = (...flags) => async (req, res, next) => {
     try {
         const user = await (0, exports.currentUser)(req);
-        if (!(0, exports.hasPermission)(user, flag)) {
-            res.status(403).json({ message: `ທ່ານບໍ່ມີສິດ${LABELS[flag]}ຂໍ້ມູນ` });
+        if (!flags.some((flag) => (0, exports.hasPermission)(user, flag))) {
+            res.status(403).json({ message: `ທ່ານບໍ່ມີສິດ${LABELS[flags[0]]}ຂໍ້ມູນ` });
             return;
         }
         next();
