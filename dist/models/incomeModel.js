@@ -6,11 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
-const typeIncomeModel_1 = __importDefault(require("./typeIncomeModel"));
 const treasuryAcount_1 = __importDefault(require("./treasuryAcount"));
 const userModel_1 = __importDefault(require("./userModel"));
 const bankModel_1 = __importDefault(require("./bankModel"));
 const partner_1 = __importDefault(require("./partner"));
+const financeSubCategory_1 = __importDefault(require("./financeSubCategory"));
 class Incomes extends sequelize_1.Model {
 }
 Incomes.init({
@@ -22,7 +22,7 @@ Incomes.init({
     number: sequelize_1.DataTypes.STRING,
     income_date: sequelize_1.DataTypes.DATEONLY,
     incom_title: sequelize_1.DataTypes.STRING,
-    type_incom_fk: sequelize_1.DataTypes.INTEGER,
+    sub_category_id: sequelize_1.DataTypes.INTEGER,
     type_acountid: sequelize_1.DataTypes.INTEGER,
     acount_id_fk: sequelize_1.DataTypes.INTEGER,
     receive_type: {
@@ -69,7 +69,7 @@ Incomes.init({
 // } catch (error) {
 //   console.log(error);
 // }
-Incomes.belongsTo(typeIncomeModel_1.default, { foreignKey: "type_incom_fk", as: "typein" });
+Incomes.belongsTo(financeSubCategory_1.default, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Incomes.belongsTo(treasuryAcount_1.default, { foreignKey: "acount_id_fk", as: "acount" });
 Incomes.belongsTo(userModel_1.default, { foreignKey: "createdbyid", as: "user" });
 Incomes.belongsTo(bankModel_1.default, { foreignKey: "payer_bank_id", as: "payerBank" });

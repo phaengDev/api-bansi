@@ -1,18 +1,19 @@
 import { DataTypes, Model } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
-import TypeInexp from "./typeIncomeModel";
 import TreasuryAcount from "./treasuryAcount";
 import Users from "./userModel";
 import Banks from "./bankModel";
 import Partner from "./partner";
+import FinanceSubCategory from "./financeSubCategory";
 class Incomes extends Model {
   public _uuid!: number;
   public number!: string;
   /** ວັນທີຮັບເງິນ (ລົງຍ້ອນຫຼັງໄດ້) — ແຖວເກົ່າເປັນ NULL ໃຊ້ວັນທີຂອງ createdAt ແທນ */
   public income_date!: string | null;
   public incom_title!: string;
-  public type_incom_fk!: number ;
+  /** ລາຍການຍ່ອຍ (tbl_finance_subcategory) — ປະເພດລາຍຮັບອ່ານຜ່ານ sub.category_id; incom_title = ຊື່ລາຍການຍ່ອຍຕອນບັນທຶກ */
+  public sub_category_id!: number;
   public type_acountid!: number;
   public acount_id_fk!: number;
   /** 1 = ເງິນສົດ, 2 = ເງິນໂອນ */
@@ -47,7 +48,7 @@ Incomes.init(
     number: DataTypes.STRING,
     income_date: DataTypes.DATEONLY,
     incom_title: DataTypes.STRING,
-    type_incom_fk: DataTypes.INTEGER,
+    sub_category_id: DataTypes.INTEGER,
     type_acountid: DataTypes.INTEGER,
     acount_id_fk: DataTypes.INTEGER,
     receive_type: {
@@ -97,7 +98,7 @@ Incomes.init(
 //   console.log(error);
 // }
 
-Incomes.belongsTo(TypeInexp, { foreignKey: "type_incom_fk",as:"typein" });
+Incomes.belongsTo(FinanceSubCategory, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Incomes.belongsTo(TreasuryAcount, { foreignKey: "acount_id_fk",as:"acount" });
 Incomes.belongsTo(Users, { foreignKey: "createdbyid",as:"user" });
 Incomes.belongsTo(Banks, { foreignKey: "payer_bank_id", as: "payerBank" });

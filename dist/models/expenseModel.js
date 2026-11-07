@@ -6,12 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
-const typeIncomeModel_1 = __importDefault(require("./typeIncomeModel"));
 const treasuryAcount_1 = __importDefault(require("./treasuryAcount"));
 const expenseItemModel_1 = __importDefault(require("./expenseItemModel"));
 const userModel_1 = __importDefault(require("./userModel"));
 const bankModel_1 = __importDefault(require("./bankModel"));
 const partner_1 = __importDefault(require("./partner"));
+const financeSubCategory_1 = __importDefault(require("./financeSubCategory"));
 /**
  * ລາຍຈ່າຍ — ສ່ວນຫົວ (1 ແຖວຕໍ່ໃບຈ່າຍ); ລາຍການຍ່ອຍຢູ່ tbl_expense_items (expense_id).
  * ບັນທຶກແລ້ວເງິນອອກຈາກ "ຍອດໃຊ້ໄດ້" (balance_treasury) ຂອງບັນຊີທີ່ຈ່າຍທັນທີ (ຜ່ານ moveBalance),
@@ -35,7 +35,7 @@ Expenses.init({
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
     },
-    type_expense_fk: sequelize_1.DataTypes.INTEGER,
+    sub_category_id: sequelize_1.DataTypes.INTEGER,
     payee_name: sequelize_1.DataTypes.STRING,
     bill_no: sequelize_1.DataTypes.STRING(100),
     type_acountid: sequelize_1.DataTypes.INTEGER,
@@ -71,6 +71,7 @@ Expenses.init({
         defaultValue: 1,
     },
     createdbyid: sequelize_1.DataTypes.INTEGER,
+    payroll_id: sequelize_1.DataTypes.INTEGER,
     createdAt: {
         type: sequelize_1.DataTypes.DATE,
         defaultValue: sequelize_1.DataTypes.NOW,
@@ -85,7 +86,7 @@ Expenses.init({
     tableName: "tbl_expenses",
     timestamps: true,
 });
-Expenses.belongsTo(typeIncomeModel_1.default, { foreignKey: "type_expense_fk", as: "typeout" });
+Expenses.belongsTo(financeSubCategory_1.default, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Expenses.belongsTo(treasuryAcount_1.default, { foreignKey: "acount_id_fk", as: "acount" });
 Expenses.belongsTo(userModel_1.default, { foreignKey: "createdbyid", as: "user" });
 Expenses.belongsTo(bankModel_1.default, { foreignKey: "payee_bank_id", as: "payeeBank" });

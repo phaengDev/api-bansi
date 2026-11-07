@@ -138,6 +138,8 @@ router.get("/finance-category/fetch/:id", typeinexpController_1.getTypeInexp);
 router.get("/finance-category/option/:id", typeinexpController_1.getTypeInexpOption);
 router.post("/finance-category/create", typeinexpController_1.createTypeInexp);
 router.put("/finance-category/:id", typeinexpController_1.updateTypeInexp);
+// ຟອມລາຍຮັບ/ລາຍຈ່າຍ ເພີ່ມລາຍການຍ່ອຍໃໝ່ໄດ້ເລີຍ (ບໍ່ຕ້ອງໄປໜ້າຕັ້ງຄ່າ)
+router.post("/finance-category/sub/:id", (0, permission_1.requirePermission)("creates", "updates"), typeinexpController_1.addSubCategory);
 // ========= ຕັ້ງຄ່າບັນຊີ (bansi settings)
 // ປີການເງິນ
 router.get("/fiscal-year/fetch", fiscalYearController_1.getFiscalYears);
@@ -395,6 +397,7 @@ router.put("/task/:id", (0, permission_1.requirePermission)("updates"), taskCont
 // ຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop)
 router.get("/hr/pending", (0, permission_1.requirePermission)("updates"), hrSummaryController_1.getHrPending);
 router.get("/payroll/setting", payrollController_1.getPayrollSetting);
+router.get("/payroll/expense-default", payrollController_1.getPayrollExpenseDefault);
 router.put("/payroll/setting", (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);
 router.post("/payroll/fetch", payrollController_1.getPayrolls);
 router.post("/payroll/create", (0, permission_1.requirePermission)("creates"), payrollController_1.createPayroll);

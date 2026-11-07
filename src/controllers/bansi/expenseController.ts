@@ -2,10 +2,9 @@ import { Request, Response } from "express";
 import moment from "moment";
 import path from "path";
 import fs from "fs";
-import { Op } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import Expenses from "../../models/expenseModel";
 import ExpenseItems from "../../models/expenseItemModel";
-import FinanceCategories from "../../models/typeIncomeModel";
 import TreasuryAcount from "../../models/treasuryAcount";
 import Banks from "../../models/bankModel";
 import Users from "../../models/userModel";
@@ -16,7 +15,7 @@ import { issueDocNumber } from "./docNumberingController";
 import { MOVE_IN, MOVE_OUT, moveBalance } from "./accountMovement";
 import {
   ACTIVE, BUSINESS_OFFSET, CANCELLED, CASH, EXPENSE_PARTNER_TYPES, TRANSFER, accountInclude, computeTax, entryDateOf, isCashAccount,
-  partnerIdOf, partnerInclude,
+  partnerIdOf, partnerInclude, resolveSubCategory, subInclude,
 } from "./journalHelpers";
 import { replyGlError, reverseSource } from "./glCore";
 import { postExpense } from "./glPosting";
@@ -38,7 +37,7 @@ const expenseDateOf = (value: unknown) => entryDateOf(value, "ວັນທີຈ
 const text = (value: unknown) => String(value ?? "").trim() || null;
 
 const includeAll = [
-  { model: FinanceCategories, as: "typeout", attributes: ["_uuid", "type_code", "type_name"] },
+  subInclude,
   accountInclude,
   { model: Users, as: "user", attributes: ["user_uuid", "user_name"] },
   { model: Banks, as: "payeeBank", attributes: ["_uuid", "abbr", "name_la", "logo"] },
@@ -124,6 +123,73 @@ const present = (row: any) => {
 
 const findFull = (id: number) => Expenses.findByPk(id, { include: includeAll, order: itemOrder });
 
+/** ເລກທີໃບຈ່າຍຈາກ ຕັ້ງຄ່າ → ເລກທີເອກະສານ (PAYMENT); ຍັງບໍ່ຕັ້ງ = ເລກສຳຮອງ PV-YYYY-00001 */
+const nextExpenseNumber = async (t: Transaction) => {
+  const issued = await issueDocNumber(DOC_CODE, t);
+  if (issued?.number) return issued.number;
+  const prefix = `PV-${moment().utcOffset(BUSINESS_OFFSET).format("YYYY")}-`;
+  const count = await Expenses.count({ where: { number: { [Op.like]: `${prefix}%` } }, transaction: t });
+  return `${prefix}${String(count + 1).padStart(5, "0")}`;
+};
+
+/** ລາຍຈ່າຍທີ່ມາຈາກໃບເງິນເດືອນ ແກ້ / ຍົກເລີກຢູ່ໜ້ານີ້ບໍ່ໄດ້ (ເງິນ ແລະ ບັນຊີຄູ່ເປັນຂອງໃບເງິນເດືອນ) */
+const PAYROLL_LOCKED = "ລາຍຈ່າຍນີ້ມາຈາກການຈ່າຍເງິນເດືອນ — ຍົກເລີກຢູ່ໜ້າເງິນເດືອນ";
+
+/**
+ * ບັນທຶກການຈ່າຍເງິນເດືອນເປັນລາຍຈ່າຍ (ເອີ້ນຈາກ payPayroll ໃນ transaction ດຽວກັນ) — ຍອດ = ເງິນເດືອນສຸດທິທີ່ອອກຈາກບັນຊີ,
+ * ບໍ່ຫັກເງິນ ແລະ ບໍ່ລົງບັນຊີຄູ່ຊ້ຳ (ໃບເງິນເດືອນເຮັດແລ້ວ)
+ */
+export const recordPayrollExpense = async (input: {
+  payroll: { _uuid: number; number: string | null; period: string };
+  sub: { _uuid: number; name: string };
+  account: any;
+  amount: number;
+  date: string;
+  description: string;
+  people: number;
+  actorId: number | null;
+}, t: Transaction) => {
+  const amount = Math.round(input.amount);
+  const row = await Expenses.create({
+    number: await nextExpenseNumber(t),
+    expense_date: input.date,
+    expense_title: input.sub.name,
+    sub_category_id: input.sub._uuid,
+    payee_name: `ພະນັກງານ ${input.people} ຄົນ`,
+    bill_no: input.payroll.number,
+    type_acountid: input.account.type_treasuryid,
+    acount_id_fk: input.account._uuid,
+    pay_type: (await isCashAccount(input.account, t)) ? CASH : TRANSFER,
+    subtotal: amount,
+    tax: 0,
+    balance_expense: amount,
+    description: input.description,
+    status: ACTIVE,
+    createdbyid: input.actorId,
+    payroll_id: input.payroll._uuid,
+  }, { transaction: t });
+  await ExpenseItems.create({
+    expense_id: row.get("_uuid") as number,
+    line_no: 1,
+    item_name: `${input.description} (${input.people} ຄົນ)`.slice(0, 255),
+    quantity: 1,
+    unit: null,
+    unit_price: amount,
+    discount: 0,
+    amount,
+  }, { transaction: t });
+  return row;
+};
+
+/** ຍົກເລີກການຈ່າຍເງິນເດືອນ — ລຶບລາຍຈ່າຍທີ່ບັນທຶກຄູ່ໄວ້ (ບໍ່ມີເງິນ / ບັນຊີຄູ່ຂອງມັນເອງໃຫ້ຄືນ) */
+export const removePayrollExpense = async (payrollId: number, t: Transaction) => {
+  const rows = await Expenses.findAll({ where: { payroll_id: payrollId }, attributes: ["_uuid"], transaction: t });
+  if (!rows.length) return;
+  const ids = rows.map((r) => r._uuid);
+  await ExpenseItems.destroy({ where: { expense_id: { [Op.in]: ids } }, transaction: t });
+  await Expenses.destroy({ where: { _uuid: { [Op.in]: ids } }, transaction: t });
+};
+
 const uploadedName = (req: Request) => (req as any).file?.filename as string | undefined;
 
 /** ໄຟລ໌ທີ່ multer ບັນທຶກໄວ້ແລ້ວ ແຕ່ການບັນທຶກລົ້ມເຫຼວ — ລຶບຖິ້ມ ບໍ່ໃຫ້ຄ້າງ */
@@ -174,7 +240,8 @@ export const getExpenses = async (req: Request, res: Response) => {
 
 /**
  * POST /expense/create (multipart, ໄຟລ໌ field "file_doct")
- * { expense_date?, expense_title, type_expense_fk, payee_name?, bill_no?, acount_id_fk,
+ * { expense_date?, sub_category_id (ປະເພດມາຈາກລາຍການຍ່ອຍ), expense_title? (ບໍ່ສົ່ງ = ຊື່ລາຍການຍ່ອຍ),
+ *   payee_name?, bill_no?, acount_id_fk,
  *   items (JSON: [{ item_name, quantity, unit?, unit_price, discount? }]), tax_id? | (tax, calc_method)?,
  *   payee_bank_id?, payee_account_number?, partner_id?, description? }
  * — pay_type ຄິດຈາກໝວດຂອງບັນຊີເອງ; ຍອດໃຊ້ໄດ້ຂອງບັນຊີຕ້ອງພໍກັບຍອດຈ່າຍ (ລວມອາກອນ)
@@ -188,11 +255,7 @@ export const createExpense = async (req: Request, res: Response) => {
   };
   try {
     const body = req.body || {};
-    const title = String(body.expense_title ?? "").trim();
-    const categoryId = Number(body.type_expense_fk);
     const accountId = Number(body.acount_id_fk);
-    if (!title) return fail(400, "ກະລຸນາປ້ອນຫົວຂໍ້ລາຍຈ່າຍ");
-    if (!Number.isInteger(categoryId)) return fail(400, "ກະລຸນາເລືອກປະເພດລາຍຈ່າຍ");
     if (!Number.isInteger(accountId)) return fail(400, "ກະລຸນາເລືອກບັນຊີທີ່ຈ່າຍເງິນ");
     const expenseDate = expenseDateOf(body.expense_date);
     if ("error" in expenseDate) return fail(400, expenseDate.error);
@@ -203,11 +266,9 @@ export const createExpense = async (req: Request, res: Response) => {
     const subtotal = parsed.items.reduce((n, item) => n + item.amount, 0);
     if (subtotal <= 0) return fail(400, "ຍອດລວມຂອງລາຍການຕ້ອງຫຼາຍກວ່າ 0");
 
-    const category = await FinanceCategories.findOne({
-      where: { _uuid: categoryId, typestatus: EXPENSE_KIND, status: 1 },
-      transaction: t,
-    });
-    if (!category) return fail(400, "ບໍ່ພົບປະເພດລາຍຈ່າຍທີ່ເລືອກ");
+    const picked = await resolveSubCategory(body.sub_category_id, EXPENSE_KIND, { t });
+    if ("error" in picked) return fail(400, picked.error);
+    const title = String(body.expense_title ?? "").trim() || picked.sub.name;
 
     // ລັອກບັນຊີກ່ອນອ່ານຍອດ — ສອງຄົນຈ່າຍພ້ອມກັນຈະບໍ່ຈ່າຍເກີນຍອດ
     const account: any = await TreasuryAcount.findByPk(accountId, { transaction: t, lock: t.LOCK.UPDATE });
@@ -221,13 +282,7 @@ export const createExpense = async (req: Request, res: Response) => {
 
     const payType = (await isCashAccount(account, t)) ? CASH : TRANSFER;
 
-    const issued = await issueDocNumber(DOC_CODE, t);
-    let number = issued?.number;
-    if (!number) {
-      const prefix = `PV-${moment().utcOffset(BUSINESS_OFFSET).format("YYYY")}-`;
-      const count = await Expenses.count({ where: { number: { [Op.like]: `${prefix}%` } }, transaction: t });
-      number = `${prefix}${String(count + 1).padStart(5, "0")}`;
-    }
+    const number = await nextExpenseNumber(t);
 
     const actor = Number(actorOf(req));
     const row = await Expenses.create(
@@ -235,7 +290,7 @@ export const createExpense = async (req: Request, res: Response) => {
         number,
         expense_date: expenseDate.date,
         expense_title: title,
-        type_expense_fk: categoryId,
+        sub_category_id: picked.sub._uuid,
         payee_name: text(body.payee_name),
         partner_id: "id" in partner ? partner.id : null,
         bill_no: text(body.bill_no),
@@ -277,7 +332,8 @@ export const createExpense = async (req: Request, res: Response) => {
 };
 
 /**
- * PUT /expense/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຈ່າຍ, ຫົວຂໍ້, ປະເພດ, ຜູ້ຮັບເງິນ, ເລກທີໃບບິນ, ລາຍລະອຽດ,
+ * PUT /expense/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຈ່າຍ, ລາຍການຍ່ອຍ (ປ່ຽນ = ຫົວຂໍ້ເປັນຊື່ລາຍການຍ່ອຍໃໝ່), ຫົວຂໍ້,
+ * ຜູ້ຮັບເງິນ, ເລກທີໃບບິນ, ລາຍລະອຽດ,
  * ທະນາຄານ/ເລກບັນຊີຜູ້ຮັບ (ເງິນໂອນ), ໄຟລ໌ (ສົ່ງ remove_file=1 ເພື່ອລຶບ). ລາຍການຍ່ອຍ / ບັນຊີ / ອາກອນ ບໍ່ປ່ຽນ
  */
 export const updateExpense = async (req: Request<{ id: string }>, res: Response) => {
@@ -289,6 +345,7 @@ export const updateExpense = async (req: Request<{ id: string }>, res: Response)
     const row: any = await Expenses.findByPk(decodeId(req));
     if (!row) return fail(404, "ບໍ່ພົບລາຍຈ່າຍ");
     if (Number(row.status) !== ACTIVE) return fail(400, "ລາຍຈ່າຍທີ່ຍົກເລີກແລ້ວ ແກ້ໄຂບໍ່ໄດ້");
+    const fromPayroll = !!row.payroll_id;
 
     const body = req.body || {};
     const patch: any = {};
@@ -297,16 +354,17 @@ export const updateExpense = async (req: Request<{ id: string }>, res: Response)
       if (!title) return fail(400, "ກະລຸນາປ້ອນຫົວຂໍ້ລາຍຈ່າຍ");
       patch.expense_title = title;
     }
-    if (body.type_expense_fk !== undefined) {
-      const category = await FinanceCategories.findOne({
-        where: { _uuid: Number(body.type_expense_fk), typestatus: EXPENSE_KIND, status: 1 },
-      });
-      if (!category) return fail(400, "ບໍ່ພົບປະເພດລາຍຈ່າຍທີ່ເລືອກ");
-      patch.type_expense_fk = Number(body.type_expense_fk);
+    if (body.sub_category_id !== undefined) {
+      const picked = await resolveSubCategory(body.sub_category_id, EXPENSE_KIND, { keepId: row.sub_category_id });
+      if ("error" in picked) return fail(400, picked.error);
+      patch.sub_category_id = picked.sub._uuid;
+      if (picked.sub._uuid !== Number(row.sub_category_id) && body.expense_title === undefined) patch.expense_title = picked.sub.name;
     }
     if (body.expense_date !== undefined) {
       const expenseDate = expenseDateOf(body.expense_date);
       if ("error" in expenseDate) return fail(400, expenseDate.error);
+      // ວັນທີຂອງລາຍຈ່າຍຈາກເງິນເດືອນ = ວັນທີຈ່າຍເງິນເດືອນ
+      if (fromPayroll && expenseDate.date !== String(row.expense_date)) return fail(400, PAYROLL_LOCKED);
       patch.expense_date = expenseDate.date;
     }
     if (body.payee_name !== undefined) patch.payee_name = text(body.payee_name);
@@ -326,8 +384,8 @@ export const updateExpense = async (req: Request<{ id: string }>, res: Response)
     const oldFile = replacesFile ? row.file_doct : null;
     if (replacesFile) patch.file_doct = uploaded ?? null;
 
-    // ປ່ຽນວັນທີ/ປະເພດ/ຫົວຂໍ້ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
-    const affectsGl = ["expense_date", "type_expense_fk", "expense_title"].some(
+    // ປ່ຽນວັນທີ/ລາຍການຍ່ອຍ (ປະເພດ)/ຫົວຂໍ້ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
+    const affectsGl = !fromPayroll && ["expense_date", "sub_category_id", "expense_title"].some(
       (key) => patch[key] !== undefined && String(patch[key]) !== String(row[key])
     );
     const t = await Expenses.sequelize!.transaction();
@@ -360,6 +418,7 @@ export const cancelExpense = async (req: Request<{ id: string }>, res: Response)
     const row: any = await Expenses.findByPk(decodeId(req), { transaction: t, lock: t.LOCK.UPDATE });
     if (!row) return fail(404, "ບໍ່ພົບລາຍຈ່າຍ");
     if (Number(row.status) !== ACTIVE) return fail(400, "ລາຍຈ່າຍນີ້ຖືກຍົກເລີກແລ້ວ");
+    if (row.payroll_id) return fail(400, PAYROLL_LOCKED);
 
     const account: any = await TreasuryAcount.findByPk(row.acount_id_fk, { transaction: t, lock: t.LOCK.UPDATE });
     if (account) {

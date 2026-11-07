@@ -7,6 +7,8 @@ import Tax from "../../models/tax";
 import Banks from "../../models/bankModel";
 import Currency from "../../models/currencyModel";
 import Partner from "../../models/partner";
+import FinanceSubCategory from "../../models/financeSubCategory";
+import FinanceCategories from "../../models/typeIncomeModel";
 import { toDateOnly } from "./bansiHelpers";
 
 /** ສ່ວນທີ່ລາຍຮັບ (incomeController) ແລະ ລາຍຈ່າຍ (expenseController) ໃຊ້ຮ່ວມກັນ */
@@ -112,4 +114,39 @@ export const partnerIdOf = async (
     return { error: "ບໍ່ພົບລູກຄ້າທີ່ເລືອກ ຫຼື ປິດໃຊ້ງານແລ້ວ" };
   }
   return { id };
+};
+
+/** ລາຍການຍ່ອຍ + ປະເພດຂອງມັນ — ລາຍຮັບ / ລາຍຈ່າຍເກັບສະເພາະ sub_category_id */
+export const subInclude: any = {
+  model: FinanceSubCategory,
+  as: "sub",
+  attributes: ["_uuid", "name", "status", "category_id"],
+  include: [{ model: FinanceCategories, as: "category", attributes: ["_uuid", "type_code", "type_name", "status"] }],
+};
+
+/**
+ * ລາຍການຍ່ອຍທີ່ເລືອກ — ບັງຄັບ; ປະເພດຂອງມັນຕ້ອງເປັນ kind (1 ລາຍຮັບ, 2 ລາຍຈ່າຍ). ເລືອກໃໝ່ = ລາຍການຍ່ອຍ ແລະ ປະເພດຕ້ອງໃຊ້ງານຢູ່;
+ * keepId = ລາຍການຍ່ອຍເດີມຂອງແຖວທີ່ແກ້ (ປິດໃຊ້ແລ້ວກໍ່ເກັບໄວ້ໄດ້)
+ */
+export const resolveSubCategory = async (
+  raw: unknown,
+  kind: 1 | 2,
+  options: { keepId?: number | null; t?: Transaction } = {}
+): Promise<{ sub: FinanceSubCategory & { category: FinanceCategories } } | { error: string }> => {
+  const subId = Number(raw);
+  if (!Number.isInteger(subId) || subId <= 0) return { error: "ກະລຸນາເລືອກລາຍການຍ່ອຍ" };
+  const sub: any = await FinanceSubCategory.findByPk(subId, {
+    include: [{ model: FinanceCategories, as: "category" }],
+    transaction: options.t,
+  });
+  if (!sub?.category || Number(sub.category.typestatus) !== kind) return { error: "ບໍ່ພົບລາຍການຍ່ອຍທີ່ເລືອກ" };
+  const kept = subId === options.keepId;
+  if (!kept && (Number(sub.status) !== 1 || Number(sub.category.status) !== 1)) return { error: "ລາຍການຍ່ອຍ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ" };
+  return { sub };
+};
+
+/** ປະເພດຂອງລາຍການຍ່ອຍ (ໃຊ້ຕອນລົງບັນຊີຄູ່ — ບັນຊີ GL ຜູກກັບປະເພດ) */
+export const categoryIdOfSub = async (subId: unknown, t?: Transaction) => {
+  const sub = Number(subId) > 0 ? await FinanceSubCategory.findByPk(Number(subId), { attributes: ["category_id"], transaction: t }) : null;
+  return sub ? Number(sub.category_id) : null;
 };

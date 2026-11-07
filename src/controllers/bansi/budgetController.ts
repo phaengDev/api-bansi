@@ -6,6 +6,7 @@ import BudgetMonth from "../../models/budgetMonth";
 import FiscalYear from "../../models/fiscalYear";
 import FinanceCategories from "../../models/typeIncomeModel";
 import Expenses from "../../models/expenseModel";
+import FinanceSubCategory from "../../models/financeSubCategory";
 import TreasuryAccount from "../../models/treasuryAcount";
 import TypeTreasury from "../../models/typeTreasury";
 import Currency from "../../models/currencyModel";
@@ -108,12 +109,29 @@ const lakConverter = async (until: string) => {
 };
 type Converter = Awaited<ReturnType<typeof lakConverter>>;
 
-/** ລາຍຈ່າຍທີ່ໃຊ້ງານ ທີ່ວັນທີຈ່າຍຢູ່ໃນຊ່ວງ (+ ສະກຸນເງິນຂອງບັນຊີທີ່ຈ່າຍ) */
-const expensesIn = (fiscal: Fiscal, where: Record<string, unknown> = {}) =>
+/**
+ * ລາຍຈ່າຍທີ່ໃຊ້ງານ ທີ່ວັນທີຈ່າຍຢູ່ໃນຊ່ວງ (+ ສະກຸນເງິນຂອງບັນຊີທີ່ຈ່າຍ, ປະເພດຜ່ານລາຍການຍ່ອຍ sub.category_id).
+ * categoryId = ສະເພາະປະເພດນີ້, excludeId = ບໍ່ນັບໃບນີ້ (ກວດງົບຕອນແກ້ໄຂ). ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນບໍ່ນັບ —
+ * ເງິນເດືອນນັບແລ້ວຕາມຕັ້ງຄ່າ (budget_category_id) ດ້ວຍຕົ້ນທຶນເຕັມ (ລວມ + ປກສ ບໍລິສັດ)
+ */
+const expensesIn = (fiscal: Fiscal, filter: { categoryId?: number; excludeId?: number } = {}) =>
   Expenses.findAll({
-    where: { status: ACTIVE, expense_date: { [Op.between]: [fiscal.start_date, fiscal.end_date] }, ...where },
-    attributes: ["_uuid", "number", "expense_date", "expense_title", "type_expense_fk", "payee_name", "balance_expense", "acount_id_fk"],
-    include: [currencyInclude],
+    where: {
+      status: ACTIVE,
+      payroll_id: null,
+      expense_date: { [Op.between]: [fiscal.start_date, fiscal.end_date] },
+      ...(filter.excludeId && filter.excludeId > 0 ? { _uuid: { [Op.ne]: filter.excludeId } } : {}),
+    },
+    attributes: ["_uuid", "number", "expense_date", "expense_title", "sub_category_id", "payee_name", "balance_expense", "acount_id_fk"],
+    include: [
+      currencyInclude,
+      {
+        model: FinanceSubCategory,
+        as: "sub",
+        attributes: ["category_id"],
+        ...(filter.categoryId ? { where: { category_id: filter.categoryId }, required: true } : { required: false }),
+      },
+    ],
     order: [["expense_date", "DESC"], ["_uuid", "DESC"]],
   });
 
@@ -131,7 +149,7 @@ const spendOf = (rows: any[], convert: Converter) => {
       missingRate += 1;
       continue;
     }
-    const key = Number(r.type_expense_fk);
+    const key = Number(r.sub?.category_id);
     const period = String(r.expense_date).slice(0, 7);
     const item = byCategory.get(key) ?? { total: 0, months: {}, count: 0 };
     item.total = round2(item.total + lak);
@@ -374,7 +392,7 @@ export const getBudgetExpenses = async (req: Request, res: Response) => {
       return;
     }
     const [rows, convert, payroll] = await Promise.all([
-      expensesIn(fiscal, { type_expense_fk: categoryId }),
+      expensesIn(fiscal, { categoryId }),
       lakConverter(fiscal.end_date),
       payrollsIn(fiscal, categoryId),
     ]);
@@ -439,7 +457,7 @@ export const checkBudget = async (req: Request, res: Response) => {
 
     const excludeId = Number(body.exclude_id);
     const [rows, convert, payroll] = await Promise.all([
-      expensesIn(fiscal, { type_expense_fk: categoryId, ...(excludeId > 0 ? { _uuid: { [Op.ne]: excludeId } } : {}) }),
+      expensesIn(fiscal, { categoryId, excludeId }),
       lakConverter(fiscal.end_date),
       payrollsIn(fiscal, categoryId),
     ]);

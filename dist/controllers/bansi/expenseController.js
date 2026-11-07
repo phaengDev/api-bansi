@@ -3,14 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.downloadExpenseFile = exports.cancelExpense = exports.updateExpense = exports.createExpense = exports.getExpenses = void 0;
+exports.downloadExpenseFile = exports.cancelExpense = exports.updateExpense = exports.createExpense = exports.getExpenses = exports.removePayrollExpense = exports.recordPayrollExpense = void 0;
 const moment_1 = __importDefault(require("moment"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const sequelize_1 = require("sequelize");
 const expenseModel_1 = __importDefault(require("../../models/expenseModel"));
 const expenseItemModel_1 = __importDefault(require("../../models/expenseItemModel"));
-const typeIncomeModel_1 = __importDefault(require("../../models/typeIncomeModel"));
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
 const bankModel_1 = __importDefault(require("../../models/bankModel"));
 const userModel_1 = __importDefault(require("../../models/userModel"));
@@ -37,7 +36,7 @@ const MAX_ITEMS = 200;
 const expenseDateOf = (value) => (0, journalHelpers_1.entryDateOf)(value, "ວັນທີຈ່າຍເງິນ");
 const text = (value) => String(value ?? "").trim() || null;
 const includeAll = [
-    { model: typeIncomeModel_1.default, as: "typeout", attributes: ["_uuid", "type_code", "type_name"] },
+    journalHelpers_1.subInclude,
     journalHelpers_1.accountInclude,
     { model: userModel_1.default, as: "user", attributes: ["user_uuid", "user_name"] },
     { model: bankModel_1.default, as: "payeeBank", attributes: ["_uuid", "abbr", "name_la", "logo"] },
@@ -123,6 +122,64 @@ const present = (row) => {
     };
 };
 const findFull = (id) => expenseModel_1.default.findByPk(id, { include: includeAll, order: itemOrder });
+/** ເລກທີໃບຈ່າຍຈາກ ຕັ້ງຄ່າ → ເລກທີເອກະສານ (PAYMENT); ຍັງບໍ່ຕັ້ງ = ເລກສຳຮອງ PV-YYYY-00001 */
+const nextExpenseNumber = async (t) => {
+    const issued = await (0, docNumberingController_1.issueDocNumber)(DOC_CODE, t);
+    if (issued?.number)
+        return issued.number;
+    const prefix = `PV-${(0, moment_1.default)().utcOffset(journalHelpers_1.BUSINESS_OFFSET).format("YYYY")}-`;
+    const count = await expenseModel_1.default.count({ where: { number: { [sequelize_1.Op.like]: `${prefix}%` } }, transaction: t });
+    return `${prefix}${String(count + 1).padStart(5, "0")}`;
+};
+/** ລາຍຈ່າຍທີ່ມາຈາກໃບເງິນເດືອນ ແກ້ / ຍົກເລີກຢູ່ໜ້ານີ້ບໍ່ໄດ້ (ເງິນ ແລະ ບັນຊີຄູ່ເປັນຂອງໃບເງິນເດືອນ) */
+const PAYROLL_LOCKED = "ລາຍຈ່າຍນີ້ມາຈາກການຈ່າຍເງິນເດືອນ — ຍົກເລີກຢູ່ໜ້າເງິນເດືອນ";
+/**
+ * ບັນທຶກການຈ່າຍເງິນເດືອນເປັນລາຍຈ່າຍ (ເອີ້ນຈາກ payPayroll ໃນ transaction ດຽວກັນ) — ຍອດ = ເງິນເດືອນສຸດທິທີ່ອອກຈາກບັນຊີ,
+ * ບໍ່ຫັກເງິນ ແລະ ບໍ່ລົງບັນຊີຄູ່ຊ້ຳ (ໃບເງິນເດືອນເຮັດແລ້ວ)
+ */
+const recordPayrollExpense = async (input, t) => {
+    const amount = Math.round(input.amount);
+    const row = await expenseModel_1.default.create({
+        number: await nextExpenseNumber(t),
+        expense_date: input.date,
+        expense_title: input.sub.name,
+        sub_category_id: input.sub._uuid,
+        payee_name: `ພະນັກງານ ${input.people} ຄົນ`,
+        bill_no: input.payroll.number,
+        type_acountid: input.account.type_treasuryid,
+        acount_id_fk: input.account._uuid,
+        pay_type: (await (0, journalHelpers_1.isCashAccount)(input.account, t)) ? journalHelpers_1.CASH : journalHelpers_1.TRANSFER,
+        subtotal: amount,
+        tax: 0,
+        balance_expense: amount,
+        description: input.description,
+        status: journalHelpers_1.ACTIVE,
+        createdbyid: input.actorId,
+        payroll_id: input.payroll._uuid,
+    }, { transaction: t });
+    await expenseItemModel_1.default.create({
+        expense_id: row.get("_uuid"),
+        line_no: 1,
+        item_name: `${input.description} (${input.people} ຄົນ)`.slice(0, 255),
+        quantity: 1,
+        unit: null,
+        unit_price: amount,
+        discount: 0,
+        amount,
+    }, { transaction: t });
+    return row;
+};
+exports.recordPayrollExpense = recordPayrollExpense;
+/** ຍົກເລີກການຈ່າຍເງິນເດືອນ — ລຶບລາຍຈ່າຍທີ່ບັນທຶກຄູ່ໄວ້ (ບໍ່ມີເງິນ / ບັນຊີຄູ່ຂອງມັນເອງໃຫ້ຄືນ) */
+const removePayrollExpense = async (payrollId, t) => {
+    const rows = await expenseModel_1.default.findAll({ where: { payroll_id: payrollId }, attributes: ["_uuid"], transaction: t });
+    if (!rows.length)
+        return;
+    const ids = rows.map((r) => r._uuid);
+    await expenseItemModel_1.default.destroy({ where: { expense_id: { [sequelize_1.Op.in]: ids } }, transaction: t });
+    await expenseModel_1.default.destroy({ where: { _uuid: { [sequelize_1.Op.in]: ids } }, transaction: t });
+};
+exports.removePayrollExpense = removePayrollExpense;
 const uploadedName = (req) => req.file?.filename;
 /** ໄຟລ໌ທີ່ multer ບັນທຶກໄວ້ແລ້ວ ແຕ່ການບັນທຶກລົ້ມເຫຼວ — ລຶບຖິ້ມ ບໍ່ໃຫ້ຄ້າງ */
 const discardUpload = (req) => {
@@ -172,7 +229,8 @@ const getExpenses = async (req, res) => {
 exports.getExpenses = getExpenses;
 /**
  * POST /expense/create (multipart, ໄຟລ໌ field "file_doct")
- * { expense_date?, expense_title, type_expense_fk, payee_name?, bill_no?, acount_id_fk,
+ * { expense_date?, sub_category_id (ປະເພດມາຈາກລາຍການຍ່ອຍ), expense_title? (ບໍ່ສົ່ງ = ຊື່ລາຍການຍ່ອຍ),
+ *   payee_name?, bill_no?, acount_id_fk,
  *   items (JSON: [{ item_name, quantity, unit?, unit_price, discount? }]), tax_id? | (tax, calc_method)?,
  *   payee_bank_id?, payee_account_number?, partner_id?, description? }
  * — pay_type ຄິດຈາກໝວດຂອງບັນຊີເອງ; ຍອດໃຊ້ໄດ້ຂອງບັນຊີຕ້ອງພໍກັບຍອດຈ່າຍ (ລວມອາກອນ)
@@ -186,13 +244,7 @@ const createExpense = async (req, res) => {
     };
     try {
         const body = req.body || {};
-        const title = String(body.expense_title ?? "").trim();
-        const categoryId = Number(body.type_expense_fk);
         const accountId = Number(body.acount_id_fk);
-        if (!title)
-            return fail(400, "ກະລຸນາປ້ອນຫົວຂໍ້ລາຍຈ່າຍ");
-        if (!Number.isInteger(categoryId))
-            return fail(400, "ກະລຸນາເລືອກປະເພດລາຍຈ່າຍ");
         if (!Number.isInteger(accountId))
             return fail(400, "ກະລຸນາເລືອກບັນຊີທີ່ຈ່າຍເງິນ");
         const expenseDate = expenseDateOf(body.expense_date);
@@ -207,12 +259,10 @@ const createExpense = async (req, res) => {
         const subtotal = parsed.items.reduce((n, item) => n + item.amount, 0);
         if (subtotal <= 0)
             return fail(400, "ຍອດລວມຂອງລາຍການຕ້ອງຫຼາຍກວ່າ 0");
-        const category = await typeIncomeModel_1.default.findOne({
-            where: { _uuid: categoryId, typestatus: EXPENSE_KIND, status: 1 },
-            transaction: t,
-        });
-        if (!category)
-            return fail(400, "ບໍ່ພົບປະເພດລາຍຈ່າຍທີ່ເລືອກ");
+        const picked = await (0, journalHelpers_1.resolveSubCategory)(body.sub_category_id, EXPENSE_KIND, { t });
+        if ("error" in picked)
+            return fail(400, picked.error);
+        const title = String(body.expense_title ?? "").trim() || picked.sub.name;
         // ລັອກບັນຊີກ່ອນອ່ານຍອດ — ສອງຄົນຈ່າຍພ້ອມກັນຈະບໍ່ຈ່າຍເກີນຍອດ
         const account = await treasuryAcount_1.default.findByPk(accountId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!account || Number(account.status) !== 1)
@@ -224,19 +274,13 @@ const createExpense = async (req, res) => {
             return fail(400, "ຍອດເງິນທີ່ໃຊ້ໄດ້ຂອງບັນຊີບໍ່ພໍຈ່າຍ");
         }
         const payType = (await (0, journalHelpers_1.isCashAccount)(account, t)) ? journalHelpers_1.CASH : journalHelpers_1.TRANSFER;
-        const issued = await (0, docNumberingController_1.issueDocNumber)(DOC_CODE, t);
-        let number = issued?.number;
-        if (!number) {
-            const prefix = `PV-${(0, moment_1.default)().utcOffset(journalHelpers_1.BUSINESS_OFFSET).format("YYYY")}-`;
-            const count = await expenseModel_1.default.count({ where: { number: { [sequelize_1.Op.like]: `${prefix}%` } }, transaction: t });
-            number = `${prefix}${String(count + 1).padStart(5, "0")}`;
-        }
+        const number = await nextExpenseNumber(t);
         const actor = Number((0, bansiHelpers_1.actorOf)(req));
         const row = await expenseModel_1.default.create({
             number,
             expense_date: expenseDate.date,
             expense_title: title,
-            type_expense_fk: categoryId,
+            sub_category_id: picked.sub._uuid,
             payee_name: text(body.payee_name),
             partner_id: "id" in partner ? partner.id : null,
             bill_no: text(body.bill_no),
@@ -274,7 +318,8 @@ const createExpense = async (req, res) => {
 };
 exports.createExpense = createExpense;
 /**
- * PUT /expense/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຈ່າຍ, ຫົວຂໍ້, ປະເພດ, ຜູ້ຮັບເງິນ, ເລກທີໃບບິນ, ລາຍລະອຽດ,
+ * PUT /expense/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຈ່າຍ, ລາຍການຍ່ອຍ (ປ່ຽນ = ຫົວຂໍ້ເປັນຊື່ລາຍການຍ່ອຍໃໝ່), ຫົວຂໍ້,
+ * ຜູ້ຮັບເງິນ, ເລກທີໃບບິນ, ລາຍລະອຽດ,
  * ທະນາຄານ/ເລກບັນຊີຜູ້ຮັບ (ເງິນໂອນ), ໄຟລ໌ (ສົ່ງ remove_file=1 ເພື່ອລຶບ). ລາຍການຍ່ອຍ / ບັນຊີ / ອາກອນ ບໍ່ປ່ຽນ
  */
 const updateExpense = async (req, res) => {
@@ -288,6 +333,7 @@ const updateExpense = async (req, res) => {
             return fail(404, "ບໍ່ພົບລາຍຈ່າຍ");
         if (Number(row.status) !== journalHelpers_1.ACTIVE)
             return fail(400, "ລາຍຈ່າຍທີ່ຍົກເລີກແລ້ວ ແກ້ໄຂບໍ່ໄດ້");
+        const fromPayroll = !!row.payroll_id;
         const body = req.body || {};
         const patch = {};
         if (body.expense_title !== undefined) {
@@ -296,18 +342,21 @@ const updateExpense = async (req, res) => {
                 return fail(400, "ກະລຸນາປ້ອນຫົວຂໍ້ລາຍຈ່າຍ");
             patch.expense_title = title;
         }
-        if (body.type_expense_fk !== undefined) {
-            const category = await typeIncomeModel_1.default.findOne({
-                where: { _uuid: Number(body.type_expense_fk), typestatus: EXPENSE_KIND, status: 1 },
-            });
-            if (!category)
-                return fail(400, "ບໍ່ພົບປະເພດລາຍຈ່າຍທີ່ເລືອກ");
-            patch.type_expense_fk = Number(body.type_expense_fk);
+        if (body.sub_category_id !== undefined) {
+            const picked = await (0, journalHelpers_1.resolveSubCategory)(body.sub_category_id, EXPENSE_KIND, { keepId: row.sub_category_id });
+            if ("error" in picked)
+                return fail(400, picked.error);
+            patch.sub_category_id = picked.sub._uuid;
+            if (picked.sub._uuid !== Number(row.sub_category_id) && body.expense_title === undefined)
+                patch.expense_title = picked.sub.name;
         }
         if (body.expense_date !== undefined) {
             const expenseDate = expenseDateOf(body.expense_date);
             if ("error" in expenseDate)
                 return fail(400, expenseDate.error);
+            // ວັນທີຂອງລາຍຈ່າຍຈາກເງິນເດືອນ = ວັນທີຈ່າຍເງິນເດືອນ
+            if (fromPayroll && expenseDate.date !== String(row.expense_date))
+                return fail(400, PAYROLL_LOCKED);
             patch.expense_date = expenseDate.date;
         }
         if (body.payee_name !== undefined)
@@ -331,8 +380,8 @@ const updateExpense = async (req, res) => {
         const oldFile = replacesFile ? row.file_doct : null;
         if (replacesFile)
             patch.file_doct = uploaded ?? null;
-        // ປ່ຽນວັນທີ/ປະເພດ/ຫົວຂໍ້ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
-        const affectsGl = ["expense_date", "type_expense_fk", "expense_title"].some((key) => patch[key] !== undefined && String(patch[key]) !== String(row[key]));
+        // ປ່ຽນວັນທີ/ລາຍການຍ່ອຍ (ປະເພດ)/ຫົວຂໍ້ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
+        const affectsGl = !fromPayroll && ["expense_date", "sub_category_id", "expense_title"].some((key) => patch[key] !== undefined && String(patch[key]) !== String(row[key]));
         const t = await expenseModel_1.default.sequelize.transaction();
         try {
             await row.update({ ...patch, updatedAt: new Date() }, { transaction: t });
@@ -370,6 +419,8 @@ const cancelExpense = async (req, res) => {
             return fail(404, "ບໍ່ພົບລາຍຈ່າຍ");
         if (Number(row.status) !== journalHelpers_1.ACTIVE)
             return fail(400, "ລາຍຈ່າຍນີ້ຖືກຍົກເລີກແລ້ວ");
+        if (row.payroll_id)
+            return fail(400, PAYROLL_LOCKED);
         const account = await treasuryAcount_1.default.findByPk(row.acount_id_fk, { transaction: t, lock: t.LOCK.UPDATE });
         if (account) {
             await (0, accountMovement_1.moveBalance)(account, {

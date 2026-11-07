@@ -59,7 +59,7 @@ const postIncome = async (row, t, actorId) => {
     const common = { currencyId: cash.currencyId, rate: cash.rate };
     const lines = [
         { ...common, accountId: cash.accountId, side: glCore_1.DEBIT, amount: total, treasuryAccountId: Number(row.acount_id_fk) },
-        { ...common, accountId: await (0, glCore_1.categoryAccountId)(row.type_incom_fk, 1, t), side: glCore_1.CREDIT, amount: (0, glCore_1.round2)(total - tax) },
+        { ...common, accountId: await (0, glCore_1.categoryAccountId)(await (0, journalHelpers_1.categoryIdOfSub)(row.sub_category_id, t), 1, t), side: glCore_1.CREDIT, amount: (0, glCore_1.round2)(total - tax) },
     ];
     if (tax)
         lines.push({ ...common, accountId: await (0, glCore_1.roleAccountId)("VAT_OUTPUT", t), side: glCore_1.CREDIT, amount: tax });
@@ -69,7 +69,8 @@ const postIncome = async (row, t, actorId) => {
 };
 exports.postIncome = postIncome;
 const postExpense = async (row, t, actorId) => {
-    if (!(await (0, glCore_1.glReady)(t)))
+    // ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນ — ໃບເງິນເດືອນລົງບັນຊີແລ້ວ
+    if (row.payroll_id || !(await (0, glCore_1.glReady)(t)))
         return null;
     const date = row.expense_date || laoDateOf(row.createdAt);
     const cash = await treasurySide(Number(row.acount_id_fk), date, t);
@@ -77,7 +78,7 @@ const postExpense = async (row, t, actorId) => {
     const tax = (0, glCore_1.round2)(Number(row.tax) || 0);
     const common = { currencyId: cash.currencyId, rate: cash.rate };
     const lines = [
-        { ...common, accountId: await (0, glCore_1.categoryAccountId)(row.type_expense_fk, 2, t), side: glCore_1.DEBIT, amount: (0, glCore_1.round2)(total - tax) },
+        { ...common, accountId: await (0, glCore_1.categoryAccountId)(await (0, journalHelpers_1.categoryIdOfSub)(row.sub_category_id, t), 2, t), side: glCore_1.DEBIT, amount: (0, glCore_1.round2)(total - tax) },
     ];
     if (tax)
         lines.push({ ...common, accountId: await (0, glCore_1.roleAccountId)("VAT_INPUT", t), side: glCore_1.DEBIT, amount: tax });
@@ -258,7 +259,7 @@ const rebuildFromDocuments = async (actorId) => {
     const incomes = await incomeModel_1.default.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });
     for (const row of incomes)
         await run("INCOME", row._uuid, row.number ?? `INCOME #${row._uuid}`, (t) => (0, exports.postIncome)(row, t, actorId));
-    const expenses = await expenseModel_1.default.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });
+    const expenses = await expenseModel_1.default.findAll({ where: { status: ACTIVE, payroll_id: null }, order: [["_uuid", "ASC"]] });
     for (const row of expenses)
         await run("EXPENSE", row._uuid, row.number ?? `EXPENSE #${row._uuid}`, (t) => (0, exports.postExpense)(row, t, actorId));
     const transfers = await transferMoney_1.default.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });

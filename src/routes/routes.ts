@@ -28,7 +28,7 @@ import {
     getTreasurtypeone
 } from "../controllers/bansi/treasuryAcountController";
 import { createTransferMoney, getTransferMoney, getAccountStatement } from "../controllers/bansi/transferMoneyControlle";
-import { getTypeInexp, getTypeInexpOption, createTypeInexp, updateTypeInexp } from "../controllers/bansi/typeinexpController";
+import { getTypeInexp, getTypeInexpOption, createTypeInexp, updateTypeInexp, addSubCategory } from "../controllers/bansi/typeinexpController";
 import {
     getFiscalYears, getFiscalYearOption, createFiscalYear, updateFiscalYear,
     setCurrentFiscalYear, closeFiscalYear, reopenFiscalYear, deleteFiscalYear,
@@ -84,7 +84,7 @@ import {
 } from "../controllers/hr/attendanceController";
 import {
   getPayrollSetting, savePayrollSetting, getPayrolls, getPayroll, getMyPayslips, getMyPayrollPreview, createPayroll, recalcPayroll,
-  previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll,
+  previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll, getPayrollExpenseDefault,
 } from "../controllers/hr/payrollController";
 import {
   getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave, revokeLeave,
@@ -203,6 +203,8 @@ router.get("/finance-category/fetch/:id", getTypeInexp);
 router.get("/finance-category/option/:id", getTypeInexpOption);
 router.post("/finance-category/create", createTypeInexp);
 router.put("/finance-category/:id", updateTypeInexp);
+// ຟອມລາຍຮັບ/ລາຍຈ່າຍ ເພີ່ມລາຍການຍ່ອຍໃໝ່ໄດ້ເລີຍ (ບໍ່ຕ້ອງໄປໜ້າຕັ້ງຄ່າ)
+router.post("/finance-category/sub/:id", requirePermission("creates", "updates"), addSubCategory);
 // ========= ຕັ້ງຄ່າບັນຊີ (bansi settings)
 // ປີການເງິນ
 router.get("/fiscal-year/fetch", getFiscalYears);
@@ -461,6 +463,7 @@ router.put("/task/:id", requirePermission("updates"), updateTask);
 router.get("/hr/pending", requirePermission("updates"), getHrPending);
 
 router.get("/payroll/setting", getPayrollSetting);
+router.get("/payroll/expense-default", getPayrollExpenseDefault);
 router.put("/payroll/setting", requirePermission("updates"), savePayrollSetting);
 router.post("/payroll/fetch", getPayrolls);
 router.post("/payroll/create", requirePermission("creates"), createPayroll);

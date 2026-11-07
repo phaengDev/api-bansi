@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unpayPayroll = exports.payPayroll = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftPayrolls = exports.syncDraftPayrollForDates = exports.syncDraftPayroll = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
+exports.unpayPayroll = exports.payPayroll = exports.getPayrollExpenseDefault = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftPayrolls = exports.syncDraftPayrollForDates = exports.syncDraftPayroll = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const payroll_1 = __importDefault(require("../../models/payroll"));
@@ -18,6 +18,8 @@ const typeTreasury_1 = __importDefault(require("../../models/typeTreasury"));
 const currencyModel_1 = __importDefault(require("../../models/currencyModel"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const journalHelpers_1 = require("../bansi/journalHelpers");
+const expenseController_1 = require("../bansi/expenseController");
+const expenseModel_1 = __importDefault(require("../../models/expenseModel"));
 const accountMovement_1 = require("../bansi/accountMovement");
 const glCore_1 = require("../bansi/glCore");
 const glPosting_1 = require("../bansi/glPosting");
@@ -166,9 +168,11 @@ const refreshTotals = async (payroll, t) => {
         updatedAt: new Date(),
     }, { transaction: t });
 };
+/** ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນ (ຕິກ "ບັນທຶກເປັນລາຍຈ່າຍ" ຕອນຈ່າຍ) */
+const expenseOf = (payrollId) => expenseModel_1.default.findOne({ where: { payroll_id: payrollId }, attributes: ["_uuid", "number", "status"], include: [journalHelpers_1.subInclude] });
 const reply = async (res, id, message) => {
     const saved = await findFull(id);
-    res.status(200).json({ message, data: saved && present(saved) });
+    res.status(200).json({ message, data: saved && { ...present(saved), expense: await expenseOf(id) } });
 };
 /** ໃບຮ່າງ (ລັອກແຖວ) — ບໍ່ພົບ / ຈ່າຍແລ້ວ = error */
 const draftOf = async (id, t) => {
@@ -389,7 +393,7 @@ const getPayroll = async (req, res) => {
             res.status(404).json({ message: "ບໍ່ພົບໃບເງິນເດືອນ" });
             return;
         }
-        res.status(200).json({ data: present(row), settings: await (0, payrollRules_1.loadPayrollSettings)() });
+        res.status(200).json({ data: { ...present(row), expense: await expenseOf(row._uuid) }, settings: await (0, payrollRules_1.loadPayrollSettings)() });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error getting payroll");
@@ -709,9 +713,35 @@ const deletePayroll = async (req, res) => {
 };
 exports.deletePayroll = deletePayroll;
 /**
- * PUT /payroll/pay/:id { account_id, pay_date?, description? } — ຈ່າຍເງິນເດືອນ: ຍອດສຸດທິລວມອອກຈາກບັນຊີເງິນຄັງ
+ * GET /payroll/expense-default — ຄ່າຕັ້ງຕົ້ນຂອງ "ບັນທຶກເປັນລາຍຈ່າຍ" ໃນຟອມຈ່າຍເງິນເດືອນ: record = ໃບທີ່ຈ່າຍຫຼ້າສຸດໄດ້ບັນທຶກໄວ້,
+ * sub = ລາຍການຍ່ອຍທີ່ໃຊ້ຫຼ້າສຸດ (ຍັງໃຊ້ງານຢູ່ເທົ່ານັ້ນ)
+ */
+const getPayrollExpenseDefault = async (_req, res) => {
+    try {
+        const last = await payroll_1.default.findOne({ where: { status: PAID }, attributes: ["_uuid"], order: [["paidAt", "DESC"], ["_uuid", "DESC"]] });
+        const recorded = await expenseModel_1.default.findOne({
+            where: { payroll_id: { [sequelize_1.Op.ne]: null } },
+            attributes: ["_uuid", "payroll_id"],
+            include: [journalHelpers_1.subInclude],
+            order: [["_uuid", "DESC"]],
+        });
+        const sub = recorded?.sub;
+        const usable = sub && Number(sub.status) === 1 && Number(sub.category?.status) === 1;
+        res.status(200).json({
+            record: !!last && !!recorded && Number(recorded.payroll_id) === last._uuid,
+            sub: usable ? sub : null,
+        });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting payroll expense default");
+    }
+};
+exports.getPayrollExpenseDefault = getPayrollExpenseDefault;
+/**
+ * PUT /payroll/pay/:id { account_id, pay_date?, description?, expense_sub_id? } — ຈ່າຍເງິນເດືອນ: ຍອດສຸດທິລວມອອກຈາກບັນຊີເງິນຄັງ
  * (ສະກຸນກີບ, ຍອດໃຊ້ໄດ້ຕ້ອງພໍ) + ລົງບັນຊີຄູ່ (ໜີ້ ເງິນເດືອນ + ປກສ ບໍລິສັດ / ມີ ເງິນສົດ-ທະນາຄານ, ປກສ ຄ້າງຈ່າຍ,
- * ອາກອນຄ້າງຈ່າຍ, ຫັກອື່ນ). ວັນທີຈ່າຍ: ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ກ່ອນເດືອນຂອງເງິນເດືອນ ແລະ ບໍ່ເກີນມື້ນີ້
+ * ອາກອນຄ້າງຈ່າຍ, ຫັກອື່ນ). ວັນທີຈ່າຍ: ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ກ່ອນເດືອນຂອງເງິນເດືອນ ແລະ ບໍ່ເກີນມື້ນີ້.
+ * expense_sub_id = ບັນທຶກເປັນລາຍຈ່າຍນຳ (ລາຍການຍ່ອຍຂອງປະເພດລາຍຈ່າຍ) — ບັນທຶກຄູ່ເທົ່ານັ້ນ ບໍ່ຫັກເງິນ / ບໍ່ລົງບັນຊີຊ້ຳ
  */
 const payPayroll = async (req, res) => {
     const t = await payroll_1.default.sequelize.transaction();
@@ -752,6 +782,10 @@ const payPayroll = async (req, res) => {
             return fail(400, "ຈ່າຍເງິນເດືອນໄດ້ສະເພາະບັນຊີສະກຸນກີບ (LAK)");
         if ((Number(account.balance_treasury) || 0) < total)
             return fail(400, "ຍອດເງິນທີ່ໃຊ້ໄດ້ຂອງບັນຊີບໍ່ພໍຈ່າຍເງິນເດືອນ");
+        // ບັນທຶກເປັນລາຍຈ່າຍນຳ — ກວດລາຍການຍ່ອຍກ່ອນເງິນອອກ
+        const recordAs = body.expense_sub_id ? await (0, journalHelpers_1.resolveSubCategory)(body.expense_sub_id, 2, { t }) : null;
+        if (recordAs && "error" in recordAs)
+            return fail(400, recordAs.error);
         const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const number = `SAL-${payroll.period}`;
         const description = String(body.description ?? "").trim().slice(0, 255) || `ຈ່າຍເງິນເດືອນ ${periodText(payroll.period)}`;
@@ -766,6 +800,18 @@ const payPayroll = async (req, res) => {
         const settledAdvances = await (0, advanceController_1.applyPayrollRepayments)(payroll, lines, payDate.date, actor, t);
         // ລົງບັນຊີຄູ່ — ບໍ່ສຳເລັດ (ເຊັ່ນ ຍັງບໍ່ຜູກບັນຊີ, ປີປິດແລ້ວ) = ບໍ່ຈ່າຍ
         await (0, glPosting_1.postPayroll)(payroll, t, actor);
+        if (recordAs) {
+            await (0, expenseController_1.recordPayrollExpense)({
+                payroll: { _uuid: payroll._uuid, number, period: payroll.period },
+                sub: recordAs.sub,
+                account,
+                amount: total,
+                date: payDate.date,
+                description,
+                people: lines.length,
+                actorId: actor,
+            }, t);
+        }
         await t.commit();
         // ແຈ້ງພະນັກງານແຕ່ລະຄົນວ່າໂອນເງິນເດືອນແລ້ວ (ຫຼັງ commit — ແຈ້ງບໍ່ສຳເລັດ ບໍ່ກະທົບການຈ່າຍ)
         await (0, notificationController_1.notify)(lines.map((l) => ({
@@ -792,7 +838,10 @@ const payPayroll = async (req, res) => {
     }
 };
 exports.payPayroll = payPayroll;
-/** PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ + ຖອນການຫັກເງິນເບີກ ແລ້ວກັບເປັນໃບຮ່າງ */
+/**
+ * PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ + ຖອນການຫັກເງິນເບີກ + ລຶບລາຍຈ່າຍທີ່ບັນທຶກຄູ່ໄວ້
+ * ແລ້ວກັບເປັນໃບຮ່າງ
+ */
 const unpayPayroll = async (req, res) => {
     const t = await payroll_1.default.sequelize.transaction();
     const fail = async (code, message) => {
@@ -817,6 +866,7 @@ const unpayPayroll = async (req, res) => {
         }
         await (0, glCore_1.reverseSource)("PAYROLL", payroll._uuid, t, actor);
         await (0, advanceController_1.reversePayrollRepayments)(payroll._uuid, t);
+        await (0, expenseController_1.removePayrollExpense)(payroll._uuid, t);
         await payroll.update({
             status: DRAFT, number: null, pay_date: null, account_id: null, paidbyid: null, paidAt: null, updatedAt: new Date(),
         }, { transaction: t });

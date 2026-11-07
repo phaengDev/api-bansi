@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.partnerIdOf = exports.partnerInclude = exports.EXPENSE_PARTNER_TYPES = exports.INCOME_PARTNER_TYPES = exports.computeTax = exports.isCashAccount = exports.accountInclude = exports.entryDateOf = exports.todayLao = exports.BUSINESS_OFFSET = exports.CASH_CLASS_CODE = exports.TRANSFER = exports.CASH = exports.CANCELLED = exports.ACTIVE = void 0;
+exports.categoryIdOfSub = exports.resolveSubCategory = exports.subInclude = exports.partnerIdOf = exports.partnerInclude = exports.EXPENSE_PARTNER_TYPES = exports.INCOME_PARTNER_TYPES = exports.computeTax = exports.isCashAccount = exports.accountInclude = exports.entryDateOf = exports.todayLao = exports.BUSINESS_OFFSET = exports.CASH_CLASS_CODE = exports.TRANSFER = exports.CASH = exports.CANCELLED = exports.ACTIVE = void 0;
 const moment_1 = __importDefault(require("moment"));
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
 const typeTreasury_1 = __importDefault(require("../../models/typeTreasury"));
@@ -12,6 +12,8 @@ const tax_1 = __importDefault(require("../../models/tax"));
 const bankModel_1 = __importDefault(require("../../models/bankModel"));
 const currencyModel_1 = __importDefault(require("../../models/currencyModel"));
 const partner_1 = __importDefault(require("../../models/partner"));
+const financeSubCategory_1 = __importDefault(require("../../models/financeSubCategory"));
+const typeIncomeModel_1 = __importDefault(require("../../models/typeIncomeModel"));
 const bansiHelpers_1 = require("./bansiHelpers");
 /** ສ່ວນທີ່ລາຍຮັບ (incomeController) ແລະ ລາຍຈ່າຍ (expenseController) ໃຊ້ຮ່ວມກັນ */
 exports.ACTIVE = 1;
@@ -119,3 +121,36 @@ const partnerIdOf = async (value, types, current = null) => {
     return { id };
 };
 exports.partnerIdOf = partnerIdOf;
+/** ລາຍການຍ່ອຍ + ປະເພດຂອງມັນ — ລາຍຮັບ / ລາຍຈ່າຍເກັບສະເພາະ sub_category_id */
+exports.subInclude = {
+    model: financeSubCategory_1.default,
+    as: "sub",
+    attributes: ["_uuid", "name", "status", "category_id"],
+    include: [{ model: typeIncomeModel_1.default, as: "category", attributes: ["_uuid", "type_code", "type_name", "status"] }],
+};
+/**
+ * ລາຍການຍ່ອຍທີ່ເລືອກ — ບັງຄັບ; ປະເພດຂອງມັນຕ້ອງເປັນ kind (1 ລາຍຮັບ, 2 ລາຍຈ່າຍ). ເລືອກໃໝ່ = ລາຍການຍ່ອຍ ແລະ ປະເພດຕ້ອງໃຊ້ງານຢູ່;
+ * keepId = ລາຍການຍ່ອຍເດີມຂອງແຖວທີ່ແກ້ (ປິດໃຊ້ແລ້ວກໍ່ເກັບໄວ້ໄດ້)
+ */
+const resolveSubCategory = async (raw, kind, options = {}) => {
+    const subId = Number(raw);
+    if (!Number.isInteger(subId) || subId <= 0)
+        return { error: "ກະລຸນາເລືອກລາຍການຍ່ອຍ" };
+    const sub = await financeSubCategory_1.default.findByPk(subId, {
+        include: [{ model: typeIncomeModel_1.default, as: "category" }],
+        transaction: options.t,
+    });
+    if (!sub?.category || Number(sub.category.typestatus) !== kind)
+        return { error: "ບໍ່ພົບລາຍການຍ່ອຍທີ່ເລືອກ" };
+    const kept = subId === options.keepId;
+    if (!kept && (Number(sub.status) !== 1 || Number(sub.category.status) !== 1))
+        return { error: "ລາຍການຍ່ອຍ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ" };
+    return { sub };
+};
+exports.resolveSubCategory = resolveSubCategory;
+/** ປະເພດຂອງລາຍການຍ່ອຍ (ໃຊ້ຕອນລົງບັນຊີຄູ່ — ບັນຊີ GL ຜູກກັບປະເພດ) */
+const categoryIdOfSub = async (subId, t) => {
+    const sub = Number(subId) > 0 ? await financeSubCategory_1.default.findByPk(Number(subId), { attributes: ["category_id"], transaction: t }) : null;
+    return sub ? Number(sub.category_id) : null;
+};
+exports.categoryIdOfSub = categoryIdOfSub;

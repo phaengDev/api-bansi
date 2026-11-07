@@ -19,9 +19,21 @@ const payroll_1 = __importDefault(require("./payroll"));
 class PayrollLine extends sequelize_1.Model {
 }
 /** ສ້າງໃໝ່ທຸກຖັນ — Sequelize ແກ້ object ຂອງ attribute (field), ໃຊ້ object ດຽວກັນຫຼາຍຖັນ = ທຸກຖັນຊີ້ໄປຖັນທຳອິດ */
-const money = () => ({ type: sequelize_1.DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 });
-const count = () => ({ type: sequelize_1.DataTypes.INTEGER, allowNull: false, defaultValue: 0 });
-const mode = () => ({ type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 });
+const money = () => ({
+    type: sequelize_1.DataTypes.DECIMAL(16, 2),
+    allowNull: false,
+    defaultValue: 0
+});
+const count = () => ({
+    type: sequelize_1.DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+});
+const mode = () => ({
+    type: sequelize_1.DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 1
+});
 PayrollLine.init({
     _uuid: {
         type: sequelize_1.DataTypes.INTEGER,

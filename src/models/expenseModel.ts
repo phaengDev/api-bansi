@@ -1,12 +1,12 @@
 import { DataTypes, Model } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
-import FinanceCategories from "./typeIncomeModel";
 import TreasuryAccount from "./treasuryAcount";
 import ExpenseItems from "./expenseItemModel";
 import Users from "./userModel";
 import Banks from "./bankModel";
 import Partner from "./partner";
+import FinanceSubCategory from "./financeSubCategory";
 
 /**
  * ລາຍຈ່າຍ — ສ່ວນຫົວ (1 ແຖວຕໍ່ໃບຈ່າຍ); ລາຍການຍ່ອຍຢູ່ tbl_expense_items (expense_id).
@@ -20,7 +20,8 @@ class Expenses extends Model {
   /** ວັນທີຈ່າຍເງິນ (ລົງຍ້ອນຫຼັງໄດ້) */
   public expense_date!: string;
   public expense_title!: string;
-  public type_expense_fk!: number;
+  /** ລາຍການຍ່ອຍ (tbl_finance_subcategory) — ປະເພດລາຍຈ່າຍອ່ານຜ່ານ sub.category_id; expense_title = ຊື່ລາຍການຍ່ອຍຕອນບັນທຶກ */
+  public sub_category_id!: number;
   /** ຜູ້ຮັບເງິນ / ຮ້ານຄ້າ ແລະ ເລກທີໃບບິນຂອງຮ້ານ (ບໍ່ບັງຄັບ) */
   public payee_name!: string | null;
   public bill_no!: string | null;
@@ -40,6 +41,11 @@ class Expenses extends Model {
   public file_doct!: string | null;
   public status!: number;
   public createdbyid!: number | null;
+  /**
+   * ລາຍຈ່າຍທີ່ສ້າງຕອນຈ່າຍເງິນເດືອນ (ຕິກ "ບັນທຶກເປັນລາຍຈ່າຍ") — ເປັນບັນທຶກຄູ່ຂອງໃບເງິນເດືອນເທົ່ານັ້ນ: ເງິນອອກຈາກບັນຊີ
+   * ແລະ ລົງບັນຊີຄູ່ແລ້ວໂດຍໃບເງິນເດືອນ ຈຶ່ງບໍ່ຫັກເງິນ / ບໍ່ລົງບັນຊີຊ້ຳ; ຍົກເລີກການຈ່າຍເງິນເດືອນ = ລຶບອັນນີ້
+   */
+  public payroll_id!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -60,7 +66,7 @@ Expenses.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    type_expense_fk: DataTypes.INTEGER,
+    sub_category_id: DataTypes.INTEGER,
     payee_name: DataTypes.STRING,
     bill_no: DataTypes.STRING(100),
     type_acountid: DataTypes.INTEGER,
@@ -96,6 +102,7 @@ Expenses.init(
       defaultValue: 1,
     },
     createdbyid: DataTypes.INTEGER,
+    payroll_id: DataTypes.INTEGER,
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -113,7 +120,7 @@ Expenses.init(
   }
 );
 
-Expenses.belongsTo(FinanceCategories, { foreignKey: "type_expense_fk", as: "typeout" });
+Expenses.belongsTo(FinanceSubCategory, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Expenses.belongsTo(TreasuryAccount, { foreignKey: "acount_id_fk", as: "acount" });
 Expenses.belongsTo(Users, { foreignKey: "createdbyid", as: "user" });
 Expenses.belongsTo(Banks, { foreignKey: "payee_bank_id", as: "payeeBank" });

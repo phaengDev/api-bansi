@@ -10,7 +10,7 @@ import TreasuryAccount from "../../models/treasuryAcount";
 import TypeTreasury from "../../models/typeTreasury";
 import JournalEntry from "../../models/journalEntry";
 import JournalLine from "../../models/journalLine";
-import { BUSINESS_OFFSET, isCashAccount } from "./journalHelpers";
+import { BUSINESS_OFFSET, categoryIdOfSub, isCashAccount } from "./journalHelpers";
 import {
   CREDIT, DEBIT, DraftLine, GlError, activeEntryOf, categoryAccountId, glReady, postSource, rateOf,
   reverseSource, roleAccountId, round2, treasuryAccountId,
@@ -60,7 +60,7 @@ export const postIncome = async (row: any, t: Transaction, actorId?: number | nu
   const common = { currencyId: cash.currencyId, rate: cash.rate };
   const lines: DraftLine[] = [
     { ...common, accountId: cash.accountId, side: DEBIT, amount: total, treasuryAccountId: Number(row.acount_id_fk) },
-    { ...common, accountId: await categoryAccountId(row.type_incom_fk, 1, t), side: CREDIT, amount: round2(total - tax) },
+    { ...common, accountId: await categoryAccountId(await categoryIdOfSub(row.sub_category_id, t), 1, t), side: CREDIT, amount: round2(total - tax) },
   ];
   if (tax) lines.push({ ...common, accountId: await roleAccountId("VAT_OUTPUT", t), side: CREDIT, amount: tax });
   return postSource({
@@ -69,14 +69,15 @@ export const postIncome = async (row: any, t: Transaction, actorId?: number | nu
 };
 
 export const postExpense = async (row: any, t: Transaction, actorId?: number | null) => {
-  if (!(await glReady(t))) return null;
+  // ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນ — ໃບເງິນເດືອນລົງບັນຊີແລ້ວ
+  if (row.payroll_id || !(await glReady(t))) return null;
   const date = row.expense_date || laoDateOf(row.createdAt);
   const cash = await treasurySide(Number(row.acount_id_fk), date, t);
   const total = round2(Number(row.balance_expense));
   const tax = round2(Number(row.tax) || 0);
   const common = { currencyId: cash.currencyId, rate: cash.rate };
   const lines: DraftLine[] = [
-    { ...common, accountId: await categoryAccountId(row.type_expense_fk, 2, t), side: DEBIT, amount: round2(total - tax) },
+    { ...common, accountId: await categoryAccountId(await categoryIdOfSub(row.sub_category_id, t), 2, t), side: DEBIT, amount: round2(total - tax) },
   ];
   if (tax) lines.push({ ...common, accountId: await roleAccountId("VAT_INPUT", t), side: DEBIT, amount: tax });
   lines.push({ ...common, accountId: cash.accountId, side: CREDIT, amount: total, treasuryAccountId: Number(row.acount_id_fk) });
@@ -247,7 +248,7 @@ export const rebuildFromDocuments = async (actorId?: number | null) => {
   const incomes: any[] = await Incomes.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });
   for (const row of incomes) await run("INCOME", row._uuid, row.number ?? `INCOME #${row._uuid}`, (t) => postIncome(row, t, actorId));
 
-  const expenses: any[] = await Expenses.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });
+  const expenses: any[] = await Expenses.findAll({ where: { status: ACTIVE, payroll_id: null }, order: [["_uuid", "ASC"]] });
   for (const row of expenses) await run("EXPENSE", row._uuid, row.number ?? `EXPENSE #${row._uuid}`, (t) => postExpense(row, t, actorId));
 
   const transfers: any[] = await TransferMoney.findAll({ where: { status: ACTIVE }, order: [["_uuid", "ASC"]] });

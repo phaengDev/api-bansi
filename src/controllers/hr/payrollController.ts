@@ -12,7 +12,9 @@ import TreasuryAccount from "../../models/treasuryAcount";
 import TypeTreasury from "../../models/typeTreasury";
 import Currency from "../../models/currencyModel";
 import { actorOf, decodeId, sendError } from "../bansi/bansiHelpers";
-import { accountInclude, entryDateOf } from "../bansi/journalHelpers";
+import { accountInclude, entryDateOf, resolveSubCategory, subInclude } from "../bansi/journalHelpers";
+import { recordPayrollExpense, removePayrollExpense } from "../bansi/expenseController";
+import Expenses from "../../models/expenseModel";
 import { MOVE_IN, MOVE_OUT, moveBalance } from "../bansi/accountMovement";
 import { isBaseCurrency, replyGlError, reverseSource } from "../bansi/glCore";
 import { postPayroll } from "../bansi/glPosting";
@@ -188,9 +190,13 @@ const refreshTotals = async (payroll: Payroll, t: Transaction) => {
   }, { transaction: t });
 };
 
+/** ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນ (ຕິກ "ບັນທຶກເປັນລາຍຈ່າຍ" ຕອນຈ່າຍ) */
+const expenseOf = (payrollId: number) =>
+  Expenses.findOne({ where: { payroll_id: payrollId }, attributes: ["_uuid", "number", "status"], include: [subInclude] });
+
 const reply = async (res: Response, id: number, message: string) => {
   const saved = await findFull(id);
-  res.status(200).json({ message, data: saved && present(saved) });
+  res.status(200).json({ message, data: saved && { ...present(saved), expense: await expenseOf(id) } });
 };
 
 /** ໃບຮ່າງ (ລັອກແຖວ) — ບໍ່ພົບ / ຈ່າຍແລ້ວ = error */
@@ -401,7 +407,7 @@ export const getPayroll = async (req: Request<{ id: string }>, res: Response) =>
       res.status(404).json({ message: "ບໍ່ພົບໃບເງິນເດືອນ" });
       return;
     }
-    res.status(200).json({ data: present(row), settings: await loadPayrollSettings() });
+    res.status(200).json({ data: { ...present(row), expense: await expenseOf(row._uuid) }, settings: await loadPayrollSettings() });
   } catch (error) {
     sendError(res, error, "Error getting payroll");
   }
@@ -706,9 +712,34 @@ export const deletePayroll = async (req: Request<{ id: string }>, res: Response)
 };
 
 /**
- * PUT /payroll/pay/:id { account_id, pay_date?, description? } — ຈ່າຍເງິນເດືອນ: ຍອດສຸດທິລວມອອກຈາກບັນຊີເງິນຄັງ
+ * GET /payroll/expense-default — ຄ່າຕັ້ງຕົ້ນຂອງ "ບັນທຶກເປັນລາຍຈ່າຍ" ໃນຟອມຈ່າຍເງິນເດືອນ: record = ໃບທີ່ຈ່າຍຫຼ້າສຸດໄດ້ບັນທຶກໄວ້,
+ * sub = ລາຍການຍ່ອຍທີ່ໃຊ້ຫຼ້າສຸດ (ຍັງໃຊ້ງານຢູ່ເທົ່ານັ້ນ)
+ */
+export const getPayrollExpenseDefault = async (_req: Request, res: Response) => {
+  try {
+    const last = await Payroll.findOne({ where: { status: PAID }, attributes: ["_uuid"], order: [["paidAt", "DESC"], ["_uuid", "DESC"]] });
+    const recorded: any = await Expenses.findOne({
+      where: { payroll_id: { [Op.ne]: null } },
+      attributes: ["_uuid", "payroll_id"],
+      include: [subInclude],
+      order: [["_uuid", "DESC"]],
+    });
+    const sub = recorded?.sub;
+    const usable = sub && Number(sub.status) === 1 && Number(sub.category?.status) === 1;
+    res.status(200).json({
+      record: !!last && !!recorded && Number(recorded.payroll_id) === last._uuid,
+      sub: usable ? sub : null,
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting payroll expense default");
+  }
+};
+
+/**
+ * PUT /payroll/pay/:id { account_id, pay_date?, description?, expense_sub_id? } — ຈ່າຍເງິນເດືອນ: ຍອດສຸດທິລວມອອກຈາກບັນຊີເງິນຄັງ
  * (ສະກຸນກີບ, ຍອດໃຊ້ໄດ້ຕ້ອງພໍ) + ລົງບັນຊີຄູ່ (ໜີ້ ເງິນເດືອນ + ປກສ ບໍລິສັດ / ມີ ເງິນສົດ-ທະນາຄານ, ປກສ ຄ້າງຈ່າຍ,
- * ອາກອນຄ້າງຈ່າຍ, ຫັກອື່ນ). ວັນທີຈ່າຍ: ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ກ່ອນເດືອນຂອງເງິນເດືອນ ແລະ ບໍ່ເກີນມື້ນີ້
+ * ອາກອນຄ້າງຈ່າຍ, ຫັກອື່ນ). ວັນທີຈ່າຍ: ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ກ່ອນເດືອນຂອງເງິນເດືອນ ແລະ ບໍ່ເກີນມື້ນີ້.
+ * expense_sub_id = ບັນທຶກເປັນລາຍຈ່າຍນຳ (ລາຍການຍ່ອຍຂອງປະເພດລາຍຈ່າຍ) — ບັນທຶກຄູ່ເທົ່ານັ້ນ ບໍ່ຫັກເງິນ / ບໍ່ລົງບັນຊີຊ້ຳ
  */
 export const payPayroll = async (req: Request<{ id: string }>, res: Response) => {
   const t = await Payroll.sequelize!.transaction();
@@ -741,6 +772,9 @@ export const payPayroll = async (req: Request<{ id: string }>, res: Response) =>
     });
     if (!isBaseCurrency(type?.currency)) return fail(400, "ຈ່າຍເງິນເດືອນໄດ້ສະເພາະບັນຊີສະກຸນກີບ (LAK)");
     if ((Number(account.balance_treasury) || 0) < total) return fail(400, "ຍອດເງິນທີ່ໃຊ້ໄດ້ຂອງບັນຊີບໍ່ພໍຈ່າຍເງິນເດືອນ");
+    // ບັນທຶກເປັນລາຍຈ່າຍນຳ — ກວດລາຍການຍ່ອຍກ່ອນເງິນອອກ
+    const recordAs = body.expense_sub_id ? await resolveSubCategory(body.expense_sub_id, 2, { t }) : null;
+    if (recordAs && "error" in recordAs) return fail(400, recordAs.error);
 
     const actor = Number(actorOf(req)) || null;
     const number = `SAL-${payroll.period}`;
@@ -756,6 +790,18 @@ export const payPayroll = async (req: Request<{ id: string }>, res: Response) =>
     const settledAdvances = await applyPayrollRepayments(payroll, lines, payDate.date, actor, t);
     // ລົງບັນຊີຄູ່ — ບໍ່ສຳເລັດ (ເຊັ່ນ ຍັງບໍ່ຜູກບັນຊີ, ປີປິດແລ້ວ) = ບໍ່ຈ່າຍ
     await postPayroll(payroll, t, actor);
+    if (recordAs) {
+      await recordPayrollExpense({
+        payroll: { _uuid: payroll._uuid, number, period: payroll.period },
+        sub: recordAs.sub,
+        account,
+        amount: total,
+        date: payDate.date,
+        description,
+        people: lines.length,
+        actorId: actor,
+      }, t);
+    }
     await t.commit();
     // ແຈ້ງພະນັກງານແຕ່ລະຄົນວ່າໂອນເງິນເດືອນແລ້ວ (ຫຼັງ commit — ແຈ້ງບໍ່ສຳເລັດ ບໍ່ກະທົບການຈ່າຍ)
     await notify(lines.map((l) => ({
@@ -780,7 +826,10 @@ export const payPayroll = async (req: Request<{ id: string }>, res: Response) =>
   }
 };
 
-/** PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ + ຖອນການຫັກເງິນເບີກ ແລ້ວກັບເປັນໃບຮ່າງ */
+/**
+ * PUT /payroll/unpay/:id — ຍົກເລີກການຈ່າຍ: ຄືນເງິນເຂົ້າບັນຊີ + ກັບລາຍການບັນຊີຄູ່ + ຖອນການຫັກເງິນເບີກ + ລຶບລາຍຈ່າຍທີ່ບັນທຶກຄູ່ໄວ້
+ * ແລ້ວກັບເປັນໃບຮ່າງ
+ */
 export const unpayPayroll = async (req: Request<{ id: string }>, res: Response) => {
   const t = await Payroll.sequelize!.transaction();
   const fail = async (code: number, message: string) => {
@@ -803,6 +852,7 @@ export const unpayPayroll = async (req: Request<{ id: string }>, res: Response) 
     }
     await reverseSource("PAYROLL", payroll._uuid, t, actor);
     await reversePayrollRepayments(payroll._uuid, t);
+    await removePayrollExpense(payroll._uuid, t);
     await payroll.update({
       status: DRAFT, number: null, pay_date: null, account_id: null, paidbyid: null, paidAt: null, updatedAt: new Date(),
     }, { transaction: t });

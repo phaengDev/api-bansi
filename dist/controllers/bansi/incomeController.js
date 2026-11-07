@@ -9,7 +9,6 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const sequelize_1 = require("sequelize");
 const incomeModel_1 = __importDefault(require("../../models/incomeModel"));
-const typeIncomeModel_1 = __importDefault(require("../../models/typeIncomeModel"));
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
 const bankModel_1 = __importDefault(require("../../models/bankModel"));
 const userModel_1 = __importDefault(require("../../models/userModel"));
@@ -37,7 +36,7 @@ const EFFECTIVE_DATE = "COALESCE(`Incomes`.`income_date`, DATE(DATE_ADD(`Incomes
 /** ວັນທີຮັບເງິນຈາກ body — ບໍ່ສົ່ງ = ມື້ນີ້; ຜິດຮູບແບບ ຫຼື ເກີນມື້ນີ້ = error */
 const incomeDateOf = (value) => (0, journalHelpers_1.entryDateOf)(value, "ວັນທີຮັບເງິນ");
 const includeAll = [
-    { model: typeIncomeModel_1.default, as: "typein", attributes: ["_uuid", "type_code", "type_name"] },
+    journalHelpers_1.subInclude,
     journalHelpers_1.accountInclude,
     { model: userModel_1.default, as: "user", attributes: ["user_uuid", "user_name"] },
     { model: bankModel_1.default, as: "payerBank", attributes: ["_uuid", "abbr", "name_la", "logo"] },
@@ -139,7 +138,8 @@ const getIncomes = async (req, res) => {
 exports.getIncomes = getIncomes;
 /**
  * POST /income/create (multipart, ໄຟລ໌ field "file_doct")
- * { income_date? (YYYY-MM-DD, ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ເກີນມື້ນີ້), incom_title, type_incom_fk, acount_id_fk, balances, tax_id? | (tax, calc_method)?, description?,
+ * { income_date? (YYYY-MM-DD, ບໍ່ສົ່ງ = ມື້ນີ້, ບໍ່ເກີນມື້ນີ້), sub_category_id (ປະເພດມາຈາກລາຍການຍ່ອຍ),
+ *   incom_title? (ບໍ່ສົ່ງ = ຊື່ລາຍການຍ່ອຍ), acount_id_fk, balances, tax_id? | (tax, calc_method)?, description?,
  *   payer_bank_id?, payer_account_name?, payer_account_number?, partner_id?, payer_name? } — receive_type ຄິດຈາກໝວດຂອງບັນຊີເອງ
  */
 const createIncome = async (req, res) => {
@@ -151,14 +151,8 @@ const createIncome = async (req, res) => {
     };
     try {
         const body = req.body || {};
-        const title = String(body.incom_title ?? "").trim();
-        const categoryId = Number(body.type_incom_fk);
         const accountId = Number(body.acount_id_fk);
         const amount = Math.round(Number(body.balances));
-        if (!title)
-            return fail(400, "ກະລຸນາປ້ອນລາຍການ");
-        if (!Number.isInteger(categoryId))
-            return fail(400, "ກະລຸນາເລືອກປະເພດລາຍຮັບ");
         if (!Number.isInteger(accountId))
             return fail(400, "ກະລຸນາເລືອກບັນຊີຮັບເງິນ");
         if (!Number.isFinite(amount) || amount <= 0)
@@ -169,12 +163,10 @@ const createIncome = async (req, res) => {
         const partner = await (0, journalHelpers_1.partnerIdOf)(body.partner_id, journalHelpers_1.INCOME_PARTNER_TYPES);
         if ("error" in partner)
             return fail(400, partner.error);
-        const category = await typeIncomeModel_1.default.findOne({
-            where: { _uuid: categoryId, typestatus: INCOME_KIND, status: 1 },
-            transaction: t,
-        });
-        if (!category)
-            return fail(400, "ບໍ່ພົບປະເພດລາຍຮັບທີ່ເລືອກ");
+        const picked = await (0, journalHelpers_1.resolveSubCategory)(body.sub_category_id, INCOME_KIND, { t });
+        if ("error" in picked)
+            return fail(400, picked.error);
+        const title = String(body.incom_title ?? "").trim() || picked.sub.name;
         const account = await treasuryAcount_1.default.findByPk(accountId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!account || Number(account.status) !== 1)
             return fail(400, "ບັນຊີຮັບເງິນບໍ່ມີ ຫຼື ປິດໃຊ້ງານແລ້ວ");
@@ -197,7 +189,7 @@ const createIncome = async (req, res) => {
             number,
             income_date: incomeDate.date,
             incom_title: title,
-            type_incom_fk: categoryId,
+            sub_category_id: picked.sub._uuid,
             type_acountid: account.type_treasuryid,
             acount_id_fk: accountId,
             ...receive,
@@ -232,7 +224,8 @@ const createIncome = async (req, res) => {
 };
 exports.createIncome = createIncome;
 /**
- * PUT /income/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຮັບເງິນ, ລາຍການ, ປະເພດ, ລາຍລະອຽດ, ລູກຄ້າ, ຂໍ້ມູນຜູ້ໂອນ (ເງິນໂອນ),
+ * PUT /income/:id (multipart) — ແກ້ໄດ້ສະເພາະ ວັນທີຮັບເງິນ, ລາຍການຍ່ອຍ (ປ່ຽນ = ລາຍການເປັນຊື່ລາຍການຍ່ອຍໃໝ່), ລາຍການ,
+ * ລາຍລະອຽດ, ລູກຄ້າ, ຂໍ້ມູນຜູ້ໂອນ (ເງິນໂອນ),
  * ໄຟລ໌ (ສົ່ງ remove_file=1 ເພື່ອລຶບໄຟລ໌).
  * ບັນຊີ / ຈຳນວນ / ອາກອນ ບໍ່ປ່ຽນ — ຍອດບັນຊີຜູກກັບມັນແລ້ວ
  */
@@ -260,16 +253,16 @@ const updateIncome = async (req, res) => {
             }
             patch.incom_title = title;
         }
-        if (body.type_incom_fk !== undefined) {
-            const category = await typeIncomeModel_1.default.findOne({
-                where: { _uuid: Number(body.type_incom_fk), typestatus: INCOME_KIND, status: 1 },
-            });
-            if (!category) {
+        if (body.sub_category_id !== undefined) {
+            const picked = await (0, journalHelpers_1.resolveSubCategory)(body.sub_category_id, INCOME_KIND, { keepId: row.sub_category_id });
+            if ("error" in picked) {
                 discardUpload(req);
-                res.status(400).json({ message: "ບໍ່ພົບປະເພດລາຍຮັບທີ່ເລືອກ" });
+                res.status(400).json({ message: picked.error });
                 return;
             }
-            patch.type_incom_fk = Number(body.type_incom_fk);
+            patch.sub_category_id = picked.sub._uuid;
+            if (picked.sub._uuid !== Number(row.sub_category_id) && body.incom_title === undefined)
+                patch.incom_title = picked.sub.name;
         }
         if (body.description !== undefined)
             patch.description = String(body.description).trim() || null;
@@ -301,8 +294,8 @@ const updateIncome = async (req, res) => {
         const oldFile = replacesFile ? row.file_doct : null;
         if (replacesFile)
             patch.file_doct = uploaded ?? null;
-        // ປ່ຽນວັນທີ/ປະເພດ/ລາຍການ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
-        const affectsGl = ["income_date", "type_incom_fk", "incom_title"].some((key) => patch[key] !== undefined && String(patch[key]) !== String(row[key]));
+        // ປ່ຽນວັນທີ/ລາຍການຍ່ອຍ (ປະເພດ)/ລາຍການ → ລົງບັນຊີໃໝ່ໃນ transaction ດຽວກັນ (ປີການເງິນປິດແລ້ວ = ແກ້ບໍ່ໄດ້)
+        const affectsGl = ["income_date", "sub_category_id", "incom_title"].some((key) => patch[key] !== undefined && String(patch[key]) !== String(row[key]));
         const t = await incomeModel_1.default.sequelize.transaction();
         try {
             await row.update({ ...patch, updatedAt: new Date() }, { transaction: t });

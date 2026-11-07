@@ -63,9 +63,18 @@ class PayrollLine extends Model {
 }
 
 /** ສ້າງໃໝ່ທຸກຖັນ — Sequelize ແກ້ object ຂອງ attribute (field), ໃຊ້ object ດຽວກັນຫຼາຍຖັນ = ທຸກຖັນຊີ້ໄປຖັນທຳອິດ */
-const money = () => ({ type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 });
-const count = () => ({ type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 });
-const mode = () => ({ type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 });
+const money = () => ({ 
+  type: DataTypes.DECIMAL(16, 2), 
+  allowNull: false, 
+  defaultValue: 0 });
+const count = () => ({ 
+  type: DataTypes.INTEGER, 
+  allowNull: false, 
+  defaultValue: 0 });
+const mode = () => ({ 
+  type: DataTypes.TINYINT, 
+  allowNull: false, 
+  defaultValue: 1 });
 
 PayrollLine.init(
   {
@@ -154,4 +163,5 @@ Payroll.hasMany(PayrollLine, { foreignKey: "payroll_id", as: "lines", constraint
 PayrollLine.belongsTo(Payroll, { foreignKey: "payroll_id", as: "payroll", constraints: false });
 
 autoSync(PayrollLine, { rename: { deduction_auto: "deduction_mode", sso_auto: "sso_mode", tax_auto: "tax_mode" } });
+
 export default PayrollLine;

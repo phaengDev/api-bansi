@@ -316,7 +316,7 @@ export const getGlStatus = async (_req: Request, res: Response) => {
       `SELECT
         (SELECT COUNT(*) FROM tbl_incomes i WHERE i.status = 1 AND NOT EXISTS
           (SELECT 1 FROM tbl_journal_entry e WHERE e.source_type = 'INCOME' AND e.source_id = i._uuid)) AS incomes,
-        (SELECT COUNT(*) FROM tbl_expenses x WHERE x.status = 1 AND NOT EXISTS
+        (SELECT COUNT(*) FROM tbl_expenses x WHERE x.status = 1 AND x.payroll_id IS NULL AND NOT EXISTS
           (SELECT 1 FROM tbl_journal_entry e WHERE e.source_type = 'EXPENSE' AND e.source_id = x._uuid)) AS expenses,
         (SELECT COUNT(*) FROM tbl_transfer_money m WHERE m.status = 1 AND NOT EXISTS
           (SELECT 1 FROM tbl_journal_entry e WHERE e.source_type = 'TRANSFER' AND e.source_id = m._uuid)) AS transfers,

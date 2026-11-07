@@ -11,6 +11,7 @@ const budgetMonth_1 = __importDefault(require("../../models/budgetMonth"));
 const fiscalYear_1 = __importDefault(require("../../models/fiscalYear"));
 const typeIncomeModel_1 = __importDefault(require("../../models/typeIncomeModel"));
 const expenseModel_1 = __importDefault(require("../../models/expenseModel"));
+const financeSubCategory_1 = __importDefault(require("../../models/financeSubCategory"));
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
 const typeTreasury_1 = __importDefault(require("../../models/typeTreasury"));
 const currencyModel_1 = __importDefault(require("../../models/currencyModel"));
@@ -96,11 +97,28 @@ const lakConverter = async (until) => {
         return rate > 0 ? (0, glCore_1.round2)(amount * rate) : null;
     };
 };
-/** ລາຍຈ່າຍທີ່ໃຊ້ງານ ທີ່ວັນທີຈ່າຍຢູ່ໃນຊ່ວງ (+ ສະກຸນເງິນຂອງບັນຊີທີ່ຈ່າຍ) */
-const expensesIn = (fiscal, where = {}) => expenseModel_1.default.findAll({
-    where: { status: journalHelpers_1.ACTIVE, expense_date: { [sequelize_1.Op.between]: [fiscal.start_date, fiscal.end_date] }, ...where },
-    attributes: ["_uuid", "number", "expense_date", "expense_title", "type_expense_fk", "payee_name", "balance_expense", "acount_id_fk"],
-    include: [currencyInclude],
+/**
+ * ລາຍຈ່າຍທີ່ໃຊ້ງານ ທີ່ວັນທີຈ່າຍຢູ່ໃນຊ່ວງ (+ ສະກຸນເງິນຂອງບັນຊີທີ່ຈ່າຍ, ປະເພດຜ່ານລາຍການຍ່ອຍ sub.category_id).
+ * categoryId = ສະເພາະປະເພດນີ້, excludeId = ບໍ່ນັບໃບນີ້ (ກວດງົບຕອນແກ້ໄຂ). ລາຍຈ່າຍທີ່ບັນທຶກຄູ່ກັບໃບເງິນເດືອນບໍ່ນັບ —
+ * ເງິນເດືອນນັບແລ້ວຕາມຕັ້ງຄ່າ (budget_category_id) ດ້ວຍຕົ້ນທຶນເຕັມ (ລວມ + ປກສ ບໍລິສັດ)
+ */
+const expensesIn = (fiscal, filter = {}) => expenseModel_1.default.findAll({
+    where: {
+        status: journalHelpers_1.ACTIVE,
+        payroll_id: null,
+        expense_date: { [sequelize_1.Op.between]: [fiscal.start_date, fiscal.end_date] },
+        ...(filter.excludeId && filter.excludeId > 0 ? { _uuid: { [sequelize_1.Op.ne]: filter.excludeId } } : {}),
+    },
+    attributes: ["_uuid", "number", "expense_date", "expense_title", "sub_category_id", "payee_name", "balance_expense", "acount_id_fk"],
+    include: [
+        currencyInclude,
+        {
+            model: financeSubCategory_1.default,
+            as: "sub",
+            attributes: ["category_id"],
+            ...(filter.categoryId ? { where: { category_id: filter.categoryId }, required: true } : { required: false }),
+        },
+    ],
     order: [["expense_date", "DESC"], ["_uuid", "DESC"]],
 });
 const lakOf = (row, convert) => convert(Number(row.balance_expense) || 0, row.acount?.treasury?.currencyId, String(row.expense_date));
@@ -115,7 +133,7 @@ const spendOf = (rows, convert) => {
             missingRate += 1;
             continue;
         }
-        const key = Number(r.type_expense_fk);
+        const key = Number(r.sub?.category_id);
         const period = String(r.expense_date).slice(0, 7);
         const item = byCategory.get(key) ?? { total: 0, months: {}, count: 0 };
         item.total = (0, glCore_1.round2)(item.total + lak);
@@ -354,7 +372,7 @@ const getBudgetExpenses = async (req, res) => {
             return;
         }
         const [rows, convert, payroll] = await Promise.all([
-            expensesIn(fiscal, { type_expense_fk: categoryId }),
+            expensesIn(fiscal, { categoryId }),
             lakConverter(fiscal.end_date),
             payrollsIn(fiscal, categoryId),
         ]);
@@ -419,7 +437,7 @@ const checkBudget = async (req, res) => {
         }
         const excludeId = Number(body.exclude_id);
         const [rows, convert, payroll] = await Promise.all([
-            expensesIn(fiscal, { type_expense_fk: categoryId, ...(excludeId > 0 ? { _uuid: { [sequelize_1.Op.ne]: excludeId } } : {}) }),
+            expensesIn(fiscal, { categoryId, excludeId }),
             lakConverter(fiscal.end_date),
             payrollsIn(fiscal, categoryId),
         ]);
