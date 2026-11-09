@@ -3,6 +3,7 @@ import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
 import Department from "./department";
 import Position from "./position";
+import HrOption from "./hrOption";
 import District from "./district";
 import Banks from "./bankModel";
 
@@ -29,6 +30,40 @@ class Employee extends Model {
   public must_change_password!: number;
   public department_id!: number;
   public position_id!: number | null;
+  /** ຫົວໜ້າ (ລາຍງານຕໍ່ພະນັກງານຄົນນີ້) — ໂຄງຮ່າງການຈັດຕັ້ງ; null = ສູງສຸດ / ຍັງບໍ່ກຳນົດ */
+  public reports_to_id!: number | null;
+  // ---- ຂໍ້ມູນເພີ່ມເຕີມ (ບໍ່ບັງຄັບ — ບໍລິສັດທີ່ບໍ່ໃຊ້ ປະໄວ້ຫວ່າງ) ----
+  public nationality!: string | null;
+  public ethnicity!: string | null;
+  public religion!: string | null;
+  public birth_place!: string | null;
+  public blood_type!: string | null;
+  public id_card_no!: string | null;
+  public id_card_expiry!: string | null;
+  public passport_no!: string | null;
+  public passport_expiry!: string | null;
+  public sso_no!: string | null;
+  /** 1 ໂສດ · 2 ແຕ່ງງານ · 3 ຢ່າຮ້າງ · 4 ໝ້າຍ */
+  public marital_status!: number | null;
+  public spouse_name!: string | null;
+  public spouse_birthday!: string | null;
+  public spouse_phone!: string | null;
+  public children!: number | null;
+  public education_level_id!: number | null;
+  public education_field!: string | null;
+  public education_school!: string | null;
+  public graduation_year!: number | null;
+  public emergency_name!: string | null;
+  public emergency_relation!: string | null;
+  public emergency_phone!: string | null;
+  public home_distance_km!: string | null;
+  public employee_type_id!: number | null;
+  public contract_no!: string | null;
+  public contract_fixed_term!: number;
+  public contract_end!: string | null;
+  public probation_end!: string | null;
+  /** 1 ເງິນເດືອນຄົງທີ່ · 2 ຄ່າແຮງລາຍຊົ່ວໂມງ */
+  public wage_type!: number;
   public start_date!: string | null;
   public end_date!: string | null;
   public work_status!: number;
@@ -81,6 +116,36 @@ Employee.init(
       allowNull: false
     },
     position_id: DataTypes.INTEGER,
+    reports_to_id: DataTypes.INTEGER,
+    nationality: DataTypes.STRING(60),
+    ethnicity: DataTypes.STRING(60),
+    religion: DataTypes.STRING(60),
+    birth_place: DataTypes.STRING(150),
+    blood_type: DataTypes.STRING(5),
+    id_card_no: DataTypes.STRING(50),
+    id_card_expiry: DataTypes.DATEONLY,
+    passport_no: DataTypes.STRING(50),
+    passport_expiry: DataTypes.DATEONLY,
+    sso_no: DataTypes.STRING(50),
+    marital_status: DataTypes.TINYINT,
+    spouse_name: DataTypes.STRING(150),
+    spouse_birthday: DataTypes.DATEONLY,
+    spouse_phone: DataTypes.STRING(30),
+    children: DataTypes.INTEGER,
+    education_level_id: DataTypes.INTEGER,
+    education_field: DataTypes.STRING(150),
+    education_school: DataTypes.STRING(150),
+    graduation_year: DataTypes.INTEGER,
+    emergency_name: DataTypes.STRING(150),
+    emergency_relation: DataTypes.STRING(60),
+    emergency_phone: DataTypes.STRING(30),
+    home_distance_km: DataTypes.DECIMAL(7, 1),
+    employee_type_id: DataTypes.INTEGER,
+    contract_no: DataTypes.STRING(50),
+    contract_fixed_term: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    contract_end: DataTypes.DATEONLY,
+    probation_end: DataTypes.DATEONLY,
+    wage_type: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     start_date: DataTypes.DATEONLY,
     end_date: DataTypes.DATEONLY,
     work_status: {
@@ -129,6 +194,9 @@ Employee.init(
 
 Employee.belongsTo(Department, { foreignKey: "department_id", as: "department" });
 Employee.belongsTo(Position, { foreignKey: "position_id", as: "position" });
+Employee.belongsTo(Employee, { foreignKey: "reports_to_id", as: "reportsTo", constraints: false });
+Employee.belongsTo(HrOption, { foreignKey: "employee_type_id", as: "employeeType", constraints: false });
+Employee.belongsTo(HrOption, { foreignKey: "education_level_id", as: "educationLevel", constraints: false });
 Employee.belongsTo(District, { foreignKey: "district_id", as: "district" });
 Employee.belongsTo(Banks, { foreignKey: "bank_id", as: "bank", constraints: false });
 

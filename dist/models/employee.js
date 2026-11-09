@@ -8,6 +8,7 @@ const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
 const department_1 = __importDefault(require("./department"));
 const position_1 = __importDefault(require("./position"));
+const hrOption_1 = __importDefault(require("./hrOption"));
 const district_1 = __importDefault(require("./district"));
 const bankModel_1 = __importDefault(require("./bankModel"));
 /**
@@ -55,6 +56,36 @@ Employee.init({
         allowNull: false
     },
     position_id: sequelize_1.DataTypes.INTEGER,
+    reports_to_id: sequelize_1.DataTypes.INTEGER,
+    nationality: sequelize_1.DataTypes.STRING(60),
+    ethnicity: sequelize_1.DataTypes.STRING(60),
+    religion: sequelize_1.DataTypes.STRING(60),
+    birth_place: sequelize_1.DataTypes.STRING(150),
+    blood_type: sequelize_1.DataTypes.STRING(5),
+    id_card_no: sequelize_1.DataTypes.STRING(50),
+    id_card_expiry: sequelize_1.DataTypes.DATEONLY,
+    passport_no: sequelize_1.DataTypes.STRING(50),
+    passport_expiry: sequelize_1.DataTypes.DATEONLY,
+    sso_no: sequelize_1.DataTypes.STRING(50),
+    marital_status: sequelize_1.DataTypes.TINYINT,
+    spouse_name: sequelize_1.DataTypes.STRING(150),
+    spouse_birthday: sequelize_1.DataTypes.DATEONLY,
+    spouse_phone: sequelize_1.DataTypes.STRING(30),
+    children: sequelize_1.DataTypes.INTEGER,
+    education_level_id: sequelize_1.DataTypes.INTEGER,
+    education_field: sequelize_1.DataTypes.STRING(150),
+    education_school: sequelize_1.DataTypes.STRING(150),
+    graduation_year: sequelize_1.DataTypes.INTEGER,
+    emergency_name: sequelize_1.DataTypes.STRING(150),
+    emergency_relation: sequelize_1.DataTypes.STRING(60),
+    emergency_phone: sequelize_1.DataTypes.STRING(30),
+    home_distance_km: sequelize_1.DataTypes.DECIMAL(7, 1),
+    employee_type_id: sequelize_1.DataTypes.INTEGER,
+    contract_no: sequelize_1.DataTypes.STRING(50),
+    contract_fixed_term: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    contract_end: sequelize_1.DataTypes.DATEONLY,
+    probation_end: sequelize_1.DataTypes.DATEONLY,
+    wage_type: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     start_date: sequelize_1.DataTypes.DATEONLY,
     end_date: sequelize_1.DataTypes.DATEONLY,
     work_status: {
@@ -100,6 +131,9 @@ Employee.init({
 });
 Employee.belongsTo(department_1.default, { foreignKey: "department_id", as: "department" });
 Employee.belongsTo(position_1.default, { foreignKey: "position_id", as: "position" });
+Employee.belongsTo(Employee, { foreignKey: "reports_to_id", as: "reportsTo", constraints: false });
+Employee.belongsTo(hrOption_1.default, { foreignKey: "employee_type_id", as: "employeeType", constraints: false });
+Employee.belongsTo(hrOption_1.default, { foreignKey: "education_level_id", as: "educationLevel", constraints: false });
 Employee.belongsTo(district_1.default, { foreignKey: "district_id", as: "district" });
 Employee.belongsTo(bankModel_1.default, { foreignKey: "bank_id", as: "bank", constraints: false });
 (0, autoSync_1.autoSync)(Employee);

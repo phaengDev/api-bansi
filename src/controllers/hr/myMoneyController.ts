@@ -39,7 +39,8 @@ const ACCOUNT_KINDS = ["cash", "bank", "wallet"] as const;
 
 const MAX_NAME = 60;
 const MAX_NOTE = 500;
-const MAX_CATEGORIES = 60;
+/** ລວມໝວດໃຫຍ່ ແລະ ປະເພດ */
+const MAX_CATEGORIES = 150;
 const MAX_ACCOUNTS = 30;
 const ACCOUNT_NO = /^[0-9A-Za-z\- ]{1,30}$/;
 /** DECIMAL(16, 2) */
@@ -95,18 +96,31 @@ const ensureCategories = (employeeId: number) => {
   return job;
 };
 
-const categoryOf = (c: MoneyCategory) => ({
+/** ໝວດ → JSON — ປະເພດ (ມີ parent) ໃຊ້ໄອຄອນ / ສີ ຂອງໝວດໃຫຍ່ ແລະ ບອກຊື່ໝວດໃຫຍ່ (group) */
+const categoryOf = (c: MoneyCategory, parent?: MoneyCategory) => ({
   _uuid: c._uuid,
   kind: c.kind,
   name: c.name,
-  icon: c.icon,
-  color: c.color,
+  icon: parent?.icon ?? c.icon,
+  color: parent?.color ?? c.color,
+  parent_id: c.parent_id ? Number(c.parent_id) : null,
+  group: parent?.name ?? null,
   active: Number(c.status) === 1,
 });
+type CategoryView = ReturnType<typeof categoryOf>;
+
+/** ໝວດໃຫຍ່ (null = ເປັນໝວດໃຫຍ່ເອງ) ຈາກໝວດທັງໝົດຂອງຄົນນີ້ */
+const parentOf = (c: MoneyCategory, byId: Map<number, MoneyCategory>) => (c.parent_id ? byId.get(Number(c.parent_id)) : undefined);
 
 /** ທຸກໝວດຂອງຄົນນີ້ (ລວມທີ່ລຶບແລ້ວ — ລາຍການເກົ່າຍັງຕ້ອງສະແດງຊື່) */
-const categoryMap = async (employeeId: number) =>
-  new Map((await MoneyCategory.findAll({ where: { employee_id: employeeId } })).map((c) => [c._uuid, categoryOf(c)]));
+const categoryMap = async (employeeId: number) => {
+  const rows = await MoneyCategory.findAll({ where: { employee_id: employeeId } });
+  const byId = new Map(rows.map((c) => [c._uuid, c]));
+  return new Map(rows.map((c) => [c._uuid, categoryOf(c, parentOf(c, byId))]));
+};
+
+/** ໝວດໃຫຍ່ຂອງລາຍການ (ປະເພດ → ໝວດໃຫຍ່ຂອງມັນ) — ລາຍງານ / ຈັດກຸ່ມຕາມໝວດໃຫຍ່ */
+const groupIdOf = (c: CategoryView | undefined, categoryId: number) => c?.parent_id ?? categoryId;
 
 // ================= ບັນຊີ
 
@@ -337,10 +351,13 @@ export const getMyMoneyCategories = async (req: Request, res: Response) => {
     if (employeeId === null) return;
     await ensureCategories(employeeId);
     const rows = await MoneyCategory.findAll({
-      where: { employee_id: employeeId, status: 1 },
+      where: { employee_id: employeeId },
       order: [["kind", "DESC"], ["sort", "ASC"], ["_uuid", "ASC"]],
     });
-    res.status(200).json({ data: rows.map(categoryOf) });
+    const byId = new Map(rows.map((c) => [c._uuid, c]));
+    // ໃຊ້ງານຢູ່ ແລະ ໝວດໃຫຍ່ຂອງມັນ (ຖ້າເປັນປະເພດ) ກໍ່ຍັງໃຊ້ງານ
+    const active = rows.filter((c) => Number(c.status) === 1 && (!c.parent_id || Number(parentOf(c, byId)?.status) === 1));
+    res.status(200).json({ data: active.map((c) => categoryOf(c, parentOf(c, byId))) });
   } catch (error) {
     sendError(res, error, "Error getting money categories");
   }
@@ -369,13 +386,20 @@ const readCategory = (body: Record<string, any>, creating: boolean) => {
   return { input };
 };
 
-/** POST /money/me/categories */
+/** POST /money/me/categories { kind, name, icon, color } ຫຼື { parent_id, name } = ປະເພດໃຕ້ໝວດໃຫຍ່ (ໃຊ້ kind / ໄອຄອນ / ສີ ຂອງໝວດໃຫຍ່) */
 export const createMyMoneyCategory = async (req: Request, res: Response) => {
   try {
     const employeeId = await me(req, res);
     if (employeeId === null) return;
     const body = req.body ?? {};
-    if (!isKind(body.kind)) {
+    const parentId = plainId(body.parent_id);
+    const parent = parentId ? await myCategory(parentId, employeeId) : null;
+    // ມີ 2 ຊັ້ນເທົ່ານັ້ນ — ປະເພດຢູ່ໃຕ້ໝວດໃຫຍ່ໄດ້ຢ່າງດຽວ
+    if (parentId && (!parent || parent.parent_id)) {
+      res.status(400).json({ message: "ບໍ່ພົບໝວດໃຫຍ່ຂອງປະເພດນີ້" });
+      return;
+    }
+    if (!parent && !isKind(body.kind)) {
       res.status(400).json({ message: "ກະລຸນາເລືອກ ລາຍຮັບ ຫຼື ລາຍຈ່າຍ" });
       return;
     }
@@ -391,8 +415,9 @@ export const createMyMoneyCategory = async (req: Request, res: Response) => {
       return;
     }
     const sort = Number(await MoneyCategory.max("sort", { where: { employee_id: employeeId } })) || 0;
-    const row = await MoneyCategory.create({ ...result.input, kind: body.kind, employee_id: employeeId, sort: sort + 1 });
-    res.status(200).json({ message: "ເພີ່ມໝວດແລ້ວ", data: categoryOf(row) });
+    const inherited = parent ? { kind: parent.kind, icon: parent.icon, color: parent.color, parent_id: parent._uuid } : { kind: body.kind };
+    const row = await MoneyCategory.create({ ...result.input, ...inherited, employee_id: employeeId, sort: sort + 1 });
+    res.status(200).json({ message: parent ? "ເພີ່ມປະເພດແລ້ວ" : "ເພີ່ມໝວດແລ້ວ", data: categoryOf(row, parent ?? undefined) });
   } catch (error) {
     sendError(res, error, "Error creating money category");
   }
@@ -418,7 +443,8 @@ export const updateMyMoneyCategory = async (req: Request<{ id: string }>, res: R
       return;
     }
     await category.update({ ...result.input, updatedAt: new Date() });
-    res.status(200).json({ message: "ບັນທຶກໝວດແລ້ວ", data: categoryOf(category) });
+    const parent = category.parent_id ? await myCategory(Number(category.parent_id), employeeId) : null;
+    res.status(200).json({ message: "ບັນທຶກໝວດແລ້ວ", data: categoryOf(category, parent ?? undefined) });
   } catch (error) {
     sendError(res, error, "Error updating money category");
   }
@@ -435,7 +461,11 @@ export const deleteMyMoneyCategory = async (req: Request<{ id: string }>, res: R
       return;
     }
     await category.update({ status: 0, updatedAt: new Date() });
-    res.status(200).json({ message: "ລຶບໝວດແລ້ວ — ລາຍການເກົ່າຍັງຢູ່ຄືເດີມ" });
+    // ລຶບໝວດໃຫຍ່ = ລຶບປະເພດຂອງມັນນຳ
+    const [subs] = category.parent_id
+      ? [0]
+      : await MoneyCategory.update({ status: 0, updatedAt: new Date() } as any, { where: { employee_id: employeeId, parent_id: category._uuid, status: 1 } });
+    res.status(200).json({ message: subs ? "ລຶບໝວດ ແລະ ປະເພດຂອງມັນແລ້ວ — ລາຍການເກົ່າຍັງຢູ່ຄືເດີມ" : "ລຶບແລ້ວ — ລາຍການເກົ່າຍັງຢູ່ຄືເດີມ" });
   } catch (error) {
     sendError(res, error, "Error deleting money category");
   }
@@ -448,13 +478,15 @@ type AccountView = ReturnType<typeof accountOf>;
 const accountBrief = (a: AccountView | undefined) =>
   a ? { _uuid: a._uuid, name: a.name, kind: a.kind, logo: a.bank?.logo ?? null, currency: a.currency, active: a.active } : null;
 
-const entryOf = (e: MoneyEntry, categories: Map<number, ReturnType<typeof categoryOf>>, accounts: Map<number, AccountView>) => {
+const entryOf = (e: MoneyEntry, categories: Map<number, CategoryView>, accounts: Map<number, AccountView>) => {
   const category = e.kind === TRANSFER ? undefined : categories.get(Number(e.category_id));
   return {
     _uuid: e._uuid,
     kind: e.kind,
     category_id: e.kind === TRANSFER ? null : e.category_id,
-    category: category ? { name: category.name, icon: category.icon, color: category.color } : null,
+    /** ໝວດໃຫຍ່ (ລາຍການຂອງປະເພດ = ໝວດໃຫຍ່ຂອງປະເພດນັ້ນ) */
+    group_id: e.kind === TRANSFER ? null : groupIdOf(category, Number(e.category_id)),
+    category: category ? { name: category.name, icon: category.icon, color: category.color, group: category.group } : null,
     account_id: e.account_id ?? null,
     account: accountBrief(accounts.get(Number(e.account_id))),
     to_account_id: e.to_account_id ?? null,
@@ -769,6 +801,9 @@ export const getMyMoneySummary = async (req: Request, res: Response) => {
       const category = categories.get(Number(r.category_id));
       return {
         category_id: Number(r.category_id),
+        group_id: groupIdOf(category, Number(r.category_id)),
+        /** ຊື່ໝວດໃຫຍ່ (ແຖວຂອງປະເພດ) — null = ແຖວນີ້ເປັນໝວດໃຫຍ່ເອງ */
+        group: category?.group ?? null,
         kind: r.kind,
         name: category?.name ?? "—",
         icon: category?.icon ?? "other",

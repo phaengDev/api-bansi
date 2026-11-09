@@ -4,7 +4,9 @@ import { autoSync } from "../utils/autoSync";
 import Employee from "./employee";
 
 /**
- * ເອກະສານຄັດຕິດຂອງພະນັກງານ (ສັນຍາ, ບັດປະຈຳຕົວ…) — file_name = ຊື່ໄຟລ໌ໃນ src/private/employee-docs
+ * ເອກະສານຄັດຕິດຂອງພະນັກງານ — doc_type: id_card (ບັດປະຈຳຕົວ/Passport), driving_license (ໃບຂັບຂີ່), cv,
+ * contract (ສັນຍາຈ້າງ), certificate (ໃບປະກາດ/ໃບຢັ້ງຢືນ), other (null = ຂໍ້ມູນເກົ່າ — ຄິດເປັນ cv/other ຕາມຊື່ໄຟລ໌).
+ * file_name = ຊື່ໄຟລ໌ໃນ src/private/employee-docs
  * (ບໍ່ຢູ່ໃຕ້ /image), original_name = ຊື່ເດີມຕອນອັບໂຫຼດ ໃຊ້ຕອນດາວໂຫຼດ
  */
 class EmployeeDocument extends Model {
@@ -13,6 +15,7 @@ class EmployeeDocument extends Model {
   public file_name!: string;
   public original_name!: string;
   public mime_type!: string | null;
+  public doc_type!: string | null;
   public file_size!: number;
   public createdbyid!: number | null;
   public createdAt!: Date;
@@ -39,6 +42,7 @@ EmployeeDocument.init(
       allowNull: false
     },
     mime_type: DataTypes.STRING(100),
+    doc_type: DataTypes.STRING(20),
     file_size: {
       type: DataTypes.INTEGER,
       allowNull: false,

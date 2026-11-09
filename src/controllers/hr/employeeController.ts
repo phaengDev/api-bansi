@@ -14,6 +14,12 @@ import PayrollLine from "../../models/payrollLine";
 import SalaryAdvance from "../../models/salaryAdvance";
 import Department from "../../models/department";
 import Position from "../../models/position";
+import HrOption from "../../models/hrOption";
+import { EmployeeSkill, Skill, SkillType } from "../../models/skill";
+import EmployeeResume from "../../models/employeeResume";
+import { optionError } from "./hrOptionController";
+import { levelsOf } from "./skillController";
+import { bossError, releaseReports } from "./orgController";
 import District from "../../models/district";
 import Users from "../../models/userModel";
 import Banks from "../../models/bankModel";
@@ -48,9 +54,28 @@ const ACCOUNT_NO = /^\d[\d-]{3,48}\d$/;
 const includeAll = [
   { model: Department, as: "department", attributes: ["_uuid", "depart_code", "depart_name"] },
   { model: Position, as: "position", attributes: ["_uuid", "position_name"] },
+  {
+    model: Employee,
+    as: "reportsTo",
+    attributes: ["_uuid", "emp_code", "first_name", "last_name", "profile", "work_status"],
+    include: [{ model: Position, as: "position", attributes: ["_uuid", "position_name"] }],
+  },
+  { model: HrOption, as: "employeeType", attributes: ["_uuid", "name"] },
+  { model: HrOption, as: "educationLevel", attributes: ["_uuid", "name"] },
+  {
+    model: EmployeeSkill,
+    as: "skills",
+    attributes: ["_uuid", "skill_id", "level"],
+    include: [{ model: Skill, as: "skill", attributes: ["_uuid", "name", "type_id"], include: [{ model: SkillType, as: "type", attributes: ["_uuid", "name", "levels", "sort"] }] }],
+  },
+  {
+    model: EmployeeResume,
+    as: "resumes",
+    attributes: ["_uuid", "kind", "title", "subtitle", "start_date", "end_date", "description", "original_name", "mime_type", "file_size"],
+  },
   districtInclude,
   { model: Banks, as: "bank", attributes: ["_uuid", "abbr", "name_la", "logo"] },
-  { model: EmployeeDocument, as: "documents", attributes: ["_uuid", "original_name", "mime_type", "file_size", "createdAt"] },
+  { model: EmployeeDocument, as: "documents", attributes: ["_uuid", "original_name", "mime_type", "file_size", "doc_type", "createdAt"] },
 ];
 
 const present = (row: any, users: Map<number, any>) => {
@@ -59,6 +84,23 @@ const present = (row: any, users: Map<number, any>) => {
     ...r,
     basic_salary: Number(r.basic_salary) || 0,
     profile_url: profileUrl(r.profile),
+    reportsTo: r.reportsTo ? { ...r.reportsTo, profile_url: profileUrl(r.reportsTo.profile) } : null,
+    home_distance_km: r.home_distance_km === null || r.home_distance_km === undefined ? null : Number(r.home_distance_km),
+    // ເອກະສານເກົ່າທີ່ຍັງບໍ່ມີປະເພດ: ຊື່ມີຄຳວ່າ CV = cv, ນອກນັ້ນ = other
+    documents: (r.documents ?? []).map((d: any) => ({ ...d, doc_type: d.doc_type ?? (/(^|[^a-z])cv([^a-z]|$)/i.test(d.original_name ?? '') ? "cv" : "other") })),
+    skills: (r.skills ?? [])
+      .filter((s: any) => s.skill)
+      .map((s: any) => ({
+        _uuid: s._uuid,
+        skill_id: s.skill_id,
+        level: s.level,
+        name: s.skill.name,
+        type_id: s.skill.type_id,
+        type_name: s.skill.type?.name ?? "",
+        type_sort: s.skill.type?.sort ?? 0,
+        levels: levelsOf(s.skill.type?.levels),
+      })),
+    resumes: [...(r.resumes ?? [])].sort((a: any, b: any) => String(b.start_date ?? "").localeCompare(String(a.start_date ?? ""))),
     bank: r.bank && { ...r.bank, url: r.bank.logo ? `${url()}/logo/${r.bank.logo}` : null },
     user: users.get(r._uuid) ?? null,
   };
@@ -74,7 +116,7 @@ const linkedUsers = async (employeeIds?: number[]) => {
   return new Map(rows.map((u) => [Number(u.employee_id), u]));
 };
 
-const findFull = async (id: number) => {
+export const findFull = async (id: number) => {
   const row = await Employee.findByPk(id, {
     include: includeAll,
     order: [[{ model: EmployeeDocument, as: "documents" }, "_uuid", "ASC"]],
@@ -204,7 +246,7 @@ const parseInput = async (body: any, existing?: Employee): Promise<EmployeeInput
   }
   if (has("last_name")) input.last_name = text(body.last_name, 100);
   if (has("gender") || !existing) input.gender = Number(body.gender) === 2 ? 2 : 1;
-  for (const key of ["birthday", "start_date", "end_date"]) {
+  for (const key of ["birthday", "start_date", "end_date", "id_card_expiry", "passport_expiry", "spouse_birthday", "contract_end", "probation_end"]) {
     if (!has(key)) continue;
     const raw = body[key];
     const date = toDateOnly(raw);
@@ -231,13 +273,63 @@ const parseInput = async (body: any, existing?: Employee): Promise<EmployeeInput
     if (!department) return { error: "ກະລຸນາເລືອກພະແນກ" };
     input.department_id = departmentId;
   }
-  if (has("position_id") || has("department_id")) {
-    const positionId = Number(merged("position_id")) || null;
+  // ຕຳແໜ່ງ = ລາຍຊື່ກາງ (ບໍ່ຂຶ້ນກັບພະແນກ) — ຕຳແໜ່ງທີ່ປິດແລ້ວ ໃຊ້ໄດ້ສະເພາະຄົນທີ່ມີຢູ່ແລ້ວ
+  if (has("position_id")) {
+    const positionId = Number(body.position_id) || null;
     if (positionId) {
-      const position = await Position.findOne({ where: { _uuid: positionId, department_id: departmentId } });
-      if (!position) return { error: "ຕຳແໜ່ງບໍ່ຢູ່ໃນພະແນກທີ່ເລືອກ" };
+      const position = await Position.findByPk(positionId, { attributes: ["_uuid", "status"] });
+      if (!position) return { error: "ບໍ່ພົບຕຳແໜ່ງ" };
+      if (Number(position.status) !== 1 && positionId !== existing?.position_id) return { error: "ຕຳແໜ່ງນີ້ຖືກປິດແລ້ວ" };
     }
     input.position_id = positionId;
+  }
+  // ລາຍງານຕໍ່ (ຫົວໜ້າ) — ໂຄງຮ່າງການຈັດຕັ້ງ
+  if (has("reports_to_id")) {
+    const bossId = Number(body.reports_to_id) || null;
+    const error = await bossError(existing?._uuid ?? null, bossId);
+    if (error) return { error };
+    input.reports_to_id = bossId;
+  }
+
+  // ---- ຂໍ້ມູນເພີ່ມເຕີມ (ບໍ່ບັງຄັບ) ----
+  const texts: [string, number][] = [
+    ["nationality", 60], ["ethnicity", 60], ["religion", 60], ["birth_place", 150], ["blood_type", 5], ["id_card_no", 50],
+    ["passport_no", 50], ["sso_no", 50], ["spouse_name", 150], ["spouse_phone", 30], ["education_field", 150], ["education_school", 150],
+    ["emergency_name", 150], ["emergency_relation", 60], ["emergency_phone", 30], ["contract_no", 50],
+  ];
+  for (const [key, max] of texts) if (has(key)) input[key] = text(body[key], max);
+  const whole = (key: string, min: number, max: number, label: string): string | null => {
+    if (!has(key)) return null;
+    const raw = body[key];
+    if (raw === null || raw === "" || raw === undefined) {
+      input[key] = null;
+      return null;
+    }
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < min || n > max) return `${label}ບໍ່ຖືກຕ້ອງ`;
+    input[key] = n;
+    return null;
+  };
+  const wrong = whole("marital_status", 1, 4, "ສະຖານະຄອບຄົວ") || whole("children", 0, 30, "ຈຳນວນລູກ")
+    || whole("graduation_year", 1950, 2100, "ປີຮຽນຈົບ") || whole("wage_type", 1, 2, "ປະເພດຄ່າຈ້າງ");
+  if (wrong) return { error: wrong };
+  if (input.wage_type === null) input.wage_type = 1;
+  if (has("home_distance_km")) {
+    const raw = body.home_distance_km;
+    const km = raw === null || raw === "" ? null : Math.round(Number(raw) * 10) / 10;
+    if (km !== null && (!Number.isFinite(km) || km < 0 || km > 99999)) return { error: "ໄລຍະທາງບໍ່ຖືກຕ້ອງ" };
+    input.home_distance_km = km;
+  }
+  if (has("contract_fixed_term")) input.contract_fixed_term = Number(body.contract_fixed_term) === 1 ? 1 : 0;
+  // ບໍ່ແມ່ນສັນຍາມີກຳນົດ = ບໍ່ມີວັນສິ້ນສຸດສັນຍາ; ບໍ່ແມ່ນແຕ່ງງານ = ລ້າງຂໍ້ມູນຄູ່ສົມລົດ
+  if (input.contract_fixed_term === 0) input.contract_end = null;
+  if (has("marital_status") && input.marital_status !== 2) Object.assign(input, { spouse_name: null, spouse_birthday: null, spouse_phone: null });
+  for (const [kind, field] of [["employee_type", "employee_type_id"], ["education_level", "education_level_id"]] as const) {
+    if (!has(field)) continue;
+    const id = Number(body[field]) || null;
+    const error = await optionError(kind, id, (existing as any)?.[field]);
+    if (error) return { error };
+    input[field] = id;
   }
   if (has("work_status") || !existing) input.work_status = Number(body.work_status) === RESIGNED ? RESIGNED : WORKING;
   if (has("basic_salary")) {
@@ -282,6 +374,8 @@ const discardProfile = (req: Request) => {
 /** ລາອອກ → ປິດບັນຊີຜູ້ໃຊ້ທີ່ຜູກໄວ້ (login ບໍ່ໄດ້ອີກ) + ຍົກເລີກຄຳຮ້ອງທີ່ຍັງຄ້າງ (ບໍ່ມີໃຜມາອະນຸມັດໃຫ້ຄົນທີ່ອອກແລ້ວ) */
 const closeAccountIfResigned = async (employeeId: number, status: unknown) => {
   if (Number(status) !== RESIGNED) return;
+  // ລູກທີມຂອງຄົນທີ່ອອກ ໄປລາຍງານຕໍ່ຫົວໜ້າຂອງເຂົາແທນ
+  await releaseReports(employeeId);
   await Users.update({ status: 0, updatedAt: new Date() } as any, { where: { employee_id: employeeId, status: 1 } });
   const closed = { status: REQUEST_CANCELLED, review_note: "ພະນັກງານລາອອກ", updatedAt: new Date() } as any;
   const pending = { where: { employee_id: employeeId, status: REQUEST_PENDING } };
@@ -403,6 +497,7 @@ export const deleteEmployee = async (req: Request<{ id: string }>, res: Response
     await EmployeeDocument.destroy({ where: { employee_id: id }, transaction: t });
     // ເຫຼືອແຕ່ແຖວຂອງໃບເງິນເດືອນຮ່າງ (ຍັງບໍ່ໄດ້ຈ່າຍ) — ເອົາອອກພ້ອມກັນ ແລ້ວຄິດຍອດລວມຂອງໃບໃໝ່ຂ້າງລຸ່ມ
     await PayrollLine.destroy({ where: { employee_id: id }, transaction: t });
+    await releaseReports(id, t);
     await row.destroy({ transaction: t });
     await t.commit();
     await syncDraftPayrolls();
@@ -416,6 +511,25 @@ export const deleteEmployee = async (req: Request<{ id: string }>, res: Response
 };
 
 /** POST /employee/document/:id (multipart "files", ສູງສຸດ 5 ໄຟລ໌ × 5MB) — :id = ພະນັກງານ */
+/** ປະເພດເອກະສານ — ບໍ່ຮູ້ຈັກ = ອື່ນໆ */
+export const DOC_TYPES = ["id_card", "driving_license", "cv", "contract", "certificate", "other"];
+const docType = (raw: unknown) => (DOC_TYPES.includes(String(raw)) ? String(raw) : "other");
+
+/** PUT /employee/document/:id { doc_type } — ປ່ຽນປະເພດຂອງເອກະສານ (ເຊັ່ນ ເອກະສານເກົ່າທີ່ຍັງບໍ່ມີປະເພດ) */
+export const updateEmployeeDocument = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const doc = await EmployeeDocument.findByPk(Number(decodeId(req)));
+    if (!doc) {
+      res.status(404).json({ message: "ບໍ່ພົບເອກະສານ" });
+      return;
+    }
+    await doc.update({ doc_type: docType(req.body?.doc_type), updatedAt: new Date() });
+    res.status(200).json({ message: "Successfully updated document", data: await findFull(doc.employee_id) });
+  } catch (error) {
+    sendError(res, error, "Error updating employee document");
+  }
+};
+
 export const uploadEmployeeDocuments = async (req: Request<{ id: string }>, res: Response) => {
   const files = ((req as any).files ?? []) as Express.Multer.File[];
   const discard = () => files.forEach((f) => removeQuietly(f.path));
@@ -437,6 +551,7 @@ export const uploadEmployeeDocuments = async (req: Request<{ id: string }>, res:
       original_name: originalNameOf(f).slice(0, 255),
       mime_type: f.mimetype?.slice(0, 100) ?? null,
       file_size: f.size,
+      doc_type: docType(req.body?.doc_type),
       createdbyid: actor,
     })));
     res.status(200).json({ message: "Successfully uploaded documents", data: await findFull(employee._uuid) });

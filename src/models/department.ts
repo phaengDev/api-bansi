@@ -2,12 +2,14 @@ import { DataTypes, Model } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
 
-/** ພະແນກ — ລະຫັດບໍ່ຊ້ຳ (UNIQUE depart_code); ຕຳແໜ່ງຂອງພະແນກຢູ່ tbl_position. status 1 ໃຊ້ງານ, 0 ປິດ */
+/** ພະແນກ — executive = 1: ຂັ້ນບໍລິຫານ (ຄະນະບໍລິຫານ) ຄຸມທຸກພະແນກ — ຢູ່ເທິງສຸດຂອງໂຄງຮ່າງ, ບໍ່ນັບເປັນພະແນກ.
+ * ລະຫັດບໍ່ຊ້ຳ (UNIQUE depart_code). ຕຳແໜ່ງເປັນລາຍຊື່ກາງ (tbl_position) ບໍ່ຂຶ້ນກັບພະແນກ. status 1 ໃຊ້ງານ, 0 ປິດ */
 class Department extends Model {
   public _uuid!: number;
   public depart_code!: string;
   public depart_name!: string;
   public description!: string | null;
+  public executive!: number;
   public sort!: number;
   public status!: number;
   public createdAt!: Date;
@@ -30,6 +32,11 @@ Department.init(
       allowNull: false
     },
     description: DataTypes.STRING(255),
+    executive: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 0
+    },
     sort: {
       type: DataTypes.INTEGER,
       allowNull: false,

@@ -65,7 +65,7 @@ import {
 } from "../controllers/hr/departmentController";
 import {
   getEmployees, getEmployeeOption, getMyEmployee, updateMyProfilePhoto, createEmployee, updateEmployee, deleteEmployee,
-  uploadEmployeeDocuments, downloadEmployeeDocument, deleteEmployeeDocument, resetAppPassword,
+  uploadEmployeeDocuments, updateEmployeeDocument, downloadEmployeeDocument, deleteEmployeeDocument, resetAppPassword,
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink, saveUniformPhoto, removeUniformPhoto } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
@@ -93,6 +93,11 @@ import { getLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType } from
 import { createOvertime, deleteOvertime, getMyOvertime, getOvertimes, updateOvertime } from "../controllers/hr/overtimeController";
 import { getMyWorkHistory } from "../controllers/hr/historyController";
 import { getMyColleagues } from "../controllers/hr/teamController";
+import { autoAssignBosses, getMyOrg, getOrgChart, setBoss } from "../controllers/hr/orgController";
+import { createPosition, deletePosition, getPositionOption, getPositions, updatePosition } from "../controllers/hr/positionController";
+import { createHrOption, deleteHrOption, getHrOptionList, getHrOptions, updateHrOption } from "../controllers/hr/hrOptionController";
+import { deleteSkill, deleteSkillType, getSkills, saveSkill, saveSkillType, setEmployeeSkills } from "../controllers/hr/skillController";
+import { createResume, deleteResume, downloadResumeFile, updateResume } from "../controllers/hr/resumeController";
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
@@ -307,6 +312,33 @@ router.get("/department/option", getDepartmentOption);
 router.post("/department/create", requirePermission("creates"), createDepartment);
 router.put("/department/:id", requirePermission("updates"), updateDepartment);
 router.delete("/department/:id", requirePermission("deletes"), deleteDepartment);
+router.get("/position/fetch", getPositions);
+router.get("/position/option", getPositionOption);
+router.post("/position/create", requirePermission("creates"), createPosition);
+router.put("/position/:id", requirePermission("updates"), updatePosition);
+router.delete("/position/:id", requirePermission("deletes"), deletePosition);
+router.get("/org/chart", getOrgChart);
+router.get("/org/me", getMyOrg);
+router.put("/org/boss/:id", requirePermission("updates"), setBoss);
+router.post("/org/auto-boss", requirePermission("updates"), autoAssignBosses);
+// ຂໍ້ມູນພະນັກງານເພີ່ມເຕີມ: ລາຍການຕັ້ງຄ່າ, ທັກສະ, ປະຫວັດຫຍໍ້
+router.get("/hr-option/fetch", getHrOptions);
+router.get("/hr-option/option", getHrOptionList);
+router.post("/hr-option/create", requirePermission("creates"), createHrOption);
+router.put("/hr-option/:id", requirePermission("updates"), updateHrOption);
+router.delete("/hr-option/:id", requirePermission("deletes"), deleteHrOption);
+router.get("/skill/fetch", getSkills);
+router.post("/skill-type/create", requirePermission("creates"), saveSkillType);
+router.put("/skill-type/:id", requirePermission("updates"), saveSkillType);
+router.delete("/skill-type/:id", requirePermission("deletes"), deleteSkillType);
+router.post("/skill/create", requirePermission("creates"), saveSkill);
+router.put("/skill/:id", requirePermission("updates"), saveSkill);
+router.delete("/skill/:id", requirePermission("deletes"), deleteSkill);
+router.put("/employee/skills/:id", requirePermission("updates"), setEmployeeSkills);
+router.post("/employee/resume/:id", requirePermission("updates"), documentUpload, createResume);
+router.put("/employee/resume-line/:id", requirePermission("updates"), documentUpload, updateResume);
+router.delete("/employee/resume-line/:id", requirePermission("updates"), deleteResume);
+router.get("/employee/resume-line/file/:id", downloadResumeFile);
 router.get("/employee/fetch", getEmployees);
 router.get("/employee/option", getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
@@ -341,6 +373,7 @@ router.get("/employee/summary/:id", getEmployeeSummary);
 router.post("/employee/create", requirePermission("creates"), profileUpload, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, uploadEmployeeDocuments);
+router.put("/employee/document/:id", requirePermission("updates"), updateEmployeeDocument);
 router.get("/employee/document/download/:id", downloadEmployeeDocument);
 router.delete("/employee/document/:id", requirePermission("updates"), deleteEmployeeDocument);
 // ຕັ້ງລະຫັດຜ່ານ app ຂອງພະນັກງານຄືນເປັນຄ່າເລີ່ມຕົ້ນ (ກ່ອນ /employee/:id)

@@ -1,4 +1,6 @@
 import { Op, QueryTypes } from "sequelize";
+import { seedHrOptions } from "../controllers/hr/hrOptionController";
+import { seedSkills } from "../controllers/hr/skillController";
 import moment from "moment";
 import sequelize from "../config/database";
 import Currency from "../models/currencyModel";
@@ -171,7 +173,6 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_budget_month", "uq_budget_month_period", ["budget_id", "period"], true],
   // ຂໍ້ມູນພື້ນຖານ (HR) — controllers/hr/*
   ["tbl_department", "uq_department_code", ["depart_code"], true],
-  ["tbl_position", "idx_position_department", ["department_id"], false],
   ["tbl_district", "idx_district_province", ["province_id"], false],
   ["tbl_employee", "uq_employee_code", ["emp_code"], true],
   ["tbl_employee", "idx_employee_department", ["department_id"], false],
@@ -293,5 +294,7 @@ export const seedDefaults = async () => {
 
   await seedAccountingSettings();
   await seedHrDefaults();
+  await seedHrOptions();
+  await seedSkills();
   await seedEmployeeAppAccounts();
 };

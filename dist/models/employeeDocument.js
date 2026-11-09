@@ -8,7 +8,9 @@ const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
 const employee_1 = __importDefault(require("./employee"));
 /**
- * ເອກະສານຄັດຕິດຂອງພະນັກງານ (ສັນຍາ, ບັດປະຈຳຕົວ…) — file_name = ຊື່ໄຟລ໌ໃນ src/private/employee-docs
+ * ເອກະສານຄັດຕິດຂອງພະນັກງານ — doc_type: id_card (ບັດປະຈຳຕົວ/Passport), driving_license (ໃບຂັບຂີ່), cv,
+ * contract (ສັນຍາຈ້າງ), certificate (ໃບປະກາດ/ໃບຢັ້ງຢືນ), other (null = ຂໍ້ມູນເກົ່າ — ຄິດເປັນ cv/other ຕາມຊື່ໄຟລ໌).
+ * file_name = ຊື່ໄຟລ໌ໃນ src/private/employee-docs
  * (ບໍ່ຢູ່ໃຕ້ /image), original_name = ຊື່ເດີມຕອນອັບໂຫຼດ ໃຊ້ຕອນດາວໂຫຼດ
  */
 class EmployeeDocument extends sequelize_1.Model {
@@ -32,6 +34,7 @@ EmployeeDocument.init({
         allowNull: false
     },
     mime_type: sequelize_1.DataTypes.STRING(100),
+    doc_type: sequelize_1.DataTypes.STRING(20),
     file_size: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,

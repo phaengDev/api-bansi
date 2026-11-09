@@ -6,10 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
-const department_1 = __importDefault(require("./department"));
 /**
- * ຕຳແໜ່ງ — ຂຶ້ນກັບພະແນກ (department_id); ແກ້ພ້ອມກັບພະແນກ (PUT /department/:id { positions }).
- * ຕຳແໜ່ງທີ່ມີພະນັກງານໃຊ້ຢູ່ ລຶບບໍ່ໄດ້ — ປິດ (status 0) ແທນ
+ * ຕຳແໜ່ງ — ລາຍຊື່ກາງຂອງທັງບໍລິສັດ (ພິມເທື່ອດຽວ ໃຊ້ໄດ້ທຸກພະແນກ), ຊື່ບໍ່ຊ້ຳ.
+ * level = Level 1, 2, 3… (1 = ສູງສຸດ, ບໍ່ຈຳກັດຈຳນວນຂັ້ນ; null = ຍັງບໍ່ກຳນົດ) — ໃຊ້ແນະນຳ "ຫົວໜ້າສາຍງານ"
+ * ໃນຟອມພະນັກງານ ແລະ ລຽງໂຄງຮ່າງ. ຫົວໜ້າສາຍງານຕົວຈິງຢູ່ tbl_employee.reports_to_id.
+ * ຕຳແໜ່ງທີ່ເຄີຍມີພະນັກງານ ລຶບບໍ່ໄດ້ — ປິດ (status 0) ແທນ.
+ * (ຖັນ department_id ເກົ່າ ຍັງຢູ່ໃນ DB ໃຫ້ server ທີ່ຍັງບໍ່ທັນ deploy — ບໍ່ໃຊ້ແລ້ວ)
  */
 class Position extends sequelize_1.Model {
 }
@@ -19,14 +21,11 @@ Position.init({
         primaryKey: true,
         autoIncrement: true
     },
-    department_id: {
-        type: sequelize_1.DataTypes.INTEGER,
-        allowNull: false
-    },
     position_name: {
         type: sequelize_1.DataTypes.STRING(150),
         allowNull: false
     },
+    level: sequelize_1.DataTypes.INTEGER,
     sort: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
@@ -51,7 +50,5 @@ Position.init({
     tableName: "tbl_position",
     timestamps: true
 });
-Position.belongsTo(department_1.default, { foreignKey: "department_id", as: "department" });
-department_1.default.hasMany(Position, { foreignKey: "department_id", as: "positions" });
 (0, autoSync_1.autoSync)(Position);
 exports.default = Position;

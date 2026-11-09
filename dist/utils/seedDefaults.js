@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedDefaults = void 0;
 const sequelize_1 = require("sequelize");
+const hrOptionController_1 = require("../controllers/hr/hrOptionController");
+const skillController_1 = require("../controllers/hr/skillController");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../config/database"));
 const currencyModel_1 = __importDefault(require("../models/currencyModel"));
@@ -165,7 +167,6 @@ const INDEXES = [
     ["tbl_budget_month", "uq_budget_month_period", ["budget_id", "period"], true],
     // ຂໍ້ມູນພື້ນຖານ (HR) — controllers/hr/*
     ["tbl_department", "uq_department_code", ["depart_code"], true],
-    ["tbl_position", "idx_position_department", ["department_id"], false],
     ["tbl_district", "idx_district_province", ["province_id"], false],
     ["tbl_employee", "uq_employee_code", ["emp_code"], true],
     ["tbl_employee", "idx_employee_department", ["department_id"], false],
@@ -271,6 +272,8 @@ const seedDefaults = async () => {
     }
     await seedAccountingSettings();
     await seedHrDefaults();
+    await (0, hrOptionController_1.seedHrOptions)();
+    await (0, skillController_1.seedSkills)();
     await seedEmployeeAppAccounts();
 };
 exports.seedDefaults = seedDefaults;

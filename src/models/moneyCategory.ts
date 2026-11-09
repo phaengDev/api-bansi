@@ -15,6 +15,7 @@ class MoneyCategory extends Model {
   public icon!: string;
   public color!: string;
   public code!: string | null;
+  public parent_id!: number | null;
   public sort!: number;
   public status!: number;
   public createdAt!: Date;
@@ -54,6 +55,8 @@ MoneyCategory.init(
       defaultValue: "#64748B"
     },
     code: DataTypes.STRING(20),
+    /** ໝວດໃຫຍ່ຂອງປະເພດນີ້ — null = ເປັນໝວດໃຫຍ່ເອງ (ມີ 2 ຊັ້ນ: ໝວດໃຫຍ່ → ປະເພດ). ປະເພດໃຊ້ໄອຄອນ / ສີ ຂອງໝວດໃຫຍ່ */
+    parent_id: DataTypes.INTEGER,
     sort: {
       type: DataTypes.INTEGER,
       allowNull: false,

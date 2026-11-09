@@ -1,16 +1,18 @@
 import { DataTypes, Model } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
-import Department from "./department";
 
 /**
- * ຕຳແໜ່ງ — ຂຶ້ນກັບພະແນກ (department_id); ແກ້ພ້ອມກັບພະແນກ (PUT /department/:id { positions }).
- * ຕຳແໜ່ງທີ່ມີພະນັກງານໃຊ້ຢູ່ ລຶບບໍ່ໄດ້ — ປິດ (status 0) ແທນ
+ * ຕຳແໜ່ງ — ລາຍຊື່ກາງຂອງທັງບໍລິສັດ (ພິມເທື່ອດຽວ ໃຊ້ໄດ້ທຸກພະແນກ), ຊື່ບໍ່ຊ້ຳ.
+ * level = Level 1, 2, 3… (1 = ສູງສຸດ, ບໍ່ຈຳກັດຈຳນວນຂັ້ນ; null = ຍັງບໍ່ກຳນົດ) — ໃຊ້ແນະນຳ "ຫົວໜ້າສາຍງານ"
+ * ໃນຟອມພະນັກງານ ແລະ ລຽງໂຄງຮ່າງ. ຫົວໜ້າສາຍງານຕົວຈິງຢູ່ tbl_employee.reports_to_id.
+ * ຕຳແໜ່ງທີ່ເຄີຍມີພະນັກງານ ລຶບບໍ່ໄດ້ — ປິດ (status 0) ແທນ.
+ * (ຖັນ department_id ເກົ່າ ຍັງຢູ່ໃນ DB ໃຫ້ server ທີ່ຍັງບໍ່ທັນ deploy — ບໍ່ໃຊ້ແລ້ວ)
  */
 class Position extends Model {
   public _uuid!: number;
-  public department_id!: number;
   public position_name!: string;
+  public level!: number | null;
   public sort!: number;
   public status!: number;
   public createdAt!: Date;
@@ -24,14 +26,11 @@ Position.init(
       primaryKey: true,
       autoIncrement: true
     },
-    department_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false
-    },
     position_name: {
       type: DataTypes.STRING(150),
       allowNull: false
     },
+    level: DataTypes.INTEGER,
     sort: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -59,8 +58,6 @@ Position.init(
   }
 );
 
-Position.belongsTo(Department, { foreignKey: "department_id", as: "department" });
-Department.hasMany(Position, { foreignKey: "department_id", as: "positions" });
-
 autoSync(Position);
+
 export default Position;

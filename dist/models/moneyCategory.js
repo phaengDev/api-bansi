@@ -45,6 +45,8 @@ MoneyCategory.init({
         defaultValue: "#64748B"
     },
     code: sequelize_1.DataTypes.STRING(20),
+    /** ໝວດໃຫຍ່ຂອງປະເພດນີ້ — null = ເປັນໝວດໃຫຍ່ເອງ (ມີ 2 ຊັ້ນ: ໝວດໃຫຍ່ → ປະເພດ). ປະເພດໃຊ້ໄອຄອນ / ສີ ຂອງໝວດໃຫຍ່ */
+    parent_id: sequelize_1.DataTypes.INTEGER,
     sort: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
