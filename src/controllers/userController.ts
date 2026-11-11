@@ -14,7 +14,9 @@ import { profileUrl } from "./hr/hrHelpers";
  * ບັນຊີຜູ້ໃຊ້ (tbl_users) — ເບີໂທ = ຊື່ເຂົ້າລະບົບ (ບໍ່ຊ້ຳ), ລະຫັດຜ່ານເກັບເປັນ bcrypt hash ແລະ ບໍ່ສົ່ງອອກຈາກ API.
  * ສິດ creates / updates / deletes: 1 = ອະນຸຍາດ, 2 = ບໍ່ອະນຸຍາດ; status 1 ໃຊ້ງານ, 0 ປິດ (login ບໍ່ໄດ້).
  * ຜູກກັບພະນັກງານໄດ້ (employee_id) — ໜຶ່ງພະນັກງານມີໄດ້ບັນຊີດຽວ. ສິດຂອງຜູ້ເອີ້ນກວດຢູ່ routes (requirePermission);
- * ຕົນເອງປິດບັນຊີ, ຖອນສິດແກ້ໄຂ ຫຼື ລຶບບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກຈາກລະບົບ)
+ * ຕົນເອງປິດບັນຊີ, ຖອນສິດແກ້ໄຂ ຫຼື ລຶບບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກຈາກລະບົບ).
+ * ສິດອະນຸມັດຜ່ານ app (approve_leave / approve_correction / approve_advance: 1 ໄດ້, 0 ບໍ່ໄດ້) ໃຊ້ໄດ້ສະເພາະບັນຊີທີ່ຜູກພະນັກງານ —
+ * ບໍ່ຜູກ / ຖອນການຜູກ = ລ້າງເປັນ 0
  */
 
 const ALLOW = 1;
@@ -22,6 +24,7 @@ const DENY = 2;
 const MIN_PASSWORD = 6;
 const PHONE = /^\+?\d{6,20}$/;
 const FLAGS = ["creates", "updates", "deletes"] as const;
+const APPROVALS = ["approve_leave", "approve_correction", "approve_advance"] as const;
 
 const includeAll = [
   { model: TypeUser, as: "typeuser", attributes: ["_uuid", "names"] },
@@ -51,7 +54,16 @@ type UserInput = Partial<{
   creates: number;
   updates: number;
   deletes: number;
+  approve_leave: number;
+  approve_correction: number;
+  approve_advance: number;
 }>;
+
+/** ບໍ່ມີພະນັກງານທີ່ຜູກ = ອະນຸມັດຜ່ານ app ບໍ່ໄດ້ (app ລັອກອິນດ້ວຍພະນັກງານ) */
+const dropApprovalsIfUnlinked = (input: UserInput, employeeId: number | null | undefined) => {
+  if (employeeId) return input;
+  return { ...input, ...Object.fromEntries(APPROVALS.map((flag) => [flag, 0])) };
+};
 
 /** ເອົາສະເພາະຖັນທີ່ແກ້ໄດ້ ແລະ ກວດຄ່າ — ລະຫັດຜ່ານບໍ່ຜ່ານທາງນີ້ (ໃຊ້ /user/password/:id) */
 const parseInput = async (body: any, exceptId?: number): Promise<UserInput | { error: string }> => {
@@ -92,6 +104,9 @@ const parseInput = async (body: any, exceptId?: number): Promise<UserInput | { e
   for (const flag of FLAGS) {
     if (body[flag] !== undefined) input[flag] = Number(body[flag]) === ALLOW ? ALLOW : DENY;
   }
+  for (const flag of APPROVALS) {
+    if (body[flag] !== undefined) input[flag] = Number(body[flag]) === 1 || body[flag] === true ? 1 : 0;
+  }
   return input;
 };
 
@@ -124,7 +139,7 @@ export const createUser = async (req: Request, res: Response) => {
       return;
     }
     const row = await Users.create({
-      ...(input as Required<UserInput>),
+      ...(dropApprovalsIfUnlinked(input, input.employee_id) as Required<UserInput>),
       user_uuid: await maxid(Users, "user_uuid"),
       password: await bcrypt.hash(password, 10),
     });
@@ -167,7 +182,8 @@ export const updateUser = async (req: Request<{ id: string }>, res: Response) =>
       res.status(400).json({ message: "ປິດບັນຊີ ຫຼື ຖອນສິດແກ້ໄຂ ຂອງຕົນເອງບໍ່ໄດ້" });
       return;
     }
-    await row.update({ ...input, updatedAt: new Date() } as any);
+    const linked = input.employee_id !== undefined ? input.employee_id : row.employee_id;
+    await row.update({ ...dropApprovalsIfUnlinked(input, linked), updatedAt: new Date() } as any);
     const saved = await findFull(id);
     res.status(200).json({ message: "User updated successfully", data: saved && present(saved) });
   } catch (error) {

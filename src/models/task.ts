@@ -3,8 +3,11 @@ import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
 
 /**
- * ວຽກທີ່ມອບໝາຍ — HR / ຫົວໜ້າ ສ້າງໃນເວັບ, ພະນັກງານທີ່ຮັບຜິດຊອບເຫັນ ແລະ ອັບເດດໃນ app.
+ * ວຽກທີ່ມອບໝາຍ — HR / ຫົວໜ້າ ສ້າງໃນເວັບ, ຫຼື ຫົວໜ້າມອບໝາຍໃຫ້ລູກທີມເອງໃນ app (assigned_by_employee_id);
+ * ພະນັກງານທີ່ຮັບຜິດຊອບເຫັນ ແລະ ອັບເດດໃນ app.
  * status: 1 ລໍຖ້າດຳເນີນການ, 2 ກຳລັງດຳເນີນການ, 3 ສຳເລັດແລ້ວ. priority: 1 ປົກກະຕິ, 2 ສຳຄັນ, 3 ດ່ວນ.
+ * important / urgent = ຕາຕະລາງບໍລິຫານເວລາ (ສຳຄັນ / ດ່ວນ) ທີ່ app ຕັ້ງ — null = ເອົາຕາມ priority
+ * (3 = ສຳຄັນ + ດ່ວນ, 2 = ສຳຄັນ + ບໍ່ດ່ວນ, 1 = ຍັງບໍ່ໄດ້ຈັດ).
  * archived = 1 ເກັບເຂົ້າຄັງ (ບໍ່ສະແດງໃນລາຍການຫຼັກ / app). ຜູ້ຮັບຜິດຊອບ tbl_task_assignee, ລາຍການຍ່ອຍ tbl_task_item
  */
 class Task extends Model {
@@ -19,6 +22,10 @@ class Task extends Model {
   public archived!: number;
   public done_at!: Date | null;
   public createdbyid!: number | null;
+  /** ຫົວໜ້າທີ່ມອບໝາຍຈາກ app (null = ສ້າງໃນເວັບ) — ຄົນນີ້ປ່ຽນສະຖານະ / ລຶບວຽກໃນ app ໄດ້ */
+  public assigned_by_employee_id!: number | null;
+  public important!: number | null;
+  public urgent!: number | null;
   public updatedbyid!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
@@ -56,6 +63,9 @@ Task.init(
     },
     done_at: DataTypes.DATE,
     createdbyid: DataTypes.INTEGER,
+    assigned_by_employee_id: DataTypes.INTEGER,
+    important: DataTypes.TINYINT,
+    urgent: DataTypes.TINYINT,
     updatedbyid: DataTypes.INTEGER,
     createdAt: {
       type: DataTypes.DATE,

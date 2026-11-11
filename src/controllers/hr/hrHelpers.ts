@@ -100,6 +100,11 @@ export const documentUpload = documentsIn(DOCUMENT_DIR, DOCUMENT_TYPES, "ອະ�
 export const TASK_FILE_DIR = path.join(__dirname, "..", "..", "private", "task-files");
 export const taskFileUpload = documentsIn(TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|docx?|xlsx?|pptx?)$/i, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel, PowerPoint");
 
+/** ໃບລາຂອງຄຳຂໍລາພັກ (ສະແກນ / ຖ່າຍຮູບ / PDF) — ນອກ uploads ຄືເອກະສານ; field "files" ສູງສຸດ 5 ໄຟລ໌.
+ *  multer ຂ້າມ request ທີ່ບໍ່ແມ່ນ multipart (app ລຸ້ນເກົ່າສົ່ງ JSON ໄດ້ຄືເກົ່າ) */
+export const LEAVE_FILE_DIR = path.join(__dirname, "..", "..", "private", "leave-files");
+export const leaveFileUpload = documentsIn(LEAVE_FILE_DIR, /\.(jpe?g|png|webp|pdf)$/i, "ໃບລາຕ້ອງເປັນຮູບ (JPG, PNG, WEBP) ຫຼື PDF");
+
 /** ລຶບໄຟລ໌ໂດຍບໍ່ສົນວ່າມີຢູ່ຫຼືບໍ່ (ໃຊ້ຕອນ rollback / ລຶບຂໍ້ມູນ) */
 export const removeQuietly = (filePath: string) => {
   fs.promises.unlink(filePath).catch(() => undefined);

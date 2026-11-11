@@ -87,7 +87,8 @@ import {
   previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll, getPayrollExpenseDefault,
 } from "../controllers/hr/payrollController";
 import {
-  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave, revokeLeave,
+  getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave, revokeLeave, getLeaveQuota, setLeaveQuota,
+  getMyLeaveFile, getMyLeaveFileLink, openLeaveFile, downloadLeaveFile,
 } from "../controllers/hr/leaveController";
 import { getLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType } from "../controllers/hr/leaveTypeController";
 import { createOvertime, deleteOvertime, getMyOvertime, getOvertimes, updateOvertime } from "../controllers/hr/overtimeController";
@@ -101,16 +102,18 @@ import { createResume, deleteResume, downloadResumeFile, updateResume } from "..
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyLogoUpload, documentUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import { companyLogoUpload, documentUpload, leaveFileUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import {
   approveAdvance, cancelAdvance, cancelMyAdvance, createAdvance, createMyAdvance, deleteAdvanceRepayment, getAdvance, getAdvances, getMyAdvances,
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
 } from "../controllers/hr/advanceController";
+import { decideMyApproval, getMyApprovalList, getMyApprovals } from "../controllers/hr/approvalController";
 import { getEmployeeSummary, getHrPending } from "../controllers/hr/hrSummaryController";
 import {
   bulkTasks, createMyTaskComment, createTask, createTaskComment, createTaskProject, deleteMyTaskComment, deleteTaskComment, deleteTaskFile,
   deleteTaskProject, downloadTaskFile, getMyTaskComments, getMyTaskFileLink, getMyTasks, getTask, getTaskProjects, getTasks, openTaskFile,
-  toggleTaskStar, updateMyTaskItem, updateTask, updateTaskItem, updateTaskProject, updateTaskStatus, uploadTaskFiles,
+  toggleTaskStar, updateMyTaskItem, updateMyTaskProgress, updateTask, updateTaskItem, updateTaskProject, updateTaskStatus, uploadTaskFiles,
+  getMyAssignedTasks, createMyAssignedTask, updateMyAssignedTaskStatus, deleteMyAssignedTask,
 } from "../controllers/hr/taskController";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
@@ -128,6 +131,8 @@ router.post("/app/otp/verify", verifyAppOtp);
 router.post("/app-release/publish", requireReleaseKey, apkUpload, createAppRelease);
 // app ພະນັກງານເປີດເອກະສານຂອງວຽກໃນ browser — ລິ້ງເຊັນຊົ່ວຄາວແທນ login (ອອກໂດຍ GET /task/me/file/:id)
 router.get("/task/file/open/:token", openTaskFile);
+// ໃບລາທີ່ແນບກັບຄຳຂໍລາພັກ — ລິ້ງເຊັນຊົ່ວຄາວ (ອອກໂດຍ GET /leave/me/file/:id/link)
+router.get("/leave/file/open/:token", openLeaveFile);
 router.get("/user/type", getTypeUser);
 router.get("/currency", getcurrency);
 
@@ -433,10 +438,16 @@ router.post("/app/device-token", registerDeviceToken);
 router.post("/notification/announce", requirePermission("creates"), announce);
 // ========= ຄຳຂໍລາພັກ — /me ສຳລັບ app ມືຖືຂອງພະນັກງານ; HR (ຕ້ອງມີສິດແກ້ໄຂ ທັງເບິ່ງລາຍການ) ອະນຸມັດ = ບັນທຶກລາພັກລົງການເຂົ້າວຽກ
 router.get("/leave/me", getMyLeaves);
-router.post("/leave/me", createMyLeave);
+router.post("/leave/me", leaveFileUpload, createMyLeave);
 router.put("/leave/me/cancel/:id", cancelMyLeave);
+// ໃບລາທີ່ແນບ — ເຈົ້າຂອງ + ຜູ້ມີສິດອະນຸມັດລາພັກ (app); HR ເປີດໃນເວັບ
+router.get("/leave/me/file/:id", getMyLeaveFile);
+router.get("/leave/me/file/:id/link", getMyLeaveFileLink);
+router.get("/leave/file/download/:id", requirePermission("updates"), downloadLeaveFile);
 router.post("/leave/fetch", requirePermission("updates"), getLeaves);
 router.post("/leave/balance", requirePermission("updates"), getLeaveBalance);
+router.get("/leave/quota/:id", getLeaveQuota);
+router.put("/leave/quota/:id", requirePermission("updates"), setLeaveQuota);
 router.put("/leave/approve/:id", requirePermission("updates"), approveLeave);
 router.put("/leave/reject/:id", requirePermission("updates"), rejectLeave);
 router.put("/leave/revoke/:id", requirePermission("updates"), revokeLeave);
@@ -457,6 +468,10 @@ router.put("/correction/reject/:id", requirePermission("updates"), rejectCorrect
 router.get("/advance/me", getMyAdvances);
 router.post("/advance/me", createMyAdvance);
 router.put("/advance/me/cancel/:id", cancelMyAdvance);
+// ອະນຸມັດຜ່ານ app — ພະນັກງານທີ່ຜູກບັນຊີຜູ້ໃຊ້ ແລະ ໄດ້ສິດແຕ່ລະປະເພດ (ສິດກວດໃນ controller)
+router.get("/approve/me", getMyApprovals);
+router.get("/approve/me/:kind", getMyApprovalList);
+router.put("/approve/me/:kind/:id/:action", decideMyApproval);
 router.post("/advance/fetch", requirePermission("updates"), getAdvances);
 router.post("/advance/create", requirePermission("creates"), createAdvance);
 router.put("/advance/approve/:id", requirePermission("updates"), approveAdvance);
@@ -471,10 +486,15 @@ router.get("/advance/:id", requirePermission("updates"), getAdvance);
 // ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
 router.get("/task/me", getMyTasks);
 router.put("/task/me/item/:id", updateMyTaskItem);
+router.put("/task/me/progress/:id", updateMyTaskProgress);
 router.get("/task/me/file/:id", getMyTaskFileLink);
 router.get("/task/me/comment/:id", getMyTaskComments);
 router.post("/task/me/comment/:id", createMyTaskComment);
 router.delete("/task/me/comment/:id", deleteMyTaskComment);
+router.get("/task/me/assigned", getMyAssignedTasks);
+router.post("/task/me/assigned", createMyAssignedTask);
+router.put("/task/me/assigned/:id/status", updateMyAssignedTaskStatus);
+router.delete("/task/me/assigned/:id", deleteMyAssignedTask);
 router.get("/task/project/fetch", getTaskProjects);
 router.post("/task/project/create", requirePermission("creates"), createTaskProject);
 router.put("/task/project/:id", requirePermission("updates"), updateTaskProject);

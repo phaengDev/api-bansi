@@ -43,11 +43,19 @@ TaskProject.init(
   { sequelize, modelName: "TaskProject", tableName: "tbl_task_project", timestamps: true }
 );
 
+/**
+ * ຜູ້ຮັບຜິດຊອບວຽກ — is_lead = ຫົວໜ້າວຽກ (ມົງກຸດ). ຄວາມຄືບໜ້າ "ສ່ວນຂອງຕົນ" ທີ່ພະນັກງານອັບເດດເອງໃນ app:
+ * status 1 ຍັງບໍ່ເລີ່ມ, 2 ກຳລັງເຮັດ, 3 ສຳເລັດ; progress 0–100 %; active_at = ຄັ້ງລ່າສຸດທີ່ຄົນນີ້ເຮັດຫຍັງໃນວຽກນີ້
+ * (ອັບເດດຄວາມຄືບໜ້າ, ໝາຍລາຍການຍ່ອຍ, ຄອມເມັນ) — null = ຍັງບໍ່ເຄີຍ
+ */
 export class TaskAssignee extends Model {
   public _uuid!: number;
   public task_id!: number;
   public employee_id!: number;
   public is_lead!: number;
+  public status!: number;
+  public progress!: number;
+  public active_at!: Date | null;
 }
 
 TaskAssignee.init(
@@ -56,6 +64,9 @@ TaskAssignee.init(
     task_id: { type: DataTypes.INTEGER, allowNull: false },
     employee_id: { type: DataTypes.INTEGER, allowNull: false },
     is_lead: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    status: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    progress: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    active_at: DataTypes.DATE,
     ...stamps(),
   },
   { sequelize, modelName: "TaskAssignee", tableName: "tbl_task_assignee", timestamps: true }
@@ -125,12 +136,14 @@ TaskFile.init(
   { sequelize, modelName: "TaskFile", tableName: "tbl_task_file", timestamps: true }
 );
 
+/** ຄອມເມັນຂອງວຽກ — to_ids = ພະນັກງານທີ່ຜູ້ມອບໝາຍເລືອກແຈ້ງເຖິງ ("12,15"); null = ແຈ້ງທຸກຄົນ. ທຸກຄົນໃນວຽກເຫັນຄອມເມັນຄືກັນ */
 export class TaskComment extends Model {
   public _uuid!: number;
   public task_id!: number;
   public body!: string;
   public user_id!: number | null;
   public employee_id!: number | null;
+  public to_ids!: string | null;
   public createdAt!: Date;
 }
 
@@ -141,6 +154,7 @@ TaskComment.init(
     body: { type: DataTypes.TEXT, allowNull: false },
     user_id: DataTypes.INTEGER,
     employee_id: DataTypes.INTEGER,
+    to_ids: DataTypes.STRING(255),
     ...stamps(),
   },
   { sequelize, modelName: "TaskComment", tableName: "tbl_task_comment", timestamps: true }

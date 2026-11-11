@@ -17,8 +17,9 @@ import { WORKING, employedOn, nowLao, todayLao } from "./workCalendar";
  *   upcoming ຍັງບໍ່ຮອດມື້ເລີ່ມ, history ປິດແລ້ວ (ເທື່ອລະ 30, ໃໝ່ສຸດກ່ອນ) + counts ຂອງແຕ່ລະແຖບ
  * - GET /employee/me/workplan?scope=range&from=&to= — ທຸກແຜນ (ສຳເລັດ ແລະ ຍັງບໍ່ສຳເລັດ) ທີ່ຊ້ອນທັບຊ່ວງວັນທີ (ບໍ່ເກີນ 1 ປີ)
  * - GET /employee/me/workplan/:id — ແຜນ 1 ລາຍການ ພ້ອມປະຫວັດການອັບເດດທັງໝົດ
- * - POST /employee/me/workplan { title, note?, start_date, end_date? }
- * - PUT /employee/me/workplan/:id { title?, note?, start_date?, end_date?, done? }
+ * - POST /employee/me/workplan { title, note?, start_date, end_date?, important?, urgent? }
+ * - PUT /employee/me/workplan/:id { title?, note?, start_date?, end_date?, done?, important?, urgent? }
+ *   important / urgent = ຕາຕະລາງບໍລິຫານເວລາ (ສຳຄັນ / ດ່ວນ; null = ຍັງບໍ່ໄດ້ຈັດ)
  * - POST /employee/me/workplan/:id/progress { progress 0–100, note? } — ອັບເດດຄວາມຄືບໜ້າ; 100 = ປິດແຜນ (ສຳເລັດ)
  * - DELETE /employee/me/workplan/:id — ລຶບແບບ soft delete (status 0)
  * ປະຫວັດການອັບເດດເກັບເປັນ JSON ໃນຖັນ progress_log (ບໍ່ສ້າງຕາຕະລາງແຍກ). ແຜນທີ່ຍັງບໍ່ສຳເລັດ "ຕິດຕາມ" ຕໍ່ຫຼັງວັນສິ້ນສຸດ
@@ -66,6 +67,9 @@ export const planOf = (row: any, withLog = false) => {
     start_date: p.start_date,
     end_date: p.end_date,
     done,
+    // null = ຍັງບໍ່ໄດ້ຈັດເຂົ້າຕາຕະລາງບໍລິຫານເວລາ
+    important: p.important === null || p.important === undefined ? null : Number(p.important) === 1,
+    urgent: p.urgent === null || p.urgent === undefined ? null : Number(p.urgent) === 1,
     progress: done ? 100 : Math.max(0, Math.min(99, Number(p.progress) || 0)),
     done_at: p.done_at ?? null,
     update_count: log.length,
@@ -209,6 +213,10 @@ const readInput = (body: Record<string, any>, existing?: WorkPlan) => {
     input.end_date = end;
   }
   if (has("done")) input.done = body.done === true || Number(body.done) === 1 ? 1 : 0;
+  // null = ຍັງບໍ່ໄດ້ຈັດ (ລ້າງ)
+  const flag = (v: unknown) => (v === null ? null : v === true || Number(v) === 1 ? 1 : 0);
+  if (has("important")) input.important = flag(body.important);
+  if (has("urgent")) input.urgent = flag(body.urgent);
 
   const start = input.start_date ?? existing?.start_date;
   // ສ້າງໃໝ່ບໍ່ໃສ່ວັນສິ້ນສຸດ = ມື້ດຽວ; ແກ້ວັນເລີ່ມໃຫ້ກາຍວັນສິ້ນສຸດເກົ່າ = ເລື່ອນວັນສິ້ນສຸດຕາມ

@@ -16,6 +16,8 @@ interface WorkPlanAttributes {
     progress: number;               // ຄວາມຄືບໜ້າ 0–100 (%) — ອັບເດດຈາກ app ພະນັກງານ
     progress_log: string | null;    // ປະຫວັດການອັບເດດ (JSON [{ at, progress, note, kind }]) — ບໍ່ສ້າງຕາຕະລາງແຍກ
     done_at: Date | null;           // ເວລາປິດແຜນ (ສຳເລັດ)
+    important: number | null;       // 1 = ສຳຄັນ, 0 = ບໍ່ສຳຄັນ, null = ຍັງບໍ່ໄດ້ຈັດ (ຕາຕະລາງບໍລິຫານເວລາ)
+    urgent: number | null;          // 1 = ດ່ວນ, 0 = ບໍ່ດ່ວນ, null = ຍັງບໍ່ໄດ້ຈັດ
     status: number;                 // 1 = ໃຊ້ງານ, 0 = ລຶບແລ້ວ (soft delete)
     createdAt?: Date;
     updatedAt?: Date;
@@ -23,7 +25,7 @@ interface WorkPlanAttributes {
 
 // ✅ Define optional attributes
 interface WorkPlanAttributesOptional
-    extends Optional<WorkPlanAttributes, "_uuid" | "employee_id" | "note" | "done" | "progress" | "progress_log" | "done_at" | "status"> {}
+    extends Optional<WorkPlanAttributes, "_uuid" | "employee_id" | "note" | "done" | "progress" | "progress_log" | "done_at" | "important" | "urgent" | "status"> {}
 
 // ✅ Define model
 export class WorkPlan extends Model<WorkPlanAttributes, WorkPlanAttributesOptional> {
@@ -37,6 +39,9 @@ export class WorkPlan extends Model<WorkPlanAttributes, WorkPlanAttributesOption
     public done!: number;
     public progress!: number;
     public progress_log!: string | null;
+    /** ຕາຕະລາງບໍລິຫານເວລາ — 1 ສຳຄັນ / 1 ດ່ວນ (ແຜນຂອງພະນັກງານໃນ app); null = ຍັງບໍ່ໄດ້ຈັດ */
+    public important!: number | null;
+    public urgent!: number | null;
     public done_at!: Date | null;
     public status!: number;
     public readonly createdAt?: Date;
@@ -89,6 +94,14 @@ WorkPlan.init(
         },
         progress_log: {
             type: DataTypes.TEXT,
+            allowNull: true,
+        },
+        important: {
+            type: DataTypes.TINYINT,
+            allowNull: true,
+        },
+        urgent: {
+            type: DataTypes.TINYINT,
             allowNull: true,
         },
         done_at: {

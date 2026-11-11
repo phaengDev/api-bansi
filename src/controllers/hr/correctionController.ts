@@ -1,3 +1,4 @@
+import { fullName, notifyApprovers } from "./approvers";
 import { Request, Response } from "express";
 import moment from "moment";
 import { Op, col, fn } from "sequelize";
@@ -126,6 +127,7 @@ export const createMyCorrection = async (req: Request, res: Response) => {
     const row = await AttendanceRequest.create({
       employee_id: me._uuid, work_date: date, check_in: checkIn, check_out: checkOut, reason, status: PENDING,
     });
+    await notifyApprovers("correction", me._uuid, row._uuid, `⏰ ${fullName(me)} ແຈ້ງລືມສະແກນ`, `${dayText(date)} · ຂໍ ${timesText(checkIn, checkOut)}\n${reason}`);
     res.status(200).json({ message: "ສົ່ງຄຳຮ້ອງແລ້ວ — ລໍຖ້າ HR ອະນຸມັດ", data: present(row) });
   } catch (error) {
     sendError(res, error, "Error creating attendance request");

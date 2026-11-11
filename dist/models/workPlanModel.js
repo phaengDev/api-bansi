@@ -59,6 +59,14 @@ WorkPlan.init({
         type: sequelize_1.DataTypes.TEXT,
         allowNull: true,
     },
+    important: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: true,
+    },
+    urgent: {
+        type: sequelize_1.DataTypes.TINYINT,
+        allowNull: true,
+    },
     done_at: {
         type: sequelize_1.DataTypes.DATE,
         allowNull: true,

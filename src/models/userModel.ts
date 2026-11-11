@@ -15,6 +15,9 @@ interface UserAttributes {
     deletes: number;
     updates: number;
     creates: number;
+    approve_leave?: number;
+    approve_correction?: number;
+    approve_advance?: number;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -34,6 +37,13 @@ class Users extends Model<UserAttributes, UserCreationAttributes>
     public deletes!: number;
     public updates!: number;
     public creates!: number;
+    /**
+     * ສິດອະນຸມັດຜ່ານ app ຂອງພະນັກງານທີ່ຜູກ (1 = ໄດ້) — ໄດ້ຮັບແຈ້ງເຕືອນເມື່ອມີຄຳຂໍໃໝ່ ແລະ ອະນຸມັດ / ປະຕິເສດ ໃນ app:
+     * ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນລ່ວງໜ້າ (ຈ່າຍເງິນຍັງຢູ່ເວັບ). ບໍ່ຜູກພະນັກງານ = 0 ສະເໝີ
+     */
+    public approve_leave!: number;
+    public approve_correction!: number;
+    public approve_advance!: number;
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
 }
@@ -85,7 +95,10 @@ Users.init(
             type: DataTypes.INTEGER, // ໃຊ້ສະເພາະຕົວເລກ ENUM (0=inactive,1=active)
             allowNull: false,
             defaultValue: 1,
-        }
+        },
+        approve_leave: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+        approve_correction: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+        approve_advance: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
     },
 
     {

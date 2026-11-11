@@ -1,3 +1,4 @@
+import { fullName, notifyApprovers } from "./approvers";
 import { Request, Response } from "express";
 import moment from "moment";
 import { Op, Transaction, col, fn } from "sequelize";
@@ -233,6 +234,7 @@ export const createMyAdvance = async (req: Request, res: Response) => {
       status: PENDING,
       source: FROM_APP,
     });
+    await notifyApprovers("advance", employee._uuid, row._uuid, `💵 ${fullName(employee)} ຂໍເບີກເງິນລ່ວງໜ້າ`, `${kipText(amount)} · ຜ່ອນ ${installments} ເດືອນ\n${reason}`);
     res.status(200).json({ message: "ສົ່ງຄຳຂໍເບີກເງິນແລ້ວ — ລໍຖ້າ HR ອະນຸມັດ", data: present(row) });
   } catch (error) {
     sendError(res, error, "Error creating salary advance request");

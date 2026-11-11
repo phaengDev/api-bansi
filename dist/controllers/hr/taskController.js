@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteMyTaskComment = exports.createMyTaskComment = exports.getMyTaskComments = exports.getMyTaskFileLink = exports.updateMyTaskItem = exports.getMyTasks = exports.deleteTaskComment = exports.createTaskComment = exports.openTaskFile = exports.deleteTaskFile = exports.downloadTaskFile = exports.uploadTaskFiles = exports.updateTaskItem = exports.bulkTasks = exports.toggleTaskStar = exports.updateTaskStatus = exports.updateTask = exports.createTask = exports.getTask = exports.getTasks = exports.deleteTaskProject = exports.updateTaskProject = exports.createTaskProject = exports.getTaskProjects = exports.TASK_DONE = exports.TASK_DOING = exports.TASK_PENDING = void 0;
+exports.deleteMyAssignedTask = exports.updateMyAssignedTaskStatus = exports.createMyAssignedTask = exports.getMyAssignedTasks = exports.deleteMyTaskComment = exports.createMyTaskComment = exports.getMyTaskComments = exports.getMyTaskFileLink = exports.updateMyTaskItem = exports.getMyTasks = exports.deleteTaskComment = exports.createTaskComment = exports.openTaskFile = exports.deleteTaskFile = exports.downloadTaskFile = exports.uploadTaskFiles = exports.updateTaskItem = exports.bulkTasks = exports.toggleTaskStar = exports.updateTaskStatus = exports.updateTask = exports.createTask = exports.getTask = exports.getTasks = exports.deleteTaskProject = exports.updateTaskProject = exports.createTaskProject = exports.getTaskProjects = exports.TASK_DONE = exports.TASK_DOING = exports.TASK_PENDING = void 0;
 const crypto_1 = require("crypto");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -20,6 +20,7 @@ const permission_1 = require("../../middleware/permission");
 const attendanceController_1 = require("./attendanceController");
 const hrHelpers_1 = require("./hrHelpers");
 const notificationController_1 = require("./notificationController");
+const orgController_1 = require("./orgController");
 const workCalendar_1 = require("./workCalendar");
 /**
  * ມອບໝາຍວຽກ:
@@ -27,8 +28,10 @@ const workCalendar_1 = require("./workCalendar");
  *   POST /task/bulk { ids, action: status | archive | unarchive | delete }, PUT /task/star/:id, PUT /task/item/:id,
  *   ໂປຣເຈັກ /task/project/*, ເອກະສານຄັດຕິດ POST / DELETE /task/file/:id, GET /task/file/download/:id, ຄອມເມັນ POST / DELETE /task/comment/:id
  * - ພະນັກງານ (app): GET /task/me, PUT /task/me/item/:id, GET /task/me/file/:id,
- *   GET / POST / DELETE /task/me/comment/:id — ສະເພາະວຽກທີ່ຕົນເອງຮັບຜິດຊອບ. ພະນັກງານລາຍງານຄວາມຄືບໜ້າທາງຄອມເມັນ;
- *   ສະຖານະ (ລວມ "ສຳເລັດ") ຜູ້ມອບໝາຍເປັນຜູ້ອັບເດດໃນເວັບເທົ່ານັ້ນ
+ *   GET / POST / DELETE /task/me/comment/:id — ສະເພາະວຽກທີ່ຕົນເອງຮັບຜິດຊອບ ຫຼື ມອບໝາຍເອງ. ພະນັກງານລາຍງານຄວາມຄືບໜ້າທາງຄອມເມັນ;
+ *   ສະຖານະ (ລວມ "ສຳເລັດ") ຜູ້ມອບໝາຍເປັນຜູ້ອັບເດດ
+ * - ຫົວໜ້າ (app) ມອບໝາຍໃຫ້ລູກທີມຕາມໂຄງຮ່າງ (ລູກທີມໂດຍກົງ + ລູກທີມຂອງລູກທີມ): GET /task/me/assigned (ວຽກທີ່ມອບໝາຍ + ລູກທີມ),
+ *   POST /task/me/assigned, PUT /task/me/assigned/:id/status, DELETE /task/me/assigned/:id (ເກັບເຂົ້າຄັງ)
  * ມອບໝາຍ (ສ້າງ / ເພີ່ມຄົນ) = ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍມືຖືຂອງຜູ້ຮັບຜິດຊອບທັນທີ. ທຸກການປ່ຽນແປງລົງໄທມ໌ໄລນ໌ (tbl_task_log) — ເວັບເບິ່ງໃນ GET /task/:id
  */
 exports.TASK_PENDING = 1;
@@ -82,8 +85,22 @@ const present = (row, today, starred = false, withItems = false) => {
         comments_total: comments.length,
         starred,
         overdue: isOverdue(r, today),
+        ...quadrantOf(r),
     };
 };
+/**
+ * ສຳຄັນ / ດ່ວນ (ຕາຕະລາງບໍລິຫານເວລາ) — app ຕັ້ງໄວ້ = ຕາມນັ້ນ; ບໍ່ໄດ້ຕັ້ງ = ເອົາຕາມ priority ຂອງເວັບ:
+ * ດ່ວນ (3) = ສຳຄັນ + ດ່ວນ, ສຳຄັນ (2) = ສຳຄັນ + ບໍ່ດ່ວນ, ປົກກະຕິ (1) = null (ຍັງບໍ່ໄດ້ຈັດ)
+ */
+const quadrantOf = (r) => {
+    if (r.important !== null && r.important !== undefined) {
+        return { important: Number(r.important) === 1, urgent: Number(r.urgent) === 1 };
+    }
+    const priority = Number(r.priority);
+    return priority >= 2 ? { important: true, urgent: priority === 3 } : { important: null, urgent: null };
+};
+/** priority ທີ່ເວັບສະແດງ ຈາກ ສຳຄັນ / ດ່ວນ: ດ່ວນ = 3, ສຳຄັນ = 2, ນອກນັ້ນ = 1 */
+const priorityOf = (important, urgent) => (urgent ? 3 : important ? 2 : 1);
 const findFull = (id, t) => task_1.default.findByPk(id, { include: [projectInclude, assigneeInclude, { model: taskParts_1.TaskItem, as: "items" }, fileInclude, commentCountInclude], order: itemOrder, transaction: t });
 const starredBy = async (userId, taskIds) => {
     if (!userId)
@@ -158,8 +175,8 @@ const reply = async (req, res, id, message) => {
     const stars = await starredBy(Number((0, bansiHelpers_1.actorOf)(req)), [id]);
     res.status(200).json({ message, data: row && { ...present(row, (0, workCalendar_1.todayLao)(), stars.has(id), true), timeline: await timelineOf(row) } });
 };
-/** ແຈ້ງຜູ້ຮັບຜິດຊອບວ່າໄດ້ຮັບມອບໝາຍວຽກ — ເດັ້ງຂຶ້ນຈໍມືຖື */
-const notifyAssigned = async (task, employeeIds, actor) => {
+/** ແຈ້ງຜູ້ຮັບຜິດຊອບວ່າໄດ້ຮັບມອບໝາຍວຽກ — ເດັ້ງຂຶ້ນຈໍມືຖື; from = ຊື່ຫົວໜ້າທີ່ມອບໝາຍຈາກ app */
+const notifyAssigned = async (task, employeeIds, actor, from) => {
     if (!employeeIds.length)
         return;
     const priority = PRIORITY_TEXT[Number(task.priority)];
@@ -167,7 +184,7 @@ const notifyAssigned = async (task, employeeIds, actor) => {
         employee_id,
         type: "task",
         title: `${priority ? `[${priority}] ` : ""}ທ່ານໄດ້ຮັບມອບໝາຍວຽກ 📋`,
-        body: [task.title, task.due_date ? `ກຳນົດສົ່ງ ${dayText(task.due_date)}` : null].filter(Boolean).join("\n"),
+        body: [task.title, from ? `ມອບໝາຍໂດຍ ${from}` : null, task.due_date ? `ກຳນົດສົ່ງ ${dayText(task.due_date)}` : null].filter(Boolean).join("\n"),
         ref: `task:${task._uuid}`,
         createdbyid: actor,
         push: true,
@@ -329,7 +346,13 @@ const parseTask = async (body, currentIds = []) => {
     if (!title)
         return { error: "ກະລຸນາປ້ອນຊື່ວຽກ" };
     const detail = String(body.detail ?? "").trim().slice(0, 5000) || null;
-    const priority = Number(body.priority ?? 1);
+    // ສຳຄັນ / ດ່ວນ ຈາກ app (null / ບໍ່ສົ່ງ = ຍັງບໍ່ໄດ້ຈັດ — ໃຊ້ priority)
+    const flag = (v) => v === true || Number(v) === 1;
+    const given = (v) => v !== undefined && v !== null;
+    const flags = given(body.important) || given(body.urgent)
+        ? { important: flag(body.important) ? 1 : 0, urgent: flag(body.urgent) ? 1 : 0 }
+        : null;
+    const priority = flags ? priorityOf(flags.important === 1, flags.urgent === 1) : Number(body.priority ?? 1);
     if (!PRIORITIES.includes(priority))
         return { error: "ຄວາມສຳຄັນບໍ່ຖືກຕ້ອງ" };
     const projectId = Number(body.project_id) || null;
@@ -366,6 +389,7 @@ const parseTask = async (body, currentIds = []) => {
     }
     return {
         values: { title, detail, project_id: projectId, priority, start_date: startDate, due_date: dueDate },
+        flags,
         assigneeIds,
         leadId,
         items,
@@ -439,7 +463,7 @@ const createTask = async (req, res) => {
             return;
         }
         const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
-        const row = await task_1.default.create({ ...input.values, status: exports.TASK_PENDING, createdbyid: actor, updatedbyid: actor }, { transaction: t });
+        const row = await task_1.default.create({ ...input.values, ...input.flags, status: exports.TASK_PENDING, createdbyid: actor, updatedbyid: actor }, { transaction: t });
         const added = await syncAssignees(row._uuid, input.assigneeIds, input.leadId, t);
         await syncItems(row._uuid, input.items, t);
         await logTask(row._uuid, "create", byUser(req), {}, t);
@@ -478,7 +502,9 @@ const updateTask = async (req, res) => {
         const sameAssignees = current.length === input.assigneeIds.length
             && current.every((a) => input.assigneeIds.includes(Number(a.employee_id)))
             && Number(leadBefore?.employee_id) === input.leadId;
-        await row.update({ ...input.values, ...statusFields(row, status), updatedbyid: actor, updatedAt: new Date() }, { transaction: t });
+        // ເວັບປ່ຽນ priority (ບໍ່ສົ່ງ ສຳຄັນ / ດ່ວນ) = ລ້າງຄ່າທີ່ app ຕັ້ງ ໃຫ້ເອົາຕາມ priority ໃໝ່
+        const flags = input.flags ?? (input.values.priority !== Number(row.priority) ? { important: null, urgent: null } : {});
+        await row.update({ ...input.values, ...flags, ...statusFields(row, status), updatedbyid: actor, updatedAt: new Date() }, { transaction: t });
         const added = await syncAssignees(row._uuid, input.assigneeIds, input.leadId, t);
         const itemsChanged = await syncItems(row._uuid, input.items, t);
         if (statusChanged)
@@ -754,11 +780,12 @@ const commentsOf = async (taskId, viewer) => {
         };
     });
 };
-/** ແຈ້ງຜູ້ຮັບຜິດຊອບ (ຍົກເວັ້ນຄົນຂຽນ) ວ່າມີຄອມເມັນໃໝ່ — ສົ່ງບໍ່ໄດ້ ບໍ່ໃຫ້ຄອມເມັນລົ້ມ */
+/** ແຈ້ງຜູ້ຮັບຜິດຊອບ + ຫົວໜ້າທີ່ມອບໝາຍຈາກ app (ຍົກເວັ້ນຄົນຂຽນ) ວ່າມີຄອມເມັນໃໝ່ — ສົ່ງບໍ່ໄດ້ ບໍ່ໃຫ້ຄອມເມັນລົ້ມ */
 const notifyComment = async (task, body, authorName, authorEmployeeId, actor) => {
     try {
         const assignees = await taskParts_1.TaskAssignee.findAll({ where: { task_id: task._uuid }, attributes: ["employee_id"], raw: true });
-        const ids = assignees.map((a) => Number(a.employee_id)).filter((id) => id !== authorEmployeeId);
+        const people = [...assignees.map((a) => Number(a.employee_id)), Number(task.assigned_by_employee_id) || 0];
+        const ids = [...new Set(people)].filter((id) => id > 0 && id !== authorEmployeeId);
         if (!ids.length)
             return;
         await (0, notificationController_1.notify)(ids.map((employee_id) => ({
@@ -831,10 +858,34 @@ exports.deleteTaskComment = deleteTaskComment;
 // ================= ພະນັກງານ (app ມືຖື)
 /** ວຽກທີ່ຄົນນີ້ຮັບຜິດຊອບ (ບໍ່ລວມທີ່ເກັບເຂົ້າຄັງ) — null = ບໍ່ແມ່ນວຽກຂອງຄົນນີ້ */
 const myTask = async (employeeId, taskId) => {
-    const assigned = await taskParts_1.TaskAssignee.count({ where: { task_id: taskId, employee_id: employeeId } });
-    if (!assigned)
+    const task = await task_1.default.findOne({ where: { _uuid: taskId, archived: 0 } });
+    if (!task)
         return null;
-    return task_1.default.findOne({ where: { _uuid: taskId, archived: 0 } });
+    // ຫົວໜ້າທີ່ມອບໝາຍເອງ ເບິ່ງ / ຄອມເມັນ / ເປີດເອກະສານໄດ້ຄືກັບຜູ້ຮັບຜິດຊອບ
+    if (Number(task.assigned_by_employee_id) === employeeId)
+        return task;
+    const assigned = await taskParts_1.TaskAssignee.count({ where: { task_id: taskId, employee_id: employeeId } });
+    return assigned ? task : null;
+};
+/** ຊື່ຜູ້ມອບໝາຍຂອງແຕ່ລະວຽກ: ຫົວໜ້າໃນ app (ພະນັກງານ) ຫຼື ຜູ້ໃຊ້ເວັບທີ່ສ້າງ — ໂຫຼດເທື່ອດຽວທັງລາຍການ */
+const withAssigners = async (rows) => {
+    const employeeIds = [...new Set(rows.map((r) => Number(r.assigned_by_employee_id)).filter((id) => id > 0))];
+    const userIds = [...new Set(rows.filter((r) => !r.assigned_by_employee_id).map((r) => Number(r.createdbyid)).filter((id) => id > 0))];
+    const [employees, users] = await Promise.all([
+        employeeIds.length ? employee_1.default.findAll({ where: { _uuid: { [sequelize_1.Op.in]: employeeIds } }, attributes: ["_uuid", "first_name", "last_name", "profile"], raw: true }) : [],
+        userIds.length
+            ? userModel_1.default.findAll({ where: { user_uuid: { [sequelize_1.Op.in]: userIds } }, attributes: ["user_uuid", "user_name"], include: [{ model: employee_1.default, as: "employee", attributes: ["first_name", "last_name", "profile"] }] })
+            : [],
+    ]);
+    const byEmployee = new Map(employees.map((e) => [Number(e._uuid), e]));
+    const byUser = new Map(users.map((u) => [Number(u.user_uuid), u.get({ plain: true })]));
+    const nameOf = (e) => [e?.first_name, e?.last_name].filter(Boolean).join(" ");
+    return rows.map((r) => {
+        const e = byEmployee.get(Number(r.assigned_by_employee_id));
+        const u = e ? null : byUser.get(Number(r.createdbyid));
+        const name = e ? nameOf(e) : u ? nameOf(u.employee) || u.user_name : null;
+        return { ...r, assigned_by: name ? { employee_id: e ? Number(e._uuid) : null, name, profile_url: (0, hrHelpers_1.profileUrl)(e?.profile ?? u?.employee?.profile) } : null };
+    });
 };
 /** GET /task/me — ວຽກທີ່ໄດ້ຮັບມອບໝາຍ (ຍັງບໍ່ສຳເລັດກ່ອນ: ເກີນກຳນົດ → ກຳນົດສົ່ງໃກ້ສຸດ) + ລາຍການຍ່ອຍ + ຈຳນວນທີ່ຍັງຄ້າງ */
 const getMyTasks = async (req, res) => {
@@ -854,7 +905,7 @@ const getMyTasks = async (req, res) => {
             })
             : [];
         const today = (0, workCalendar_1.todayLao)();
-        const data = rows.map((r) => present(r, today, false, true));
+        const data = await withAssigners(rows.map((r) => present(r, today, false, true)));
         const rank = (d) => (Number(d.status) === exports.TASK_DONE ? 2 : d.overdue ? 0 : 1);
         data.sort((a, b) => rank(a) - rank(b) || String(a.due_date ?? "9999").localeCompare(String(b.due_date ?? "9999")) || b._uuid - a._uuid);
         res.status(200).json({ data, open: data.filter((d) => Number(d.status) !== exports.TASK_DONE).length, today });
@@ -977,3 +1028,180 @@ const deleteMyTaskComment = async (req, res) => {
     }
 };
 exports.deleteMyTaskComment = deleteMyTaskComment;
+// ================= ຫົວໜ້າມອບໝາຍວຽກໃຫ້ລູກທີມ (app)
+/**
+ * ລູກທີມທັງໝົດຂອງພະນັກງານຕາມໂຄງຮ່າງ (ຫົວໜ້າສາຍງານ) — ລູກທີມໂດຍກົງ (depth 1) + ລູກທີມຂອງລູກທີມ…,
+ * ສະເພາະຄົນທີ່ເຮັດວຽກຢູ່; ລຽງ ໃກ້ກ່ອນ → ຕຳແໜ່ງສູງກ່ອນ → ຊື່
+ */
+const teamOf = async (employeeId) => {
+    const org = await (0, orgController_1.buildOrg)();
+    const kids = new Map();
+    for (const p of org.people) {
+        if (p.reports_to_id)
+            kids.set(p.reports_to_id, [...(kids.get(p.reports_to_id) ?? []), p._uuid]);
+    }
+    const depth = new Map();
+    const queue = [[employeeId, 0]];
+    while (queue.length) {
+        const [id, d] = queue.shift();
+        for (const kid of kids.get(id) ?? []) {
+            if (kid === employeeId || depth.has(kid))
+                continue;
+            depth.set(kid, d + 1);
+            queue.push([kid, d + 1]);
+        }
+    }
+    const positions = new Map(org.positions.map((p) => [p._uuid, p]));
+    const departments = new Map(org.departments.map((d) => [d._uuid, d]));
+    return org.people
+        .filter((p) => depth.has(p._uuid))
+        .map((p) => ({
+        _uuid: p._uuid,
+        emp_code: p.emp_code,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        profile_url: p.profile_url,
+        position: (p.position_id && positions.get(p.position_id)?.position_name) || null,
+        department: departments.get(p.department_id)?.depart_name ?? null,
+        level: (p.position_id && positions.get(p.position_id)?.level) || null,
+        depth: depth.get(p._uuid),
+    }))
+        .sort((a, b) => a.depth - b.depth || (a.level ?? 99) - (b.level ?? 99) || a.first_name.localeCompare(b.first_name));
+};
+/** ວຽກທີ່ຫົວໜ້າຄົນນີ້ມອບໝາຍຈາກ app (ຍັງບໍ່ເກັບເຂົ້າຄັງ) */
+const assignedTask = (employeeId, taskId) => task_1.default.findOne({ where: { _uuid: taskId, archived: 0, assigned_by_employee_id: employeeId } });
+const fullName = (e) => [e.first_name, e.last_name].filter(Boolean).join(" ");
+/** ວຽກ 1 ລາຍການ (ພ້ອມລາຍການຍ່ອຍ + ຊື່ຜູ້ມອບໝາຍ) ສົ່ງກັບໃຫ້ app */
+const presentForApp = async (id) => {
+    const row = await findFull(id);
+    return row ? (await withAssigners([present(row, (0, workCalendar_1.todayLao)(), false, true)]))[0] : null;
+};
+/** GET /task/me/assigned — ວຽກທີ່ຂ້ອຍມອບໝາຍໃຫ້ລູກທີມ (ຍັງບໍ່ສຳເລັດກ່ອນ) + ລູກທີມທີ່ມອບໝາຍໄດ້ (team ຫວ່າງ = ບໍ່ມີລູກທີມ) */
+const getMyAssignedTasks = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const me = self.employee._uuid;
+        const [team, rows] = await Promise.all([
+            teamOf(me),
+            task_1.default.findAll({
+                where: { assigned_by_employee_id: me, archived: 0 },
+                include: [projectInclude, assigneeInclude, { model: taskParts_1.TaskItem, as: "items" }, fileInclude, commentCountInclude],
+                order: itemOrder,
+            }),
+        ]);
+        const today = (0, workCalendar_1.todayLao)();
+        const data = await withAssigners(rows.map((r) => present(r, today, false, true)));
+        const rank = (d) => (Number(d.status) === exports.TASK_DONE ? 2 : d.overdue ? 0 : 1);
+        data.sort((a, b) => rank(a) - rank(b) || String(a.due_date ?? "9999").localeCompare(String(b.due_date ?? "9999")) || b._uuid - a._uuid);
+        res.status(200).json({ data, open: data.filter((d) => Number(d.status) !== exports.TASK_DONE).length, team, today });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting tasks I assigned");
+    }
+};
+exports.getMyAssignedTasks = getMyAssignedTasks;
+/**
+ * POST /task/me/assigned { title, detail, important, urgent, start_date, due_date, assignee_ids, lead_id, items: [{ title }] } —
+ * ມອບໝາຍໃຫ້ລູກທີມຂອງຕົນເອງເທົ່ານັ້ນ (ບໍ່ມີໂປຣເຈັກ); ແຈ້ງເຕືອນຜູ້ຮັບຜິດຊອບທັນທີ
+ */
+const createMyAssignedTask = async (req, res) => {
+    const self = await (0, attendanceController_1.selfEmployee)(req);
+    if ("code" in self) {
+        res.status(self.code).json({ message: self.message });
+        return;
+    }
+    const t = await task_1.default.sequelize.transaction();
+    try {
+        const me = self.employee._uuid;
+        const input = await parseTask({ ...(req.body || {}), project_id: null });
+        if ("error" in input) {
+            await t.rollback();
+            res.status(400).json({ message: input.error });
+            return;
+        }
+        const team = new Set((await teamOf(me)).map((p) => p._uuid));
+        if (input.assigneeIds.some((id) => !team.has(id))) {
+            await t.rollback();
+            res.status(403).json({ message: "ມອບໝາຍໄດ້ສະເພາະລູກທີມຂອງເຈົ້າ (ຕາມໂຄງຮ່າງ)" });
+            return;
+        }
+        const row = await task_1.default.create({ ...input.values, ...input.flags, status: exports.TASK_PENDING, assigned_by_employee_id: me }, { transaction: t });
+        const added = await syncAssignees(row._uuid, input.assigneeIds, input.leadId, t);
+        await syncItems(row._uuid, input.items, t);
+        await logTask(row._uuid, "create", { employee_id: me }, {}, t);
+        await t.commit();
+        await notifyAssigned(row, added, null, fullName(self.employee));
+        res.status(200).json({ message: `ມອບໝາຍວຽກແລ້ວ — ແຈ້ງເຕືອນ ${added.length} ຄົນ`, data: await presentForApp(row._uuid) });
+    }
+    catch (error) {
+        await t.rollback();
+        (0, bansiHelpers_1.sendError)(res, error, "Error assigning task");
+    }
+};
+exports.createMyAssignedTask = createMyAssignedTask;
+/** PUT /task/me/assigned/:id/status { status } — ສະເພາະຫົວໜ້າທີ່ມອບໝາຍ; ແຈ້ງຜູ້ຮັບຜິດຊອບວ່າສະຖານະປ່ຽນ */
+const updateMyAssignedTaskStatus = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const me = self.employee._uuid;
+        const row = await assignedTask(me, Number((0, bansiHelpers_1.decodeId)(req)));
+        const status = Number(req.body?.status);
+        if (!row) {
+            res.status(404).json({ message: "ບໍ່ພົບວຽກທີ່ເຈົ້າມອບໝາຍ" });
+            return;
+        }
+        if (!STATUSES.includes(status)) {
+            res.status(400).json({ message: "ສະຖານະບໍ່ຖືກຕ້ອງ" });
+            return;
+        }
+        if (status !== Number(row.status)) {
+            await row.update({ ...statusFields(row, status), updatedAt: new Date() });
+            await logTask(row._uuid, "update", { employee_id: me }, { fields: ["status"], status });
+            const assignees = await taskParts_1.TaskAssignee.findAll({ where: { task_id: row._uuid }, attributes: ["employee_id"], raw: true });
+            await (0, notificationController_1.notify)(assignees.map((a) => ({
+                employee_id: Number(a.employee_id),
+                type: "task",
+                title: status === exports.TASK_DONE ? "✅ ວຽກສຳເລັດແລ້ວ" : `📋 ວຽກ: ${STATUS_TEXT[status]}`,
+                body: `${row.title}\n${fullName(self.employee)} ປ່ຽນສະຖານະເປັນ "${STATUS_TEXT[status]}"`,
+                ref: `task:${row._uuid}`,
+                createdbyid: null,
+                push: true,
+            }))).catch((error) => console.error("notify task status", error));
+        }
+        res.status(200).json({ message: `ປ່ຽນສະຖານະເປັນ "${STATUS_TEXT[status]}" ແລ້ວ`, data: await presentForApp(row._uuid) });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error updating assigned task status");
+    }
+};
+exports.updateMyAssignedTaskStatus = updateMyAssignedTaskStatus;
+/** DELETE /task/me/assigned/:id — ຫົວໜ້າລຶບວຽກທີ່ຕົນເອງມອບໝາຍ (ເກັບເຂົ້າຄັງ — HR ຍັງເບິ່ງໄດ້ໃນເວັບ) */
+const deleteMyAssignedTask = async (req, res) => {
+    try {
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const row = await assignedTask(self.employee._uuid, Number((0, bansiHelpers_1.decodeId)(req)));
+        if (!row) {
+            res.status(404).json({ message: "ບໍ່ພົບວຽກທີ່ເຈົ້າມອບໝາຍ" });
+            return;
+        }
+        await row.update({ archived: 1, updatedAt: new Date() });
+        await logTask(row._uuid, "archive", { employee_id: self.employee._uuid });
+        res.status(200).json({ message: "ລຶບວຽກແລ້ວ" });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error deleting assigned task");
+    }
+};
+exports.deleteMyAssignedTask = deleteMyAssignedTask;
