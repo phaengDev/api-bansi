@@ -56,7 +56,10 @@ Users.init({
         type: sequelize_1.DataTypes.INTEGER, // ໃຊ້ສະເພາະຕົວເລກ ENUM (0=inactive,1=active)
         allowNull: false,
         defaultValue: 1,
-    }
+    },
+    approve_leave: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    approve_correction: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    approve_advance: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
 }, {
     sequelize: database_1.default,
     modelName: "Users",

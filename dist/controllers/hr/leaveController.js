@@ -3,16 +3,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectLeave = exports.revokeLeave = exports.approveLeave = exports.getLeaveBalance = exports.getLeaves = exports.cancelMyLeave = exports.createMyLeave = exports.getMyLeaves = exports.balancesOf = void 0;
+exports.rejectLeave = exports.revokeLeave = exports.approveLeave = exports.getLeaveBalance = exports.getLeaves = exports.downloadLeaveFile = exports.openLeaveFile = exports.getMyLeaveFileLink = exports.getMyLeaveFile = exports.cancelMyLeave = exports.createMyLeave = exports.getMyLeaves = exports.setLeaveQuota = exports.getLeaveQuota = exports.balancesOf = exports.leaveFileInclude = void 0;
+const approvers_1 = require("./approvers");
+const crypto_1 = require("crypto");
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
 const leaveType_1 = __importDefault(require("../../models/leaveType"));
+const leaveQuota_1 = __importDefault(require("../../models/leaveQuota"));
+const leaveFile_1 = __importDefault(require("../../models/leaveFile"));
 const attendance_1 = __importDefault(require("../../models/attendance"));
 const employee_1 = __importDefault(require("../../models/employee"));
 const department_1 = __importDefault(require("../../models/department"));
 const position_1 = __importDefault(require("../../models/position"));
 const payroll_1 = __importDefault(require("../../models/payroll"));
+const userModel_1 = __importDefault(require("../../models/userModel"));
+const jwtConfig_1 = require("../../config/jwtConfig");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const hrHelpers_1 = require("./hrHelpers");
 const attendanceController_1 = require("./attendanceController");
@@ -26,7 +35,11 @@ const workCalendar_1 = require("./workCalendar");
  *   PUT /leave/reject/:id, PUT /leave/revoke/:id (ຖອນການອະນຸມັດ — ລຶບມື້ລາອອກຈາກການເຂົ້າວຽກ)
  * ເດືອນທີ່ຈ່າຍເງິນເດືອນແລ້ວ ຂໍ/ອະນຸມັດລາພັກບໍ່ໄດ້ (ຄືກັບການແກ້ການເຂົ້າວຽກ).
  * ປະເພດ (tbl_leave_type) ມີຂີດຈຳກັດມື້ເຮັດວຽກຕໍ່ປີ / ຕໍ່ຄັ້ງ (ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ) — ເກີນ = ຍັງຂໍໄດ້ ແລະ ແຈ້ງພະນັກງານ;
- * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid)
+ * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid).
+ * ສິດຕໍ່ປີ: HR ຕັ້ງສະເພາະຄົນໄດ້ (GET / PUT /leave/quota/:id → tbl_leave_quota), ບໍ່ຕັ້ງ = ຂອງປະເພດ;
+ * ປີທີ່ເລີ່ມວຽກ ໄດ້ຕາມເດືອນທີ່ເຮັດວຽກ (limitsOf)
+ * ໃບລາ (tbl_leave_file): ແນບຕອນ POST /leave/me (multipart field "files", ≤ 5) — ເປີດໄດ້ສະເພາະເຈົ້າຂອງ + ຜູ້ມີສິດອະນຸມັດລາພັກ
+ * (GET /leave/me/file/:id, …/link → /leave/file/open/:token) ແລະ HR ໃນເວັບ (GET /leave/file/download/:id)
  */
 const PENDING = 1;
 const APPROVED = 2;
@@ -50,11 +63,22 @@ const employeeInclude = {
     ],
 };
 const typeInclude = { model: leaveType_1.default, as: "type", attributes: ["_uuid", "name", "paid", "max_per_year", "max_per_request"] };
+const LEAVE_MIME = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".pdf": "application/pdf",
+};
+/** ໃບລາທີ່ແນບ (ບໍ່ສົ່ງຊື່ໄຟລ໌ໃນເຄື່ອງ) — ໃຊ້ທັງ app, ເວັບ ແລະ ໜ້າອະນຸມັດ */
+exports.leaveFileInclude = {
+    model: leaveFile_1.default,
+    as: "files",
+    separate: true,
+    attributes: ["_uuid", "leave_id", "original_name", "mime_type", "file_size", "createdAt"],
+    order: [["_uuid", "ASC"]],
+};
 const present = (row) => {
     const { employee, ...r } = row.get({ plain: true });
-    return { ...r, employee: employee ? { ...employee, profile_url: (0, hrHelpers_1.profileUrl)(employee.profile) } : null };
+    return { ...r, files: r.files ?? [], employee: employee ? { ...employee, profile_url: (0, hrHelpers_1.profileUrl)(employee.profile) } : null };
 };
-const findWithEmployee = (id) => leaveRequest_1.default.findByPk(id, { include: [employeeInclude, typeInclude] });
+const findWithEmployee = (id) => leaveRequest_1.default.findByPk(id, { include: [employeeInclude, typeInclude, exports.leaveFileInclude] });
 const dayText = (date) => (0, moment_1.default)(date, "YYYY-MM-DD").format("DD/MM/YYYY");
 const text = (value) => String(value ?? "").trim().slice(0, 255) || null;
 /** ປີ "YYYY" — ບໍ່ສົ່ງ / ຜິດ = ປີນີ້ */
@@ -148,11 +172,14 @@ const writeLeaveDays = async (employee, start, end, leaveType, reason, actor, t)
     return { applied, worked };
 };
 const statusOfType = (type) => (Number(type.paid) === 1 ? workCalendar_1.PAID_LEAVE : workCalendar_1.UNPAID_LEAVE);
+/** ປະເພດນີ້ພະນັກງານເພດນີ້ລາໄດ້ບໍ (gender 0 = ທຸກຄົນ; 1 ຊາຍ, 2 ຍິງ ຄື tbl_employee.gender) */
+const fitsGender = (type, gender) => !type || !Number(type.gender) || Number(type.gender) === Number(gender);
+const onlyFor = (type) => `"${type.name}" ລາໄດ້ສະເພາະພະນັກງານ${Number(type.gender) === 2 ? "ຍິງ" : "ຊາຍ"}`;
 /**
  * ປະເພດທີ່ພະນັກງານເລືອກ: leave_type_id (ຕ້ອງໃຊ້ງານຢູ່). app ລຸ້ນເກົ່າສົ່ງແຕ່ leave_type 2 | 3 → ປະເພດທຳອິດທີ່ paid ກົງກັນ;
  * ຍັງບໍ່ໄດ້ຕັ້ງປະເພດຈັກອັນ = ແບບເກົ່າ (ບໍ່ມີປະເພດ, ບໍ່ມີຂີດຈຳກັດ)
  */
-const resolveType = async (body) => {
+const resolveType = async (body, gender) => {
     if (body.leave_type_id !== undefined && body.leave_type_id !== null && body.leave_type_id !== "") {
         const type = await leaveType_1.default.findOne({ where: { _uuid: Number(body.leave_type_id) || 0, status: 1 } });
         return type ? { type, status: statusOfType(type) } : { error: "ບໍ່ພົບປະເພດການລາພັກ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ" };
@@ -160,7 +187,7 @@ const resolveType = async (body) => {
     const legacy = Number(body.leave_type);
     if (!LEAVE_TYPES.includes(legacy))
         return { error: "ກະລຸນາເລືອກປະເພດການລາພັກ" };
-    const type = await leaveType_1.default.findOne({ where: { status: 1, paid: legacy === workCalendar_1.PAID_LEAVE ? 1 : 0 }, order: TYPE_ORDER });
+    const type = await leaveType_1.default.findOne({ where: { status: 1, paid: legacy === workCalendar_1.PAID_LEAVE ? 1 : 0, gender: { [sequelize_1.Op.in]: [0, gender] } }, order: TYPE_ORDER });
     if (type)
         return { type, status: legacy };
     if (await leaveType_1.default.count({ where: { status: 1 } }))
@@ -201,6 +228,25 @@ const usageOf = async (employeeId, typeId, year, exceptId, t) => {
     return { used, pending };
 };
 /**
+ * ສິດຕໍ່ປີຂອງພະນັກງານສຳລັບແຕ່ລະປະເພດ: ຕັ້ງສະເພາະຄົນ (tbl_leave_quota) ກ່ອນ, ບໍ່ມີ = ຂອງປະເພດ (null / 0 = ບໍ່ຈຳກັດ).
+ * ປີທີ່ເລີ່ມວຽກ = ຕາມເດືອນທີ່ເຫຼືອຂອງປີ (ນັບເດືອນທີ່ເລີ່ມ) ປັດເປັນມື້ເຕັມ — ເຊັ່ນ ເຕັມປີ 15 ມື້, ເລີ່ມເດືອນ 7 = 8 ມື້
+ */
+const limitsOf = async (employeeId, year, t) => {
+    const [quotas, employee] = await Promise.all([
+        leaveQuota_1.default.findAll({ where: { employee_id: employeeId }, attributes: ["leave_type_id", "days"], raw: true, transaction: t }),
+        employee_1.default.findByPk(employeeId, { attributes: ["start_date"], raw: true, transaction: t }),
+    ]);
+    const own = new Map(quotas.map((q) => [Number(q.leave_type_id), Number(q.days)]));
+    const start = String(employee?.start_date ?? "");
+    const months = start.slice(0, 4) === year ? 13 - Number(start.slice(5, 7)) : 12;
+    return (type) => {
+        const custom = own.has(type._uuid);
+        const full = custom ? own.get(type._uuid) : Number(type.max_per_year) || null;
+        const limit = full === null || months >= 12 ? full : Math.round((full * Math.max(0, months)) / 12);
+        return { full, limit, custom, prorated: limit !== full };
+    };
+};
+/**
  * ກວດຂີດຈຳກັດຂອງປະເພດ — ຕໍ່ຄັ້ງ: ມື້ເຮັດວຽກທັງໝົດຂອງຄຳຂໍ; ຕໍ່ປີ: ອະນຸມັດ + ລໍຖ້າ + ຄຳຂໍນີ້ (ແຍກຕາມປີເມື່ອຂ້າມປີ).
  * ຜ່ານ = null, ບໍ່ຜ່ານ = ຂໍ້ຄວາມບອກມື້ທີ່ເຫຼືອ
  */
@@ -211,40 +257,116 @@ const quotaError = async (employeeId, type, dates, exceptId, t) => {
     if (perRequest && dates.length > perRequest) {
         return `${type.name} ລາໄດ້ບໍ່ເກີນ ${perRequest} ມື້ຕໍ່ຄັ້ງ (ຄຳຂໍນີ້ ${dates.length} ມື້ເຮັດວຽກ)`;
     }
-    const perYear = Number(type.max_per_year) || 0;
-    if (!perYear)
-        return null;
     const byYear = new Map();
     dates.forEach((d) => byYear.set(d.slice(0, 4), (byYear.get(d.slice(0, 4)) ?? 0) + 1));
     for (const [year, count] of byYear) {
+        const { limit } = (await limitsOf(employeeId, year, t))(type);
+        if (limit === null)
+            continue;
         const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId, t);
-        const left = Math.max(0, perYear - used - pending);
+        const left = Math.max(0, limit - used - pending);
         if (count > left) {
-            return `${type.name} ປີ ${year} ລາໄດ້ ${perYear} ມື້ — ໃຊ້ແລ້ວ ${used} ມື້${pending ? `, ລໍຖ້າອະນຸມັດ ${pending} ມື້` : ""}, ເຫຼືອ ${left} ມື້ (ຄຳຂໍນີ້ ${count} ມື້)`;
+            return `${type.name} ປີ ${year} ລາໄດ້ ${limit} ມື້ — ໃຊ້ແລ້ວ ${used} ມື້${pending ? `, ລໍຖ້າອະນຸມັດ ${pending} ມື້` : ""}, ເຫຼືອ ${left} ມື້ (ຄຳຂໍນີ້ ${count} ມື້)`;
         }
     }
     return null;
 };
-/** ທຸກປະເພດທີ່ໃຊ້ງານ + ມື້ທີ່ໃຊ້/ລໍຖ້າ/ເຫຼືອ ຂອງພະນັກງານໃນປີ (remaining null = ບໍ່ຈຳກັດ) */
+/**
+ * ທຸກປະເພດທີ່ໃຊ້ງານ + ມື້ທີ່ໃຊ້/ລໍຖ້າ/ເຫຼືອ ຂອງພະນັກງານໃນປີ (remaining null = ບໍ່ຈຳກັດ).
+ * max_per_year = ສິດຂອງຄົນນີ້ປີນີ້ (ຕັ້ງສະເພາະ / ຕາມເດືອນ — ຊື່ເກົ່າ ໃຫ້ app / ເວັບເດີມໃຊ້ໄດ້),
+ * full_per_year = ສິດເຕັມປີ, default_per_year = ຂອງປະເພດ, custom = HR ຕັ້ງສະເພາະ, prorated = ປີເລີ່ມວຽກ (ຕາມເດືອນ)
+ */
 const balancesOf = async (employeeId, year, exceptId) => {
-    const types = await leaveType_1.default.findAll({ where: { status: 1 }, order: TYPE_ORDER });
+    const [all, limitOf, person] = await Promise.all([
+        leaveType_1.default.findAll({ where: { status: 1 }, order: TYPE_ORDER }),
+        limitsOf(employeeId, year),
+        employee_1.default.findByPk(employeeId, { attributes: ["gender"], raw: true }),
+    ]);
+    // ສະເພາະປະເພດທີ່ເພດຂອງຄົນນີ້ລາໄດ້ (app, ຟອມອະນຸມັດ, ສິດວັນລາ)
+    const types = all.filter((type) => fitsGender(type, person?.gender));
     return Promise.all(types.map(async (type) => {
         const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId);
-        const perYear = Number(type.max_per_year) || 0;
+        const { full, limit, custom, prorated } = limitOf(type);
         return {
             _uuid: type._uuid,
             name: type.name,
             paid: Number(type.paid),
             description: type.description,
-            max_per_year: type.max_per_year,
+            max_per_year: limit,
+            full_per_year: full,
+            default_per_year: type.max_per_year,
+            custom,
+            prorated,
             max_per_request: type.max_per_request,
             used,
             pending,
-            remaining: perYear ? Math.max(0, perYear - used - pending) : null,
+            remaining: limit === null ? null : Math.max(0, limit - used - pending),
         };
     }));
 };
 exports.balancesOf = balancesOf;
+/** GET /leave/quota/:id?year= (:id = ພະນັກງານ) — ສິດແຕ່ລະປະເພດຂອງຄົນນີ້ (ຂອງປະເພດ / ຕັ້ງສະເພາະ / ຕາມເດືອນ) + ໃຊ້ / ລໍຖ້າ / ເຫຼືອ */
+const getLeaveQuota = async (req, res) => {
+    try {
+        const id = Number((0, bansiHelpers_1.decodeId)(req));
+        const employee = await employee_1.default.findByPk(id, { attributes: ["_uuid", "start_date"], raw: true });
+        if (!employee) {
+            res.status(404).json({ message: "ບໍ່ພົບພະນັກງານ" });
+            return;
+        }
+        const year = yearOf(req.query.year);
+        res.status(200).json({ year, start_date: employee.start_date, data: await (0, exports.balancesOf)(id, year) });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting leave quota");
+    }
+};
+exports.getLeaveQuota = getLeaveQuota;
+/**
+ * PUT /leave/quota/:id { quotas: [{ leave_type_id, days }] } — HR ຕັ້ງສິດສະເພາະຄົນ (ມື້ເຮັດວຽກຕໍ່ປີເຕັມ, 0–366);
+ * days null / "" = ລຶບ (ກັບໄປໃຊ້ຂອງປະເພດ). ຄືນສິດຂອງປີນີ້ທັງໝົດ
+ */
+const setLeaveQuota = async (req, res) => {
+    const t = await leaveQuota_1.default.sequelize.transaction();
+    const fail = async (code, message) => {
+        await t.rollback();
+        res.status(code).json({ message });
+    };
+    try {
+        const id = Number((0, bansiHelpers_1.decodeId)(req));
+        if (!(await employee_1.default.findByPk(id, { attributes: ["_uuid"], transaction: t })))
+            return fail(404, "ບໍ່ພົບພະນັກງານ");
+        const list = Array.isArray(req.body?.quotas) ? req.body.quotas : [];
+        const types = new Set((await leaveType_1.default.findAll({ attributes: ["_uuid"], raw: true, transaction: t })).map((x) => Number(x._uuid)));
+        const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
+        for (const q of list) {
+            const typeId = Number(q?.leave_type_id);
+            if (!types.has(typeId))
+                return fail(400, "ບໍ່ພົບປະເພດການລາພັກ");
+            const raw = q?.days;
+            if (raw === null || raw === undefined || raw === "") {
+                await leaveQuota_1.default.destroy({ where: { employee_id: id, leave_type_id: typeId }, transaction: t });
+                continue;
+            }
+            const days = Number(raw);
+            if (!Number.isInteger(days) || days < 0 || days > 366)
+                return fail(400, "ສິດວັນລາຕ້ອງເປັນຈຳນວນເຕັມ 0–366 ມື້");
+            const row = await leaveQuota_1.default.findOne({ where: { employee_id: id, leave_type_id: typeId }, transaction: t });
+            if (row)
+                await row.update({ days, updatedbyid: actor, updatedAt: new Date() }, { transaction: t });
+            else
+                await leaveQuota_1.default.create({ employee_id: id, leave_type_id: typeId, days, createdbyid: actor, updatedbyid: actor }, { transaction: t });
+        }
+        await t.commit();
+        const year = yearOf(req.query.year);
+        res.status(200).json({ message: "ບັນທຶກສິດວັນລາແລ້ວ", year, data: await (0, exports.balancesOf)(id, year) });
+    }
+    catch (error) {
+        await t.rollback();
+        (0, bansiHelpers_1.sendError)(res, error, "Error setting leave quota");
+    }
+};
+exports.setLeaveQuota = setLeaveQuota;
 /** ຄຳຂໍທີ່ລໍຖ້າ / ອະນຸມັດແລ້ວ ທີ່ຊ້ອນກັບຊ່ວງນີ້ */
 const overlappingLeave = (employeeId, start, end, t) => leaveRequest_1.default.findOne({
     where: {
@@ -282,7 +404,7 @@ const getMyLeaves = async (req, res) => {
         const [rows, types] = await Promise.all([
             leaveRequest_1.default.findAll({
                 where: { employee_id: self.employee._uuid, ...overlapsYear(year) },
-                include: [typeInclude],
+                include: [typeInclude, exports.leaveFileInclude],
                 order: [["start_date", "DESC"], ["_uuid", "DESC"]],
             }),
             (0, exports.balancesOf)(self.employee._uuid, year),
@@ -309,21 +431,30 @@ const getMyLeaves = async (req, res) => {
 exports.getMyLeaves = getMyLeaves;
 /**
  * POST /leave/me { leave_type_id, start_date, end_date?, reason } — ສົ່ງຄຳຂໍລາພັກ (ລໍຖ້າ HR ອະນຸມັດ);
- * app ລຸ້ນເກົ່າສົ່ງ leave_type: 2 | 3 ແທນ leave_type_id ໄດ້ (ເບິ່ງ resolveType)
+ * app ລຸ້ນເກົ່າສົ່ງ leave_type: 2 | 3 ແທນ leave_type_id ໄດ້ (ເບິ່ງ resolveType).
+ * ແນບໃບລາ = multipart (ຟີວດຽວກັນ + files ≤ 5: ຮູບ / PDF) — ບໍ່ສຳເລັດ = ລຶບໄຟລ໌ທີ່ອັບໂຫຼດມາ
  */
 const createMyLeave = async (req, res) => {
+    const uploads = req.files ?? [];
+    const discard = () => uploads.forEach((f) => (0, hrHelpers_1.removeQuietly)(f.path));
     try {
         const self = await (0, attendanceController_1.selfEmployee)(req);
         if ("code" in self) {
+            discard();
             res.status(self.code).json({ message: self.message });
             return;
         }
         const { employee } = self;
         const body = req.body || {};
-        const fail = (message) => res.status(400).json({ message });
-        const resolved = await resolveType(body);
+        const fail = (message) => {
+            discard();
+            return res.status(400).json({ message });
+        };
+        const resolved = await resolveType(body, Number(employee.gender));
         if ("error" in resolved)
             return fail(resolved.error);
+        if (!fitsGender(resolved.type, employee.gender))
+            return fail(onlyFor(resolved.type));
         const range = parseRange(body);
         if ("error" in range)
             return fail(range.error);
@@ -343,17 +474,37 @@ const createMyLeave = async (req, res) => {
             return fail(overlapMessage(overlap));
         // ເກີນຂີດຈຳກັດຂອງປະເພດ = ຍັງຂໍໄດ້ (ແຈ້ງພະນັກງານ) — HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ / ບໍ່ໄດ້ເງິນເດືອນ
         const overQuota = await quotaError(employee._uuid, resolved.type, workdays);
-        const row = await leaveRequest_1.default.create({
-            employee_id: employee._uuid,
-            leave_type_id: resolved.type?._uuid ?? null,
-            leave_type: resolved.status,
-            start_date: range.start,
-            end_date: range.end,
-            days: workdays.length,
-            reason,
-            status: PENDING,
+        const row = await leaveRequest_1.default.sequelize.transaction(async (t) => {
+            const created = await leaveRequest_1.default.create({
+                employee_id: employee._uuid,
+                leave_type_id: resolved.type?._uuid ?? null,
+                leave_type: resolved.status,
+                start_date: range.start,
+                end_date: range.end,
+                days: workdays.length,
+                reason,
+                status: PENDING,
+            }, { transaction: t });
+            if (uploads.length) {
+                await leaveFile_1.default.bulkCreate(uploads.map((f) => ({
+                    leave_id: created._uuid,
+                    file_name: f.filename,
+                    original_name: (0, hrHelpers_1.originalNameOf)(f).slice(0, 255),
+                    // app ສົ່ງ application/octet-stream — ເອົາຕາມນາມສະກຸນ (multer ກວດນາມສະກຸນແລ້ວ)
+                    mime_type: LEAVE_MIME[path_1.default.extname(f.originalname).toLowerCase()] ?? f.mimetype?.slice(0, 100) ?? null,
+                    file_size: f.size,
+                    created_by_employee_id: employee._uuid,
+                })), { transaction: t });
+            }
+            return created;
         });
-        const saved = await leaveRequest_1.default.findByPk(row._uuid, { include: [typeInclude] });
+        const saved = await leaveRequest_1.default.findByPk(row._uuid, { include: [typeInclude, exports.leaveFileInclude] });
+        await (0, approvers_1.notifyApprovers)("leave", employee._uuid, row._uuid, `🗓️ ${(0, approvers_1.fullName)(employee)} ຂໍລາພັກ`, [
+            [resolved.type?.name, `${dayText(range.start)} – ${dayText(range.end)} · ${workdays.length} ມື້`].filter(Boolean).join(" · "),
+            overQuota ? "⚠️ ເກີນສິດລາຂອງປະເພດນີ້" : null,
+            uploads.length ? `📎 ແນບໃບລາ ${uploads.length} ໄຟລ໌` : null,
+            reason,
+        ].filter(Boolean).join("\n"));
         res.status(200).json({
             message: overQuota
                 ? `ສົ່ງຄຳຂໍລາພັກແລ້ວ — ${resolved.type?.name ?? "ປະເພດນີ້"} ລາຄົບສິດແລ້ວ, HR ຈະພິຈາລະນາວ່າໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ`
@@ -363,6 +514,7 @@ const createMyLeave = async (req, res) => {
         });
     }
     catch (error) {
+        discard();
         (0, bansiHelpers_1.sendError)(res, error, "Error creating leave request");
     }
 };
@@ -392,6 +544,99 @@ const cancelMyLeave = async (req, res) => {
     }
 };
 exports.cancelMyLeave = cancelMyLeave;
+// ================= ໃບລາ (ໄຟລ໌ແນບ)
+const FILE_LINK_TTL = "10m";
+/** ກະແຈຂອງລິ້ງເປີດໃບລາ — ແຍກຈາກ login ແລະ ລິ້ງເອກະສານຂອງວຽກ */
+const fileLinkSecret = () => (0, crypto_1.createHmac)("sha256", jwtConfig_1.adminJwtConfig.secret).update("leave-file-link").digest("hex");
+/** ເປີດໃນ browser / app ເລີຍ (inline) — ຊື່ເດີມພາສາລາວຜ່ານ filename* */
+const sendLeaveFile = (res, file) => {
+    const filePath = file && path_1.default.join(hrHelpers_1.LEAVE_FILE_DIR, path_1.default.basename(file.file_name));
+    if (!file || !filePath || !fs_1.default.existsSync(filePath)) {
+        res.status(404).json({ message: "ບໍ່ພົບໄຟລ໌" });
+        return;
+    }
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
+    res.sendFile(filePath);
+};
+/** ໃບລາທີ່ຄົນໃນ app ເປີດໄດ້: ຂອງຕົນເອງ ຫຼື ມີສິດອະນຸມັດລາພັກ (HR ຕິກໃນຟອມຜູ້ໃຊ້) — ບໍ່ມີສິດ = null (ຕອບ 404 ຄືບໍ່ມີ) */
+const openableFile = async (req) => {
+    const self = await (0, attendanceController_1.selfEmployee)(req);
+    if ("code" in self)
+        return { code: self.code, message: self.message };
+    const file = await leaveFile_1.default.findByPk(Number((0, bansiHelpers_1.decodeId)(req)) || 0, {
+        include: [{ model: leaveRequest_1.default, as: "leave", attributes: ["employee_id"] }],
+    });
+    if (!file)
+        return null;
+    if (Number(file.leave?.employee_id) === Number(self.employee._uuid))
+        return file;
+    const approver = await userModel_1.default.findOne({ where: { employee_id: self.employee._uuid, status: 1, approve_leave: 1 }, attributes: ["user_uuid"] });
+    return approver ? file : null;
+};
+/** GET /leave/me/file/:id — ໄຟລ໌ໃບລາ (app ສະແດງຮູບໃນແອັບ) */
+const getMyLeaveFile = async (req, res) => {
+    try {
+        const file = await openableFile(req);
+        if (file && "code" in file) {
+            res.status(file.code).json({ message: file.message });
+            return;
+        }
+        sendLeaveFile(res, file);
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting leave file");
+    }
+};
+exports.getMyLeaveFile = getMyLeaveFile;
+/** GET /leave/me/file/:id/link — ລິ້ງຊົ່ວຄາວເປີດໃບລາໃນ browser ຂອງມືຖື (ເຊັ່ນ PDF) — path ຕໍ່ຈາກ /api */
+const getMyLeaveFileLink = async (req, res) => {
+    try {
+        const file = await openableFile(req);
+        if (file && "code" in file) {
+            res.status(file.code).json({ message: file.message });
+            return;
+        }
+        if (!file) {
+            res.status(404).json({ message: "ບໍ່ພົບໄຟລ໌" });
+            return;
+        }
+        const token = jsonwebtoken_1.default.sign({ file: file._uuid }, fileLinkSecret(), { algorithm: "HS256", expiresIn: FILE_LINK_TTL });
+        res.status(200).json({ url: `/leave/file/open/${token}` });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error creating leave file link");
+    }
+};
+exports.getMyLeaveFileLink = getMyLeaveFileLink;
+/** GET /leave/file/open/:token — public (ຢູ່ເທິງ verifyToken), ໃຊ້ໄດ້ພາຍໃນ FILE_LINK_TTL */
+const openLeaveFile = async (req, res) => {
+    try {
+        let fileId;
+        try {
+            fileId = Number(jsonwebtoken_1.default.verify(req.params.token, fileLinkSecret(), { algorithms: ["HS256"] }).file);
+        }
+        catch {
+            res.status(401).json({ message: "ລິ້ງໝົດອາຍຸແລ້ວ — ກົດເປີດໃບລາໃນແອັບອີກຄັ້ງ" });
+            return;
+        }
+        sendLeaveFile(res, await leaveFile_1.default.findByPk(fileId));
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error opening leave file");
+    }
+};
+exports.openLeaveFile = openLeaveFile;
+/** GET /leave/file/download/:id — HR ໃນເວັບ (ສິດດຽວກັບໜ້າຄຳຂໍລາພັກ) */
+const downloadLeaveFile = async (req, res) => {
+    try {
+        sendLeaveFile(res, await leaveFile_1.default.findByPk(Number((0, bansiHelpers_1.decodeId)(req)) || 0));
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error downloading leave file");
+    }
+};
+exports.downloadLeaveFile = downloadLeaveFile;
 // ================= HR
 /** POST /leave/fetch { status?, year? } — ຄຳຂໍຂອງທຸກຄົນ (ລໍຖ້າກ່ອນ, ໃໝ່ສຸດກ່ອນ) + ຈຳນວນຕາມສະຖານະຂອງປີ */
 const getLeaves = async (req, res) => {
@@ -402,7 +647,7 @@ const getLeaves = async (req, res) => {
         const [rows, counts] = await Promise.all([
             leaveRequest_1.default.findAll({
                 where: { ...overlapsYear(year), ...(STATUSES.includes(status) ? { status } : {}) },
-                include: [employeeInclude, typeInclude],
+                include: [employeeInclude, typeInclude, exports.leaveFileInclude],
                 order: [["status", "ASC"], ["start_date", "DESC"], ["_uuid", "DESC"]],
             }),
             leaveRequest_1.default.findAll({
@@ -482,6 +727,8 @@ const approveLeave = async (req, res) => {
         const employee = await employee_1.default.findByPk(row.employee_id, { transaction: t });
         if (!employee)
             return fail(400, "ບໍ່ພົບພະນັກງານ");
+        if (changed && type && !fitsGender(type, employee.gender))
+            return fail(400, onlyFor(type));
         const actor = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const result = await writeLeaveDays(employee, String(row.start_date), String(row.end_date), leaveType, row.reason, actor, t);
         if ("error" in result)

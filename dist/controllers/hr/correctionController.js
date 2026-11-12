@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.rejectCorrection = exports.approveCorrection = exports.getCorrections = exports.cancelMyCorrection = exports.createMyCorrection = exports.getMyCorrections = void 0;
+const approvers_1 = require("./approvers");
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const attendanceRequest_1 = __importDefault(require("../../models/attendanceRequest"));
@@ -127,6 +128,7 @@ const createMyCorrection = async (req, res) => {
         const row = await attendanceRequest_1.default.create({
             employee_id: me._uuid, work_date: date, check_in: checkIn, check_out: checkOut, reason, status: PENDING,
         });
+        await (0, approvers_1.notifyApprovers)("correction", me._uuid, row._uuid, `⏰ ${(0, approvers_1.fullName)(me)} ແຈ້ງລືມສະແກນ`, `${dayText(date)} · ຂໍ ${timesText(checkIn, checkOut)}\n${reason}`);
         res.status(200).json({ message: "ສົ່ງຄຳຮ້ອງແລ້ວ — ລໍຖ້າ HR ອະນຸມັດ", data: present(row) });
     }
     catch (error) {

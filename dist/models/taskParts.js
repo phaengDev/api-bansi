@@ -37,6 +37,11 @@ TaskProject.init({
     status: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     ...stamps(),
 }, { sequelize: database_1.default, modelName: "TaskProject", tableName: "tbl_task_project", timestamps: true });
+/**
+ * ຜູ້ຮັບຜິດຊອບວຽກ — is_lead = ຫົວໜ້າວຽກ (ມົງກຸດ). ຄວາມຄືບໜ້າ "ສ່ວນຂອງຕົນ" ທີ່ພະນັກງານອັບເດດເອງໃນ app:
+ * status 1 ຍັງບໍ່ເລີ່ມ, 2 ກຳລັງເຮັດ, 3 ສຳເລັດ; progress 0–100 %; active_at = ຄັ້ງລ່າສຸດທີ່ຄົນນີ້ເຮັດຫຍັງໃນວຽກນີ້
+ * (ອັບເດດຄວາມຄືບໜ້າ, ໝາຍລາຍການຍ່ອຍ, ຄອມເມັນ) — null = ຍັງບໍ່ເຄີຍ
+ */
 class TaskAssignee extends sequelize_1.Model {
 }
 exports.TaskAssignee = TaskAssignee;
@@ -45,6 +50,9 @@ TaskAssignee.init({
     task_id: { type: sequelize_1.DataTypes.INTEGER, allowNull: false },
     employee_id: { type: sequelize_1.DataTypes.INTEGER, allowNull: false },
     is_lead: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    status: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    progress: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    active_at: sequelize_1.DataTypes.DATE,
     ...stamps(),
 }, { sequelize: database_1.default, modelName: "TaskAssignee", tableName: "tbl_task_assignee", timestamps: true });
 class TaskItem extends sequelize_1.Model {
@@ -82,6 +90,7 @@ TaskFile.init({
     createdbyid: sequelize_1.DataTypes.INTEGER,
     ...stamps(),
 }, { sequelize: database_1.default, modelName: "TaskFile", tableName: "tbl_task_file", timestamps: true });
+/** ຄອມເມັນຂອງວຽກ — to_ids = ພະນັກງານທີ່ຜູ້ມອບໝາຍເລືອກແຈ້ງເຖິງ ("12,15"); null = ແຈ້ງທຸກຄົນ. ທຸກຄົນໃນວຽກເຫັນຄອມເມັນຄືກັນ */
 class TaskComment extends sequelize_1.Model {
 }
 exports.TaskComment = TaskComment;
@@ -91,6 +100,7 @@ TaskComment.init({
     body: { type: sequelize_1.DataTypes.TEXT, allowNull: false },
     user_id: sequelize_1.DataTypes.INTEGER,
     employee_id: sequelize_1.DataTypes.INTEGER,
+    to_ids: sequelize_1.DataTypes.STRING(255),
     ...stamps(),
 }, { sequelize: database_1.default, modelName: "TaskComment", tableName: "tbl_task_comment", timestamps: true });
 class TaskLog extends sequelize_1.Model {

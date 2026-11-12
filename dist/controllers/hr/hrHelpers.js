@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.originalNameOf = exports.removeQuietly = exports.taskFileUpload = exports.TASK_FILE_DIR = exports.documentUpload = exports.receiptUpload = exports.RECEIPT_DIR = exports.uniformPhotoUpload = exports.companyLogoUpload = exports.profileUpload = exports.asJson = exports.storageIn = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
+exports.originalNameOf = exports.removeQuietly = exports.leaveFileUpload = exports.LEAVE_FILE_DIR = exports.taskFileUpload = exports.TASK_FILE_DIR = exports.documentUpload = exports.receiptUpload = exports.RECEIPT_DIR = exports.uniformPhotoUpload = exports.companyLogoUpload = exports.profileUpload = exports.asJson = exports.storageIn = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -84,6 +84,10 @@ exports.documentUpload = documentsIn(exports.DOCUMENT_DIR, DOCUMENT_TYPES, "ອ�
 /** ເອກະສານຄັດຕິດຂອງວຽກ (ບໍ່ຢູ່ໃຕ້ /image) — ຄືກັບເອກະສານພະນັກງານ + PowerPoint */
 exports.TASK_FILE_DIR = path_1.default.join(__dirname, "..", "..", "private", "task-files");
 exports.taskFileUpload = documentsIn(exports.TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|docx?|xlsx?|pptx?)$/i, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel, PowerPoint");
+/** ໃບລາຂອງຄຳຂໍລາພັກ (ສະແກນ / ຖ່າຍຮູບ / PDF) — ນອກ uploads ຄືເອກະສານ; field "files" ສູງສຸດ 5 ໄຟລ໌.
+ *  multer ຂ້າມ request ທີ່ບໍ່ແມ່ນ multipart (app ລຸ້ນເກົ່າສົ່ງ JSON ໄດ້ຄືເກົ່າ) */
+exports.LEAVE_FILE_DIR = path_1.default.join(__dirname, "..", "..", "private", "leave-files");
+exports.leaveFileUpload = documentsIn(exports.LEAVE_FILE_DIR, /\.(jpe?g|png|webp|pdf)$/i, "ໃບລາຕ້ອງເປັນຮູບ (JPG, PNG, WEBP) ຫຼື PDF");
 /** ລຶບໄຟລ໌ໂດຍບໍ່ສົນວ່າມີຢູ່ຫຼືບໍ່ (ໃຊ້ຕອນ rollback / ລຶບຂໍ້ມູນ) */
 const removeQuietly = (filePath) => {
     fs_1.default.promises.unlink(filePath).catch(() => undefined);

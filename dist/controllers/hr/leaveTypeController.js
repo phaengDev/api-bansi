@@ -44,6 +44,8 @@ const parseInput = async (body, row) => {
     return {
         name,
         paid: flag("paid", row ? Number(row.paid) : 1),
+        // ໃຜລາໄດ້: 0 ທຸກຄົນ, 1 ສະເພາະຊາຍ, 2 ສະເພາະຍິງ
+        gender: has("gender") ? ([0, 1, 2].includes(Number(body.gender)) ? Number(body.gender) : 0) : row ? Number(row.gender ?? 0) : 0,
         max_per_year: perYear,
         max_per_request: perRequest,
         description: has("description") ? text(body.description, 255) : row?.description ?? null,

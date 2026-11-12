@@ -183,18 +183,23 @@ const writeLeaveDays = async (
 
 const statusOfType = (type: LeaveType) => (Number(type.paid) === 1 ? PAID_LEAVE : UNPAID_LEAVE);
 
+/** ປະເພດນີ້ພະນັກງານເພດນີ້ລາໄດ້ບໍ (gender 0 = ທຸກຄົນ; 1 ຊາຍ, 2 ຍິງ ຄື tbl_employee.gender) */
+const fitsGender = (type: { gender?: unknown } | null | undefined, gender: unknown) =>
+  !type || !Number(type.gender) || Number(type.gender) === Number(gender);
+const onlyFor = (type: LeaveType) => `"${type.name}" ລາໄດ້ສະເພາະພະນັກງານ${Number(type.gender) === 2 ? "ຍິງ" : "ຊາຍ"}`;
+
 /**
  * ປະເພດທີ່ພະນັກງານເລືອກ: leave_type_id (ຕ້ອງໃຊ້ງານຢູ່). app ລຸ້ນເກົ່າສົ່ງແຕ່ leave_type 2 | 3 → ປະເພດທຳອິດທີ່ paid ກົງກັນ;
  * ຍັງບໍ່ໄດ້ຕັ້ງປະເພດຈັກອັນ = ແບບເກົ່າ (ບໍ່ມີປະເພດ, ບໍ່ມີຂີດຈຳກັດ)
  */
-const resolveType = async (body: any): Promise<{ type: LeaveType | null; status: number } | { error: string }> => {
+const resolveType = async (body: any, gender: number): Promise<{ type: LeaveType | null; status: number } | { error: string }> => {
   if (body.leave_type_id !== undefined && body.leave_type_id !== null && body.leave_type_id !== "") {
     const type = await LeaveType.findOne({ where: { _uuid: Number(body.leave_type_id) || 0, status: 1 } });
     return type ? { type, status: statusOfType(type) } : { error: "ບໍ່ພົບປະເພດການລາພັກ ຫຼື ປະເພດນີ້ປິດໃຊ້ງານແລ້ວ" };
   }
   const legacy = Number(body.leave_type);
   if (!LEAVE_TYPES.includes(legacy)) return { error: "ກະລຸນາເລືອກປະເພດການລາພັກ" };
-  const type = await LeaveType.findOne({ where: { status: 1, paid: legacy === PAID_LEAVE ? 1 : 0 }, order: TYPE_ORDER });
+  const type = await LeaveType.findOne({ where: { status: 1, paid: legacy === PAID_LEAVE ? 1 : 0, gender: { [Op.in]: [0, gender] } }, order: TYPE_ORDER });
   if (type) return { type, status: legacy };
   if (await LeaveType.count({ where: { status: 1 } })) return { error: "ກະລຸນາອັບເດດ app ແລ້ວເລືອກປະເພດການລາພັກ" };
   return { type: null, status: legacy };
@@ -282,7 +287,13 @@ const quotaError = async (employeeId: number, type: LeaveType | null, dates: str
  * full_per_year = ສິດເຕັມປີ, default_per_year = ຂອງປະເພດ, custom = HR ຕັ້ງສະເພາະ, prorated = ປີເລີ່ມວຽກ (ຕາມເດືອນ)
  */
 export const balancesOf = async (employeeId: number, year: string, exceptId?: number) => {
-  const [types, limitOf] = await Promise.all([LeaveType.findAll({ where: { status: 1 }, order: TYPE_ORDER }), limitsOf(employeeId, year)]);
+  const [all, limitOf, person] = await Promise.all([
+    LeaveType.findAll({ where: { status: 1 }, order: TYPE_ORDER }),
+    limitsOf(employeeId, year),
+    Employee.findByPk(employeeId, { attributes: ["gender"], raw: true }) as Promise<any>,
+  ]);
+  // ສະເພາະປະເພດທີ່ເພດຂອງຄົນນີ້ລາໄດ້ (app, ຟອມອະນຸມັດ, ສິດວັນລາ)
+  const types = all.filter((type) => fitsGender(type, person?.gender));
   return Promise.all(types.map(async (type) => {
     const { used, pending } = await usageOf(employeeId, type._uuid, year, exceptId);
     const { full, limit, custom, prorated } = limitOf(type);
@@ -447,8 +458,9 @@ export const createMyLeave = async (req: Request, res: Response) => {
       return res.status(400).json({ message });
     };
 
-    const resolved = await resolveType(body);
+    const resolved = await resolveType(body, Number(employee.gender));
     if ("error" in resolved) return fail(resolved.error);
+    if (!fitsGender(resolved.type, employee.gender)) return fail(onlyFor(resolved.type!));
     const range = parseRange(body);
     if ("error" in range) return fail(range.error);
     const reason = text(body.reason);
@@ -706,6 +718,7 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     if (!LEAVE_TYPES.includes(leaveType)) return fail(400, "ປະເພດການລາພັກບໍ່ຖືກຕ້ອງ");
     const employee: any = await Employee.findByPk(row.employee_id, { transaction: t });
     if (!employee) return fail(400, "ບໍ່ພົບພະນັກງານ");
+    if (changed && type && !fitsGender(type, employee.gender)) return fail(400, onlyFor(type));
 
     const actor = Number(actorOf(req)) || null;
     const result = await writeLeaveDays(employee, String(row.start_date), String(row.end_date), leaveType, row.reason, actor, t);

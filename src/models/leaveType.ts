@@ -7,12 +7,15 @@ import { autoSync } from "../utils/autoSync";
  * paid: 1 ໄດ້ເງິນເດືອນ (ອະນຸມັດແລ້ວບັນທຶກ tbl_attendance status 2), 0 ບໍ່ໄດ້ (status 3).
  * max_per_year / max_per_request = ມື້ເຮັດວຽກສູງສຸດຕໍ່ປີ / ຕໍ່ຄັ້ງ, null = ບໍ່ຈຳກັດ —
  * ນັບຄຳຂໍທີ່ລໍຖ້າ + ອະນຸມັດແລ້ວ — ເກີນ = ຍັງຂໍໄດ້ (ແຈ້ງເຕືອນ), HR ຕັດສິນ ໄດ້/ບໍ່ໄດ້ເງິນເດືອນ ຕອນອະນຸມັດ.
- * status: 1 ໃຊ້ງານ, 0 ປິດ (ພະນັກງານເລືອກບໍ່ໄດ້ ແຕ່ຄຳຂໍເກົ່າຍັງອ້າງອີງໄດ້)
+ * status: 1 ໃຊ້ງານ, 0 ປິດ (ພະນັກງານເລືອກບໍ່ໄດ້ ແຕ່ຄຳຂໍເກົ່າຍັງອ້າງອີງໄດ້).
+ * gender = ໃຜລາໄດ້: 0 ທຸກຄົນ, 1 ສະເພາະຊາຍ, 2 ສະເພາະຍິງ (ລະຫັດດຽວກັບ tbl_employee.gender) — ເຊັ່ນ ລາເກີດລູກ = ສະເພາະຍິງ;
+ * ພະນັກງານເຫັນ / ຂໍໄດ້ສະເພາະປະເພດທີ່ກົງກັບເພດຂອງຕົນ
  */
 class LeaveType extends Model {
   public _uuid!: number;
   public name!: string;
   public paid!: number;
+  public gender!: number;
   public max_per_year!: number | null;
   public max_per_request!: number | null;
   public description!: string | null;
@@ -39,6 +42,11 @@ LeaveType.init(
       type: DataTypes.TINYINT,
       allowNull: false,
       defaultValue: 1
+    },
+    gender: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 0
     },
     max_per_year: DataTypes.INTEGER,
     max_per_request: DataTypes.INTEGER,

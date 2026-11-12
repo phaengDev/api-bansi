@@ -55,6 +55,7 @@ const resumeController_1 = require("../controllers/hr/resumeController");
 const correctionController_1 = require("../controllers/hr/correctionController");
 const hrHelpers_1 = require("../controllers/hr/hrHelpers");
 const advanceController_1 = require("../controllers/hr/advanceController");
+const approvalController_1 = require("../controllers/hr/approvalController");
 const hrSummaryController_1 = require("../controllers/hr/hrSummaryController");
 const taskController_1 = require("../controllers/hr/taskController");
 const birthdayController_1 = require("../controllers/hr/birthdayController");
@@ -71,6 +72,8 @@ router.post("/app/otp/verify", appAuthController_1.verifyAppOtp);
 router.post("/app-release/publish", appReleaseController_1.requireReleaseKey, appReleaseController_1.apkUpload, appReleaseController_1.createAppRelease);
 // app ພະນັກງານເປີດເອກະສານຂອງວຽກໃນ browser — ລິ້ງເຊັນຊົ່ວຄາວແທນ login (ອອກໂດຍ GET /task/me/file/:id)
 router.get("/task/file/open/:token", taskController_1.openTaskFile);
+// ໃບລາທີ່ແນບກັບຄຳຂໍລາພັກ — ລິ້ງເຊັນຊົ່ວຄາວ (ອອກໂດຍ GET /leave/me/file/:id/link)
+router.get("/leave/file/open/:token", leaveController_1.openLeaveFile);
 router.get("/user/type", userController_1.getTypeUser);
 router.get("/currency", currencyController_1.getcurrency);
 router.use(auth_1.verifyToken);
@@ -368,10 +371,16 @@ router.post("/app/device-token", notificationController_1.registerDeviceToken);
 router.post("/notification/announce", (0, permission_1.requirePermission)("creates"), notificationController_1.announce);
 // ========= ຄຳຂໍລາພັກ — /me ສຳລັບ app ມືຖືຂອງພະນັກງານ; HR (ຕ້ອງມີສິດແກ້ໄຂ ທັງເບິ່ງລາຍການ) ອະນຸມັດ = ບັນທຶກລາພັກລົງການເຂົ້າວຽກ
 router.get("/leave/me", leaveController_1.getMyLeaves);
-router.post("/leave/me", leaveController_1.createMyLeave);
+router.post("/leave/me", hrHelpers_1.leaveFileUpload, leaveController_1.createMyLeave);
 router.put("/leave/me/cancel/:id", leaveController_1.cancelMyLeave);
+// ໃບລາທີ່ແນບ — ເຈົ້າຂອງ + ຜູ້ມີສິດອະນຸມັດລາພັກ (app); HR ເປີດໃນເວັບ
+router.get("/leave/me/file/:id", leaveController_1.getMyLeaveFile);
+router.get("/leave/me/file/:id/link", leaveController_1.getMyLeaveFileLink);
+router.get("/leave/file/download/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.downloadLeaveFile);
 router.post("/leave/fetch", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaves);
 router.post("/leave/balance", (0, permission_1.requirePermission)("updates"), leaveController_1.getLeaveBalance);
+router.get("/leave/quota/:id", leaveController_1.getLeaveQuota);
+router.put("/leave/quota/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.setLeaveQuota);
 router.put("/leave/approve/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.approveLeave);
 router.put("/leave/reject/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.rejectLeave);
 router.put("/leave/revoke/:id", (0, permission_1.requirePermission)("updates"), leaveController_1.revokeLeave);
@@ -392,6 +401,10 @@ router.put("/correction/reject/:id", (0, permission_1.requirePermission)("update
 router.get("/advance/me", advanceController_1.getMyAdvances);
 router.post("/advance/me", advanceController_1.createMyAdvance);
 router.put("/advance/me/cancel/:id", advanceController_1.cancelMyAdvance);
+// ອະນຸມັດຜ່ານ app — ພະນັກງານທີ່ຜູກບັນຊີຜູ້ໃຊ້ ແລະ ໄດ້ສິດແຕ່ລະປະເພດ (ສິດກວດໃນ controller)
+router.get("/approve/me", approvalController_1.getMyApprovals);
+router.get("/approve/me/:kind", approvalController_1.getMyApprovalList);
+router.put("/approve/me/:kind/:id/:action", approvalController_1.decideMyApproval);
 router.post("/advance/fetch", (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvances);
 router.post("/advance/create", (0, permission_1.requirePermission)("creates"), advanceController_1.createAdvance);
 router.put("/advance/approve/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.approveAdvance);
@@ -406,6 +419,7 @@ router.get("/advance/:id", (0, permission_1.requirePermission)("updates"), advan
 // ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
 router.get("/task/me", taskController_1.getMyTasks);
 router.put("/task/me/item/:id", taskController_1.updateMyTaskItem);
+router.put("/task/me/progress/:id", taskController_1.updateMyTaskProgress);
 router.get("/task/me/file/:id", taskController_1.getMyTaskFileLink);
 router.get("/task/me/comment/:id", taskController_1.getMyTaskComments);
 router.post("/task/me/comment/:id", taskController_1.createMyTaskComment);

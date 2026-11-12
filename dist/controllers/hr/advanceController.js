@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.advancePendingCounts = exports.advanceBalanceOf = exports.closeAdvancesOfResigned = exports.AdvanceMismatch = exports.reversePayrollRepayments = exports.notifyAdvancesSettled = exports.applyPayrollRepayments = exports.deleteAdvanceRepayment = exports.repayAdvance = exports.updateAdvanceSchedule = exports.unpayAdvance = exports.payAdvance = exports.cancelAdvance = exports.rejectAdvance = exports.approveAdvance = exports.createAdvance = exports.getAdvance = exports.getAdvances = exports.cancelMyAdvance = exports.createMyAdvance = exports.getMyAdvances = void 0;
+const approvers_1 = require("./approvers");
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const salaryAdvance_1 = __importDefault(require("../../models/salaryAdvance"));
@@ -228,6 +229,7 @@ const createMyAdvance = async (req, res) => {
             status: PENDING,
             source: FROM_APP,
         });
+        await (0, approvers_1.notifyApprovers)("advance", employee._uuid, row._uuid, `💵 ${(0, approvers_1.fullName)(employee)} ຂໍເບີກເງິນລ່ວງໜ້າ`, `${kipText(amount)} · ຜ່ອນ ${installments} ເດືອນ\n${reason}`);
         res.status(200).json({ message: "ສົ່ງຄຳຂໍເບີກເງິນແລ້ວ — ລໍຖ້າ HR ອະນຸມັດ", data: present(row) });
     }
     catch (error) {
