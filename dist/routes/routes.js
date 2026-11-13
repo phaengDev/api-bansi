@@ -26,6 +26,11 @@ const expenseController_1 = require("../controllers/bansi/expenseController");
 const accountMovement_1 = require("../controllers/bansi/accountMovement");
 const docNumberingController_1 = require("../controllers/bansi/docNumberingController");
 const taxController_1 = require("../controllers/bansi/taxController");
+const accountSettingController_1 = require("../controllers/bansi/accountSettingController");
+const taxReportController_1 = require("../controllers/bansi/taxReportController");
+const fxRevalController_1 = require("../controllers/bansi/fxRevalController");
+const closingController_1 = require("../controllers/bansi/closingController");
+const fixedAssetController_1 = require("../controllers/bansi/fixedAssetController");
 const chartAccountController_1 = require("../controllers/bansi/chartAccountController");
 const journalController_1 = require("../controllers/bansi/journalController");
 const arapController_1 = require("../controllers/bansi/arapController");
@@ -89,8 +94,10 @@ router.post("/app/ai/chat", aiController_1.aiChat);
 router.post("/app/ai/speak", aiController_1.aiSpeak);
 // ສຽງເວົ້າ "ເຂົ້າວຽກຊ້າ / ອອກກ່ອນເວລາ … ນາທີ" (Gemini TTS, ສຽງຕາມເພດ, ເກັບ cache)
 router.get("/app/voice/attendance", voiceController_1.getAttendanceVoice);
-// ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
+// ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ — main = ສະເພາະເມນູທີ່ຜູ້ໃຊ້ໄດ້ສິດ (tbl_users.menu_access),
+// all = ທຸກເມນູ (ຟອມຜູ້ໃຊ້ຕິກສິດ)
 router.get("/menu/main", menuController_1.getMainMenus);
+router.get("/menu/all", menuController_1.getAllMainMenus);
 // ================= ສະກຸນເງິນ
 router.put("/currency/:id", currencyController_1.updateCurrency);
 router.post("/currency/mt", currencyController_1.updateCurrencyMt);
@@ -188,6 +195,42 @@ router.get("/tax/fetch", taxController_1.getTaxes);
 router.get("/tax/option", taxController_1.getTaxOption);
 router.post("/tax/create", taxController_1.createTax);
 router.put("/tax/:id", taxController_1.updateTax);
+// ລາຍງານອາກອນ (ຈາກສະໝຸດບັນຊີ)
+router.post("/tax/vat-report", taxReportController_1.getVatReport);
+router.post("/tax/profit-tax", taxReportController_1.getProfitTax);
+router.post("/tax/profit-tax/post", (0, permission_1.requirePermission)("creates", "updates"), taxReportController_1.postProfitTax);
+// ອາກອນຫັກ ນ ທີ່ຈ່າຍ
+router.post("/wht/fetch", taxReportController_1.getWithholdings);
+router.post("/wht/create", (0, permission_1.requirePermission)("creates"), taxReportController_1.createWithholding);
+router.put("/wht/cancel/:id", (0, permission_1.requirePermission)("deletes"), taxReportController_1.cancelWithholding);
+// ປັບມູນຄ່າເງິນຕາຕ່າງປະເທດທ້າຍເດືອນ
+router.post("/fx-reval/preview", fxRevalController_1.previewFxReval);
+router.post("/fx-reval/post", (0, permission_1.requirePermission)("creates"), fxRevalController_1.postFxReval);
+router.delete("/fx-reval/:month", (0, permission_1.requirePermission)("deletes"), fxRevalController_1.undoFxReval);
+// ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ — ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້, ນະໂຍບາຍບັນຊີ
+router.get("/account-setting", accountSettingController_1.getAccountSetting);
+router.put("/account-setting", (0, permission_1.requirePermission)("updates"), accountSettingController_1.updateAccountSetting);
+// ປິດງວດປະຈຳເດືອນ (lock_date) + ລາຍການກວດ, ກະທົບຍອດທະນາຄານ
+router.get("/period-close/status", closingController_1.getPeriodCloseStatus);
+router.put("/period-close/close", (0, permission_1.requirePermission)("updates"), closingController_1.closePeriod);
+router.put("/period-close/reopen", (0, permission_1.requirePermission)("updates"), closingController_1.reopenPeriod);
+router.get("/bank-rec/accounts", closingController_1.getBankRecAccounts);
+router.post("/bank-rec/history", closingController_1.getBankRecHistory);
+router.post("/bank-rec/open", closingController_1.openBankRec);
+router.post("/bank-rec/save", (0, permission_1.requirePermission)("creates", "updates"), closingController_1.saveBankRec);
+router.delete("/bank-rec/:id", (0, permission_1.requirePermission)("deletes"), closingController_1.deleteBankRec);
+// ຊັບສົມບັດຄົງທີ່ — ທະບຽນ, ຄ່າຫຼຸ້ຍຫ້ຽນລາຍເດືອນ, ຈຳໜ່າຍ, ຕາຕະລາງ
+router.get("/fixed-asset/fetch", fixedAssetController_1.getFixedAssets);
+router.get("/fixed-asset/runs", fixedAssetController_1.getDepreciationRuns);
+router.post("/fixed-asset/schedule", fixedAssetController_1.getAssetSchedule);
+router.post("/fixed-asset/depreciation-preview", fixedAssetController_1.previewDepreciation);
+router.post("/fixed-asset/depreciate", (0, permission_1.requirePermission)("creates"), fixedAssetController_1.runDepreciation);
+router.delete("/fixed-asset/depreciate/:month", (0, permission_1.requirePermission)("deletes"), fixedAssetController_1.undoDepreciation);
+router.post("/fixed-asset/create", (0, permission_1.requirePermission)("creates"), fixedAssetController_1.createFixedAsset);
+router.post("/fixed-asset/dispose/:id", (0, permission_1.requirePermission)("updates"), fixedAssetController_1.disposeFixedAsset);
+router.put("/fixed-asset/restore/:id", (0, permission_1.requirePermission)("updates"), fixedAssetController_1.restoreFixedAsset);
+router.put("/fixed-asset/:id", (0, permission_1.requirePermission)("updates"), fixedAssetController_1.updateFixedAsset);
+router.delete("/fixed-asset/:id", (0, permission_1.requirePermission)("deletes"), fixedAssetController_1.deleteFixedAsset);
 // ລະຫັດຜ່ານເຂົ້າເມນູ desktop ບັນຊີ (tbl_main_menu.password) — ລາຍການເມນູ + ສະຖານະລັອກ ຢູ່ GET /menu/main
 router.post("/menu-lock/verify", menuLockController_1.verifyMenuLock);
 router.post("/menu-lock/save", menuLockController_1.saveMenuLock);

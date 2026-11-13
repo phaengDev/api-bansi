@@ -97,6 +97,12 @@ const ROLE_CODES: Record<string, string> = {
   PIT_PAYABLE: "2140",
   PAYROLL_DEDUCTION: "1170",
   EMPLOYEE_ADVANCE: "1170",
+  ACCUM_DEPRECIATION: "1290",
+  DEPRECIATION_EXPENSE: "5190",
+  ASSET_DISPOSAL_LOSS: "5240",
+  INCOME_TAX_EXPENSE: "5300",
+  PROFIT_TAX_PAYABLE: "2146",
+  WHT_PAYABLE: "2147",
 };
 
 /**
@@ -105,6 +111,10 @@ const ROLE_CODES: Record<string, string> = {
  */
 const LATER_ACCOUNTS: [string, string, string, string, string, number, string, number][] = [
   ["2145", "ເງິນປະກັນສັງຄົມຄ້າງຈ່າຍ", "Social security payable", "应付社会保险", "2100", 2, "CURRENT_LIABILITY", 2],
+  // ມາດຕະຖານບັນຊີລາວ (2026-11-13): ອາກອນກຳໄລ, ອາກອນຫັກ ນ ທີ່ຈ່າຍ, ການຈຳໜ່າຍຊັບສົມບັດ
+  ["2146", "ອາກອນກຳໄລຄ້າງຈ່າຍ", "Profit tax payable", "应交利润税", "2100", 2, "CURRENT_LIABILITY", 2],
+  ["2147", "ອາກອນຫັກ ນ ທີ່ຈ່າຍ ຄ້າງນຳສົ່ງ", "Withholding tax payable", "应交代扣税", "2100", 2, "CURRENT_LIABILITY", 2],
+  ["5240", "ຂາດທຶນຈາກການຈຳໜ່າຍຊັບສົມບັດ", "Loss on disposal of fixed assets", "固定资产处置损失", "5200", 5, "OTHER_EXPENSE", 1],
 ];
 
 const ensureLaterAccounts = async () => {

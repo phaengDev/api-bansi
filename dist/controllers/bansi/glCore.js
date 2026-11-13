@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reverseSource = exports.reverseEntry = exports.postSource = exports.activeEntryOf = exports.postEntry = exports.treasuryAccountId = exports.categoryAccountId = exports.roleAccountId = exports.assertOpenPeriod = exports.closedFiscalOf = exports.rateOf = exports.isBaseCurrency = exports.glReady = exports.round2 = exports.replyGlError = exports.GlError = exports.ROLES = exports.TYPES_BY_GROUP = exports.GROUP_SIDE = exports.BASE_CURRENCY = exports.CREDIT = exports.DEBIT = void 0;
+exports.reverseSource = exports.reverseEntry = exports.postSource = exports.activeEntryOf = exports.postEntry = exports.treasuryAccountId = exports.categoryAccountId = exports.roleAccountId = exports.assertOpenPeriod = exports.periodLockReason = exports.lockDateOf = exports.closedFiscalOf = exports.rateOf = exports.isBaseCurrency = exports.glReady = exports.round2 = exports.replyGlError = exports.GlError = exports.ROLES = exports.TYPES_BY_GROUP = exports.GROUP_SIDE = exports.BASE_CURRENCY = exports.CREDIT = exports.DEBIT = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -12,6 +12,7 @@ const glMapping_1 = __importDefault(require("../../models/glMapping"));
 const journalEntry_1 = __importDefault(require("../../models/journalEntry"));
 const journalLine_1 = __importDefault(require("../../models/journalLine"));
 const fiscalYear_1 = __importDefault(require("../../models/fiscalYear"));
+const accountSetting_1 = __importDefault(require("../../models/accountSetting"));
 const exchangeRate_1 = __importDefault(require("../../models/exchangeRate"));
 const currencyModel_1 = __importDefault(require("../../models/currencyModel"));
 const docNumberingController_1 = require("./docNumberingController");
@@ -54,6 +55,13 @@ exports.ROLES = {
     PIT_PAYABLE: { groups: [2], label: "ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ" },
     PAYROLL_DEDUCTION: { groups: [1, 2], label: "ຍອດຫັກອື່ນຈາກເງິນເດືອນ" },
     EMPLOYEE_ADVANCE: { groups: [1], label: "ເງິນລ່ວງໜ້າພະນັກງານ" },
+    // ຊັບສົມບັດຄົງທີ່ (fixedAssetController) ແລະ ອາກອນ (taxReportController) — ມາດຕະຖານບັນຊີລາວ
+    ACCUM_DEPRECIATION: { groups: [1], label: "ຄ່າຫຼຸ້ຍຫ້ຽນສະສົມ" },
+    DEPRECIATION_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍຄ່າຫຼຸ້ຍຫ້ຽນ" },
+    ASSET_DISPOSAL_LOSS: { groups: [5], label: "ຂາດທຶນຈາກການຈຳໜ່າຍຊັບສົມບັດ" },
+    INCOME_TAX_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍອາກອນກຳໄລ" },
+    PROFIT_TAX_PAYABLE: { groups: [2], label: "ອາກອນກຳໄລຄ້າງຈ່າຍ" },
+    WHT_PAYABLE: { groups: [2], label: "ອາກອນຫັກ ນ ທີ່ຈ່າຍ ຄ້າງນຳສົ່ງ" },
 };
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */
 class GlError extends Error {
@@ -111,10 +119,27 @@ const closedFiscalOf = (date, t) => fiscalYear_1.default.findOne({
     transaction: t,
 });
 exports.closedFiscalOf = closedFiscalOf;
-const assertOpenPeriod = async (date, t) => {
+/** ວັນທີປິດງວດປະຈຳເດືອນ (ຕັ້ງຄ່າບັນຊີ — ໜ້າ ປິດງວດ) — null = ຍັງບໍ່ປິດງວດໃດ */
+const lockDateOf = async (t) => {
+    const row = await accountSetting_1.default.findOne({ order: [["_uuid", "ASC"]], attributes: ["lock_date"], transaction: t });
+    return row?.lock_date ? String(row.lock_date) : null;
+};
+exports.lockDateOf = lockDateOf;
+/** ເຫດຜົນທີ່ລົງ/ແກ້ລາຍການວັນທີນີ້ບໍ່ໄດ້ (ປີການເງິນປິດ ຫຼື ປິດງວດເດືອນແລ້ວ) — null = ງວດເປີດຢູ່ */
+const periodLockReason = async (date, t) => {
     const closed = await (0, exports.closedFiscalOf)(date, t);
     if (closed)
-        throw new GlError(`ວັນທີ ${fmtDate(date)} ຢູ່ໃນປີການເງິນ ${closed.fiscal_code} ທີ່ປິດບັນຊີແລ້ວ`);
+        return `ວັນທີ ${fmtDate(date)} ຢູ່ໃນປີການເງິນ ${closed.fiscal_code} ທີ່ປິດບັນຊີແລ້ວ`;
+    const lock = await (0, exports.lockDateOf)(t);
+    if (lock && date <= lock)
+        return `ວັນທີ ${fmtDate(date)} ຢູ່ໃນງວດທີ່ປິດແລ້ວ (ປິດງວດຮອດ ${fmtDate(lock)})`;
+    return null;
+};
+exports.periodLockReason = periodLockReason;
+const assertOpenPeriod = async (date, t) => {
+    const reason = await (0, exports.periodLockReason)(date, t);
+    if (reason)
+        throw new GlError(reason);
 };
 exports.assertOpenPeriod = assertOpenPeriod;
 // ---- ການຜູກບັນຊີ ----
@@ -176,7 +201,7 @@ const buildLines = async (input, t) => {
     const rows = lines.map((l, i) => {
         const amount = (0, exports.round2)(Math.abs(l.amount));
         const side = l.amount < 0 ? (l.side === exports.DEBIT ? exports.CREDIT : exports.DEBIT) : l.side;
-        const rate = Number(l.rate) > 0 ? Number(l.rate) : 1;
+        const rate = l.lakOnly ? 1 : Number(l.rate) > 0 ? Number(l.rate) : 1;
         const base = (0, exports.round2)(amount * rate);
         return {
             line_no: i + 1,
@@ -185,7 +210,7 @@ const buildLines = async (input, t) => {
             debit: side === exports.DEBIT ? base : 0,
             credit: side === exports.CREDIT ? base : 0,
             currency_id: l.currencyId ?? null,
-            amount_currency: side === exports.DEBIT ? amount : -amount,
+            amount_currency: l.lakOnly ? 0 : side === exports.DEBIT ? amount : -amount,
             exchange_rate: rate,
             treasury_account_id: l.treasuryAccountId ?? null,
         };
@@ -232,8 +257,20 @@ const activeEntryOf = (sourceType, sourceId, t) => journalEntry_1.default.findOn
     lock: t.LOCK.UPDATE,
 });
 exports.activeEntryOf = activeEntryOf;
+/** ແຖວຂອງໃບເດີມ ກັບ ແຖວໃໝ່ ມີຕົວເລກຄືກັນທຸກແຖວບໍ່ (ບັນຊີ, ໜີ້/ມີ, ສະກຸນເດີມ, ບັນຊີເງິນຄັງ) */
+const sameLines = (before, after) => before.length === after.length &&
+    before.every((l, i) => {
+        const r = after[i];
+        return Number(l.account_id) === r.account_id
+            && (0, exports.round2)(Number(l.debit)) === r.debit
+            && (0, exports.round2)(Number(l.credit)) === r.credit
+            && (0, exports.round2)(Number(l.amount_currency)) === (0, exports.round2)(r.amount_currency)
+            && Number(l.treasury_account_id ?? 0) === Number(r.treasury_account_id ?? 0);
+    });
 /**
- * ລົງບັນຊີໃຫ້ເອກະສານ — ມີໃບຢູ່ແລ້ວ (ແກ້ເອກະສານ) ປ່ຽນວັນທີ/ແຖວໃນໃບເດີມ (ເລກທີຄືເກົ່າ), ບໍ່ມີ → ສ້າງໃໝ່
+ * ລົງບັນຊີໃຫ້ເອກະສານ — ບໍ່ມີໃບ → ສ້າງໃໝ່. ມີໃບຢູ່ແລ້ວ (ແກ້ເອກະສານ):
+ * - ວັນທີ ແລະ ຕົວເລກຄືເກົ່າ → ແກ້ສະເພາະເລກອ້າງອີງ/ຄຳອະທິບາຍ ໃນໃບເດີມ
+ * - ປ່ຽນ → ກັບລາຍການໃບເດີມ ແລ້ວອອກໃບໃໝ່ (ບໍ່ທັບຂໍ້ມູນທີ່ລົງແລ້ວ — ກົດໝາຍບັນຊີ ມາດຕາ 20, 33: ຕ້ອງເຫັນຮ່ອງຮອຍການແກ້ໄຂ)
  */
 const postSource = async (input, t) => {
     const existing = await (0, exports.activeEntryOf)(input.sourceType, input.sourceId, t);
@@ -241,18 +278,22 @@ const postSource = async (input, t) => {
         return (0, exports.postEntry)(input, t);
     await (0, exports.assertOpenPeriod)(existing.entry_date, t);
     await (0, exports.assertOpenPeriod)(input.date, t);
-    const { rows, total } = await buildLines(input, t);
-    await journalLine_1.default.destroy({ where: { entry_id: existing._uuid }, transaction: t });
-    await existing.update({
-        entry_date: input.date,
-        reference: input.reference ?? null,
-        description: input.description ?? null,
-        total_debit: total,
-        total_credit: total,
-        updatedAt: new Date(),
-    }, { transaction: t });
-    await journalLine_1.default.bulkCreate(rows.map((r) => ({ ...r, entry_id: existing._uuid })), { transaction: t });
-    return existing;
+    const { rows } = await buildLines(input, t);
+    const before = await journalLine_1.default.findAll({ where: { entry_id: existing._uuid }, order: [["line_no", "ASC"]], transaction: t });
+    if (String(existing.entry_date) === input.date && sameLines(before, rows)) {
+        const reference = input.reference ?? null;
+        const description = input.description ?? null;
+        if (existing.reference !== reference || existing.description !== description) {
+            await existing.update({ reference, description, updatedAt: new Date() }, { transaction: t });
+        }
+        return existing;
+    }
+    await (0, exports.reverseEntry)(existing, t, {
+        date: existing.entry_date,
+        actorId: input.actorId,
+        description: `ແກ້ໄຂເອກະສານ — ກັບລາຍການ ${existing.entry_number}${existing.description ? ` (${existing.description})` : ""}`,
+    });
+    return (0, exports.postEntry)(input, t);
 };
 exports.postSource = postSource;
 /**
@@ -263,7 +304,7 @@ const reverseEntry = async (entry, t, options = {}) => {
         throw new GlError(`ໃບ ${entry.entry_number} ຖືກກັບລາຍການແລ້ວ`);
     if (entry.reversal_of)
         throw new GlError(`ໃບ ${entry.entry_number} ເປັນໃບກັບລາຍການ — ກັບຊ້ຳບໍ່ໄດ້`);
-    const date = options.date ?? ((await (0, exports.closedFiscalOf)(entry.entry_date, t)) ? (0, moment_1.default)().utcOffset("+07:00").format("YYYY-MM-DD") : entry.entry_date);
+    const date = options.date ?? ((await (0, exports.periodLockReason)(entry.entry_date, t)) ? (0, moment_1.default)().utcOffset("+07:00").format("YYYY-MM-DD") : entry.entry_date);
     await (0, exports.assertOpenPeriod)(date, t);
     const lines = await journalLine_1.default.findAll({ where: { entry_id: entry._uuid }, order: [["line_no", "ASC"]], transaction: t });
     const reversal = await journalEntry_1.default.create({

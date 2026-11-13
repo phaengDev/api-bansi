@@ -5,7 +5,7 @@ import { requirePermission } from "../middleware/permission";
 import { getUsers, createUser, getUserById, updateUser, deleteUser, updatePassword, getTypeUser } from "../controllers/userController";
 import { getcurrency, updateCurrency, updateCurrencyMt } from "../controllers/currencyController";
 import { createBank, updateBank, deleteBank, fetchBank, getBankOption } from "../controllers/bankController";
-import { getMainMenus } from "../controllers/menuController";
+import { getAllMainMenus, getMainMenus } from "../controllers/menuController";
 import {
     createWorkPlan,
     updateWorkPlan,
@@ -46,6 +46,18 @@ import {
     getDocNumberings, getDocNumberingOption, createDocNumbering, updateDocNumbering, nextDocNumber,
 } from "../controllers/bansi/docNumberingController";
 import { getTaxes, getTaxOption, createTax, updateTax } from "../controllers/bansi/taxController";
+import { getAccountSetting, updateAccountSetting } from "../controllers/bansi/accountSettingController";
+import {
+  cancelWithholding, createWithholding, getProfitTax, getVatReport, getWithholdings, postProfitTax,
+} from "../controllers/bansi/taxReportController";
+import { postFxReval, previewFxReval, undoFxReval } from "../controllers/bansi/fxRevalController";
+import {
+  closePeriod, deleteBankRec, getBankRecAccounts, getBankRecHistory, getPeriodCloseStatus, openBankRec, reopenPeriod, saveBankRec,
+} from "../controllers/bansi/closingController";
+import {
+  createFixedAsset, deleteFixedAsset, disposeFixedAsset, getAssetSchedule, getDepreciationRuns, getFixedAssets, previewDepreciation,
+  restoreFixedAsset, runDepreciation, undoDepreciation, updateFixedAsset,
+} from "../controllers/bansi/fixedAssetController";
 import {
   getChartAccounts, getChartAccountOption, createChartAccount, updateChartAccount, deleteChartAccount,
   getGlMappings, saveGlMappings, getGlStatus, rebuildGl,
@@ -152,8 +164,10 @@ router.post("/app/ai/speak", aiSpeak);
 // ສຽງເວົ້າ "ເຂົ້າວຽກຊ້າ / ອອກກ່ອນເວລາ … ນາທີ" (Gemini TTS, ສຽງຕາມເພດ, ເກັບ cache)
 router.get("/app/voice/attendance", getAttendanceVoice);
 
-// ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ
+// ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ — main = ສະເພາະເມນູທີ່ຜູ້ໃຊ້ໄດ້ສິດ (tbl_users.menu_access),
+// all = ທຸກເມນູ (ຟອມຜູ້ໃຊ້ຕິກສິດ)
 router.get("/menu/main", getMainMenus);
+router.get("/menu/all", getAllMainMenus);
 
 // ================= ສະກຸນເງິນ
 router.put("/currency/:id", updateCurrency);
@@ -256,6 +270,42 @@ router.get("/tax/fetch", getTaxes);
 router.get("/tax/option", getTaxOption);
 router.post("/tax/create", createTax);
 router.put("/tax/:id", updateTax);
+// ລາຍງານອາກອນ (ຈາກສະໝຸດບັນຊີ)
+router.post("/tax/vat-report", getVatReport);
+router.post("/tax/profit-tax", getProfitTax);
+router.post("/tax/profit-tax/post", requirePermission("creates", "updates"), postProfitTax);
+// ອາກອນຫັກ ນ ທີ່ຈ່າຍ
+router.post("/wht/fetch", getWithholdings);
+router.post("/wht/create", requirePermission("creates"), createWithholding);
+router.put("/wht/cancel/:id", requirePermission("deletes"), cancelWithholding);
+// ປັບມູນຄ່າເງິນຕາຕ່າງປະເທດທ້າຍເດືອນ
+router.post("/fx-reval/preview", previewFxReval);
+router.post("/fx-reval/post", requirePermission("creates"), postFxReval);
+router.delete("/fx-reval/:month", requirePermission("deletes"), undoFxReval);
+// ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ — ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້, ນະໂຍບາຍບັນຊີ
+router.get("/account-setting", getAccountSetting);
+router.put("/account-setting", requirePermission("updates"), updateAccountSetting);
+// ປິດງວດປະຈຳເດືອນ (lock_date) + ລາຍການກວດ, ກະທົບຍອດທະນາຄານ
+router.get("/period-close/status", getPeriodCloseStatus);
+router.put("/period-close/close", requirePermission("updates"), closePeriod);
+router.put("/period-close/reopen", requirePermission("updates"), reopenPeriod);
+router.get("/bank-rec/accounts", getBankRecAccounts);
+router.post("/bank-rec/history", getBankRecHistory);
+router.post("/bank-rec/open", openBankRec);
+router.post("/bank-rec/save", requirePermission("creates", "updates"), saveBankRec);
+router.delete("/bank-rec/:id", requirePermission("deletes"), deleteBankRec);
+// ຊັບສົມບັດຄົງທີ່ — ທະບຽນ, ຄ່າຫຼຸ້ຍຫ້ຽນລາຍເດືອນ, ຈຳໜ່າຍ, ຕາຕະລາງ
+router.get("/fixed-asset/fetch", getFixedAssets);
+router.get("/fixed-asset/runs", getDepreciationRuns);
+router.post("/fixed-asset/schedule", getAssetSchedule);
+router.post("/fixed-asset/depreciation-preview", previewDepreciation);
+router.post("/fixed-asset/depreciate", requirePermission("creates"), runDepreciation);
+router.delete("/fixed-asset/depreciate/:month", requirePermission("deletes"), undoDepreciation);
+router.post("/fixed-asset/create", requirePermission("creates"), createFixedAsset);
+router.post("/fixed-asset/dispose/:id", requirePermission("updates"), disposeFixedAsset);
+router.put("/fixed-asset/restore/:id", requirePermission("updates"), restoreFixedAsset);
+router.put("/fixed-asset/:id", requirePermission("updates"), updateFixedAsset);
+router.delete("/fixed-asset/:id", requirePermission("deletes"), deleteFixedAsset);
 // ລະຫັດຜ່ານເຂົ້າເມນູ desktop ບັນຊີ (tbl_main_menu.password) — ລາຍການເມນູ + ສະຖານະລັອກ ຢູ່ GET /menu/main
 router.post("/menu-lock/verify", verifyMenuLock);
 router.post("/menu-lock/save", saveMenuLock);

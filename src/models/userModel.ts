@@ -18,6 +18,7 @@ interface UserAttributes {
     approve_leave?: number;
     approve_correction?: number;
     approve_advance?: number;
+    menu_access?: string | null;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -44,6 +45,11 @@ class Users extends Model<UserAttributes, UserCreationAttributes>
     public approve_leave!: number;
     public approve_correction!: number;
     public approve_advance!: number;
+    /**
+     * ເມນູໜ້າ desktop ທີ່ບັນຊີນີ້ໃຊ້ໄດ້ — JSON array ຂອງ tbl_main_menu._uuid (types 2); NULL = ທຸກເມນູ (ລວມເມນູທີ່ເພີ່ມໃນອະນາຄົດ).
+     * ອ່ານ/ກວດຜ່ານ readMenuAccess / parseMenuAccess (menuController)
+     */
+    public menu_access!: string | null;
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
 }
@@ -99,6 +105,7 @@ Users.init(
         approve_leave: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
         approve_correction: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
         approve_advance: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+        menu_access: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
     },
 
     {

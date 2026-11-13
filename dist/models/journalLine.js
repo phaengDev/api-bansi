@@ -51,6 +51,7 @@ JournalLine.init({
         allowNull: false, defaultValue: 1
     },
     treasury_account_id: sequelize_1.DataTypes.INTEGER,
+    reconciliation_id: sequelize_1.DataTypes.INTEGER,
     createdAt: {
         type: sequelize_1.DataTypes.DATE,
         allowNull: false, defaultValue: sequelize_1.DataTypes.NOW

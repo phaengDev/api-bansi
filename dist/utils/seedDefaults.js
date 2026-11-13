@@ -246,6 +246,9 @@ const ACCOUNT_MENUS = [
     { name_la: "ມອບໝາຍວຽກ", name_en: "Task Assignment", name_cn: "任务分配", icons: "fa-solid fa-list-check", path: "/hr/tasks" },
     { name_la: "ປະຕິທິນ", name_en: "Calendar", name_cn: "日历", icons: "fa-solid fa-calendar-days", path: "/calendar" },
     { name_la: "ຕັ້ງຄ່າບັນຊີ", name_en: "Accounting Settings", name_cn: "会计设置", icons: "fa-solid fa-gears", path: "/account/setting" },
+    // ມາດຕະຖານບັນຊີລາວ (2026-11-13) — ຊັບສົມບັດຄົງທີ່ (ປິດໄດ້ຢູ່ ຕັ້ງຄ່າບັນຊີ → ຕັ້ງຄ່າທົ່ວໄປ) ແລະ ວຽກທ້າຍເດືອນ/ທ້າຍປີ
+    { name_la: "ຊັບສົມບັດຄົງທີ່", name_en: "Fixed Assets", name_cn: "固定资产", icons: "fa-solid fa-building", path: "/account/fixed-assets" },
+    { name_la: "ປິດງວດບັນຊີ", name_en: "Period Closing", name_cn: "期末结账", icons: "fa-solid fa-clipboard-check", path: "/account/closing" },
 ];
 const seedDefaults = async () => {
     await ensureIndexes();

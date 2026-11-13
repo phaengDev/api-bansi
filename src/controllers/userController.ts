@@ -9,6 +9,7 @@ import { maxid } from "../utils";
 import { decodeId, sendError } from "./bansi/bansiHelpers";
 import { currentUser, hasPermission } from "../middleware/permission";
 import { profileUrl } from "./hr/hrHelpers";
+import { parseMenuAccess, readMenuAccess, userAdminMenuId } from "./menuController";
 
 /**
  * ບັນຊີຜູ້ໃຊ້ (tbl_users) — ເບີໂທ = ຊື່ເຂົ້າລະບົບ (ບໍ່ຊ້ຳ), ລະຫັດຜ່ານເກັບເປັນ bcrypt hash ແລະ ບໍ່ສົ່ງອອກຈາກ API.
@@ -16,7 +17,9 @@ import { profileUrl } from "./hr/hrHelpers";
  * ຜູກກັບພະນັກງານໄດ້ (employee_id) — ໜຶ່ງພະນັກງານມີໄດ້ບັນຊີດຽວ. ສິດຂອງຜູ້ເອີ້ນກວດຢູ່ routes (requirePermission);
  * ຕົນເອງປິດບັນຊີ, ຖອນສິດແກ້ໄຂ ຫຼື ລຶບບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກຈາກລະບົບ).
  * ສິດອະນຸມັດຜ່ານ app (approve_leave / approve_correction / approve_advance: 1 ໄດ້, 0 ບໍ່ໄດ້) ໃຊ້ໄດ້ສະເພາະບັນຊີທີ່ຜູກພະນັກງານ —
- * ບໍ່ຜູກ / ຖອນການຜູກ = ລ້າງເປັນ 0
+ * ບໍ່ຜູກ / ຖອນການຜູກ = ລ້າງເປັນ 0.
+ * ເມນູທີ່ໃຊ້ໄດ້ (menu_access): null = ທຸກເມນູ, array ຂອງ tbl_main_menu._uuid = ສະເພາະເມນູນັ້ນ (ສົ່ງອອກເປັນ array ຫຼື null);
+ * ບັນຊີຂອງຕົນເອງຕ້ອງມີເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ ສະເໝີ (ບ່ອນຈັດການຜູ້ໃຊ້)
  */
 
 const ALLOW = 1;
@@ -38,7 +41,11 @@ const includeAll = [
 
 const present = (user: Users) => {
   const { password: _password, ...r } = user.get({ plain: true }) as any;
-  return { ...r, employee: r.employee && { ...r.employee, profile_url: profileUrl(r.employee.profile) } };
+  return {
+    ...r,
+    menu_access: readMenuAccess(r.menu_access),
+    employee: r.employee && { ...r.employee, profile_url: profileUrl(r.employee.profile) },
+  };
 };
 
 const findFull = (id: number | string) => Users.findByPk(id, { include: includeAll });
@@ -57,6 +64,7 @@ type UserInput = Partial<{
   approve_leave: number;
   approve_correction: number;
   approve_advance: number;
+  menu_access: string | null;
 }>;
 
 /** ບໍ່ມີພະນັກງານທີ່ຜູກ = ອະນຸມັດຜ່ານ app ບໍ່ໄດ້ (app ລັອກອິນດ້ວຍພະນັກງານ) */
@@ -107,6 +115,11 @@ const parseInput = async (body: any, exceptId?: number): Promise<UserInput | { e
   for (const flag of APPROVALS) {
     if (body[flag] !== undefined) input[flag] = Number(body[flag]) === 1 || body[flag] === true ? 1 : 0;
   }
+  if (body.menu_access !== undefined) {
+    const access = await parseMenuAccess(body.menu_access);
+    if ("error" in access) return { error: access.error };
+    input.menu_access = access.value;
+  }
   return input;
 };
 
@@ -120,7 +133,7 @@ export const getUsers = async (_req: Request, res: Response) => {
   }
 };
 
-/** POST /user/create { user_name, phones, password, type_user, employee_id?, creates, updates, deletes, status? } */
+/** POST /user/create { user_name, phones, password, type_user, employee_id?, creates, updates, deletes, status?, menu_access? } */
 export const createUser = async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
@@ -181,6 +194,13 @@ export const updateUser = async (req: Request<{ id: string }>, res: Response) =>
     if (id === selfId(req) && (input.status === 0 || input.updates === DENY)) {
       res.status(400).json({ message: "ປິດບັນຊີ ຫຼື ຖອນສິດແກ້ໄຂ ຂອງຕົນເອງບໍ່ໄດ້" });
       return;
+    }
+    if (id === selfId(req) && input.menu_access) {
+      const adminMenu = await userAdminMenuId();
+      if (adminMenu && !readMenuAccess(input.menu_access)?.includes(adminMenu)) {
+        res.status(400).json({ message: "ຖອນເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ ອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້" });
+        return;
+      }
     }
     const linked = input.employee_id !== undefined ? input.employee_id : row.employee_id;
     await row.update({ ...dropApprovalsIfUnlinked(input, linked), updatedAt: new Date() } as any);

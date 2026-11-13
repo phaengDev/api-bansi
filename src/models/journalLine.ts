@@ -20,6 +20,8 @@ class JournalLine extends Model {
   public amount_currency!: string;
   public exchange_rate!: string;
   public treasury_account_id!: number | null;
+  /** ກະທົບຍອດທະນາຄານແລ້ວ (tbl_bank_reconciliation._uuid) — null = ຍັງບໍ່ກະທົບ */
+  public reconciliation_id!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -62,6 +64,7 @@ JournalLine.init(
       allowNull: false, defaultValue: 1
     },
     treasury_account_id: DataTypes.INTEGER,
+    reconciliation_id: DataTypes.INTEGER,
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false, defaultValue: DataTypes.NOW

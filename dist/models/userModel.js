@@ -60,6 +60,7 @@ Users.init({
     approve_leave: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
     approve_correction: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
     approve_advance: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
+    menu_access: { type: sequelize_1.DataTypes.TEXT, allowNull: true, defaultValue: null },
 }, {
     sequelize: database_1.default,
     modelName: "Users",

@@ -14,13 +14,16 @@ const utils_1 = require("../utils");
 const bansiHelpers_1 = require("./bansi/bansiHelpers");
 const permission_1 = require("../middleware/permission");
 const hrHelpers_1 = require("./hr/hrHelpers");
+const menuController_1 = require("./menuController");
 /**
  * ບັນຊີຜູ້ໃຊ້ (tbl_users) — ເບີໂທ = ຊື່ເຂົ້າລະບົບ (ບໍ່ຊ້ຳ), ລະຫັດຜ່ານເກັບເປັນ bcrypt hash ແລະ ບໍ່ສົ່ງອອກຈາກ API.
  * ສິດ creates / updates / deletes: 1 = ອະນຸຍາດ, 2 = ບໍ່ອະນຸຍາດ; status 1 ໃຊ້ງານ, 0 ປິດ (login ບໍ່ໄດ້).
  * ຜູກກັບພະນັກງານໄດ້ (employee_id) — ໜຶ່ງພະນັກງານມີໄດ້ບັນຊີດຽວ. ສິດຂອງຜູ້ເອີ້ນກວດຢູ່ routes (requirePermission);
  * ຕົນເອງປິດບັນຊີ, ຖອນສິດແກ້ໄຂ ຫຼື ລຶບບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກຈາກລະບົບ).
  * ສິດອະນຸມັດຜ່ານ app (approve_leave / approve_correction / approve_advance: 1 ໄດ້, 0 ບໍ່ໄດ້) ໃຊ້ໄດ້ສະເພາະບັນຊີທີ່ຜູກພະນັກງານ —
- * ບໍ່ຜູກ / ຖອນການຜູກ = ລ້າງເປັນ 0
+ * ບໍ່ຜູກ / ຖອນການຜູກ = ລ້າງເປັນ 0.
+ * ເມນູທີ່ໃຊ້ໄດ້ (menu_access): null = ທຸກເມນູ, array ຂອງ tbl_main_menu._uuid = ສະເພາະເມນູນັ້ນ (ສົ່ງອອກເປັນ array ຫຼື null);
+ * ບັນຊີຂອງຕົນເອງຕ້ອງມີເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ ສະເໝີ (ບ່ອນຈັດການຜູ້ໃຊ້)
  */
 const ALLOW = 1;
 const DENY = 2;
@@ -39,7 +42,11 @@ const includeAll = [
 ];
 const present = (user) => {
     const { password: _password, ...r } = user.get({ plain: true });
-    return { ...r, employee: r.employee && { ...r.employee, profile_url: (0, hrHelpers_1.profileUrl)(r.employee.profile) } };
+    return {
+        ...r,
+        menu_access: (0, menuController_1.readMenuAccess)(r.menu_access),
+        employee: r.employee && { ...r.employee, profile_url: (0, hrHelpers_1.profileUrl)(r.employee.profile) },
+    };
 };
 const findFull = (id) => userModel_1.default.findByPk(id, { include: includeAll });
 const selfId = (req) => Number(req.user?.sub);
@@ -100,6 +107,12 @@ const parseInput = async (body, exceptId) => {
         if (body[flag] !== undefined)
             input[flag] = Number(body[flag]) === 1 || body[flag] === true ? 1 : 0;
     }
+    if (body.menu_access !== undefined) {
+        const access = await (0, menuController_1.parseMenuAccess)(body.menu_access);
+        if ("error" in access)
+            return { error: access.error };
+        input.menu_access = access.value;
+    }
     return input;
 };
 /** POST /user/fetch — ທຸກບັນຊີ (ບໍ່ມີລະຫັດຜ່ານ) + ປະເພດ + ພະນັກງານທີ່ຜູກ */
@@ -113,7 +126,7 @@ const getUsers = async (_req, res) => {
     }
 };
 exports.getUsers = getUsers;
-/** POST /user/create { user_name, phones, password, type_user, employee_id?, creates, updates, deletes, status? } */
+/** POST /user/create { user_name, phones, password, type_user, employee_id?, creates, updates, deletes, status?, menu_access? } */
 const createUser = async (req, res) => {
     try {
         const body = req.body || {};
@@ -176,6 +189,13 @@ const updateUser = async (req, res) => {
         if (id === selfId(req) && (input.status === 0 || input.updates === DENY)) {
             res.status(400).json({ message: "ປິດບັນຊີ ຫຼື ຖອນສິດແກ້ໄຂ ຂອງຕົນເອງບໍ່ໄດ້" });
             return;
+        }
+        if (id === selfId(req) && input.menu_access) {
+            const adminMenu = await (0, menuController_1.userAdminMenuId)();
+            if (adminMenu && !(0, menuController_1.readMenuAccess)(input.menu_access)?.includes(adminMenu)) {
+                res.status(400).json({ message: "ຖອນເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ ອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້" });
+                return;
+            }
         }
         const linked = input.employee_id !== undefined ? input.employee_id : row.employee_id;
         await row.update({ ...dropApprovalsIfUnlinked(input, linked), updatedAt: new Date() });

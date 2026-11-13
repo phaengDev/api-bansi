@@ -6,6 +6,7 @@ import GlMapping from "../../models/glMapping";
 import JournalEntry from "../../models/journalEntry";
 import JournalLine from "../../models/journalLine";
 import FiscalYear from "../../models/fiscalYear";
+import AccountSetting from "../../models/accountSetting";
 import ExchangeRate from "../../models/exchangeRate";
 import Currency from "../../models/currencyModel";
 import { issueDocNumber } from "./docNumberingController";
@@ -53,6 +54,13 @@ export const ROLES: Record<string, { groups: number[]; label: string }> = {
   PIT_PAYABLE: { groups: [2], label: "ອາກອນລາຍໄດ້ຄ້າງຈ່າຍ" },
   PAYROLL_DEDUCTION: { groups: [1, 2], label: "ຍອດຫັກອື່ນຈາກເງິນເດືອນ" },
   EMPLOYEE_ADVANCE: { groups: [1], label: "ເງິນລ່ວງໜ້າພະນັກງານ" },
+  // ຊັບສົມບັດຄົງທີ່ (fixedAssetController) ແລະ ອາກອນ (taxReportController) — ມາດຕະຖານບັນຊີລາວ
+  ACCUM_DEPRECIATION: { groups: [1], label: "ຄ່າຫຼຸ້ຍຫ້ຽນສະສົມ" },
+  DEPRECIATION_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍຄ່າຫຼຸ້ຍຫ້ຽນ" },
+  ASSET_DISPOSAL_LOSS: { groups: [5], label: "ຂາດທຶນຈາກການຈຳໜ່າຍຊັບສົມບັດ" },
+  INCOME_TAX_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍອາກອນກຳໄລ" },
+  PROFIT_TAX_PAYABLE: { groups: [2], label: "ອາກອນກຳໄລຄ້າງຈ່າຍ" },
+  WHT_PAYABLE: { groups: [2], label: "ອາກອນຫັກ ນ ທີ່ຈ່າຍ ຄ້າງນຳສົ່ງ" },
 };
 
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */
@@ -108,9 +116,24 @@ export const closedFiscalOf = (date: string, t?: Transaction) =>
     transaction: t,
   });
 
-export const assertOpenPeriod = async (date: string, t: Transaction) => {
+/** ວັນທີປິດງວດປະຈຳເດືອນ (ຕັ້ງຄ່າບັນຊີ — ໜ້າ ປິດງວດ) — null = ຍັງບໍ່ປິດງວດໃດ */
+export const lockDateOf = async (t?: Transaction) => {
+  const row: any = await AccountSetting.findOne({ order: [["_uuid", "ASC"]], attributes: ["lock_date"], transaction: t });
+  return row?.lock_date ? String(row.lock_date) : null;
+};
+
+/** ເຫດຜົນທີ່ລົງ/ແກ້ລາຍການວັນທີນີ້ບໍ່ໄດ້ (ປີການເງິນປິດ ຫຼື ປິດງວດເດືອນແລ້ວ) — null = ງວດເປີດຢູ່ */
+export const periodLockReason = async (date: string, t?: Transaction) => {
   const closed: any = await closedFiscalOf(date, t);
-  if (closed) throw new GlError(`ວັນທີ ${fmtDate(date)} ຢູ່ໃນປີການເງິນ ${closed.fiscal_code} ທີ່ປິດບັນຊີແລ້ວ`);
+  if (closed) return `ວັນທີ ${fmtDate(date)} ຢູ່ໃນປີການເງິນ ${closed.fiscal_code} ທີ່ປິດບັນຊີແລ້ວ`;
+  const lock = await lockDateOf(t);
+  if (lock && date <= lock) return `ວັນທີ ${fmtDate(date)} ຢູ່ໃນງວດທີ່ປິດແລ້ວ (ປິດງວດຮອດ ${fmtDate(lock)})`;
+  return null;
+};
+
+export const assertOpenPeriod = async (date: string, t: Transaction) => {
+  const reason = await periodLockReason(date, t);
+  if (reason) throw new GlError(reason);
 };
 
 // ---- ການຜູກບັນຊີ ----
@@ -148,6 +171,11 @@ export type DraftLine = {
   rate?: number;
   treasuryAccountId?: number | null;
   description?: string | null;
+  /**
+   * ແຖວປັບມູນຄ່າເປັນກີບຢ່າງດຽວ (ປັບອັດຕາແລກປ່ຽນທ້າຍເດືອນ): amount = ກີບ, ຍອດສະກຸນເດີມ (amount_currency) = 0 —
+   * ຍອດ USD/THB ຂອງບັນຊີບໍ່ປ່ຽນ ແຕ່ມູນຄ່າກີບປ່ຽນ. currencyId ບອກວ່າປັບໃຫ້ສະກຸນໃດ
+   */
+  lakOnly?: boolean;
 };
 
 export type EntryInput = {
@@ -195,7 +223,7 @@ const buildLines = async (input: EntryInput, t: Transaction) => {
   const rows = lines.map((l, i) => {
     const amount = round2(Math.abs(l.amount));
     const side = l.amount < 0 ? (l.side === DEBIT ? CREDIT : DEBIT) : l.side;
-    const rate = Number(l.rate) > 0 ? Number(l.rate) : 1;
+    const rate = l.lakOnly ? 1 : Number(l.rate) > 0 ? Number(l.rate) : 1;
     const base = round2(amount * rate);
     return {
       line_no: i + 1,
@@ -204,7 +232,7 @@ const buildLines = async (input: EntryInput, t: Transaction) => {
       debit: side === DEBIT ? base : 0,
       credit: side === CREDIT ? base : 0,
       currency_id: l.currencyId ?? null,
-      amount_currency: side === DEBIT ? amount : -amount,
+      amount_currency: l.lakOnly ? 0 : side === DEBIT ? amount : -amount,
       exchange_rate: rate,
       treasury_account_id: l.treasuryAccountId ?? null,
     };
@@ -256,29 +284,44 @@ export const activeEntryOf = (sourceType: string, sourceId: string | number, t: 
     lock: t.LOCK.UPDATE,
   });
 
+/** ແຖວຂອງໃບເດີມ ກັບ ແຖວໃໝ່ ມີຕົວເລກຄືກັນທຸກແຖວບໍ່ (ບັນຊີ, ໜີ້/ມີ, ສະກຸນເດີມ, ບັນຊີເງິນຄັງ) */
+const sameLines = (before: any[], after: Awaited<ReturnType<typeof buildLines>>["rows"]) =>
+  before.length === after.length &&
+  before.every((l, i) => {
+    const r = after[i];
+    return Number(l.account_id) === r.account_id
+      && round2(Number(l.debit)) === r.debit
+      && round2(Number(l.credit)) === r.credit
+      && round2(Number(l.amount_currency)) === round2(r.amount_currency)
+      && Number(l.treasury_account_id ?? 0) === Number(r.treasury_account_id ?? 0);
+  });
+
 /**
- * ລົງບັນຊີໃຫ້ເອກະສານ — ມີໃບຢູ່ແລ້ວ (ແກ້ເອກະສານ) ປ່ຽນວັນທີ/ແຖວໃນໃບເດີມ (ເລກທີຄືເກົ່າ), ບໍ່ມີ → ສ້າງໃໝ່
+ * ລົງບັນຊີໃຫ້ເອກະສານ — ບໍ່ມີໃບ → ສ້າງໃໝ່. ມີໃບຢູ່ແລ້ວ (ແກ້ເອກະສານ):
+ * - ວັນທີ ແລະ ຕົວເລກຄືເກົ່າ → ແກ້ສະເພາະເລກອ້າງອີງ/ຄຳອະທິບາຍ ໃນໃບເດີມ
+ * - ປ່ຽນ → ກັບລາຍການໃບເດີມ ແລ້ວອອກໃບໃໝ່ (ບໍ່ທັບຂໍ້ມູນທີ່ລົງແລ້ວ — ກົດໝາຍບັນຊີ ມາດຕາ 20, 33: ຕ້ອງເຫັນຮ່ອງຮອຍການແກ້ໄຂ)
  */
 export const postSource = async (input: EntryInput & { sourceId: string | number }, t: Transaction) => {
   const existing: any = await activeEntryOf(input.sourceType, input.sourceId, t);
   if (!existing) return postEntry(input, t);
   await assertOpenPeriod(existing.entry_date, t);
   await assertOpenPeriod(input.date, t);
-  const { rows, total } = await buildLines(input, t);
-  await JournalLine.destroy({ where: { entry_id: existing._uuid }, transaction: t });
-  await existing.update(
-    {
-      entry_date: input.date,
-      reference: input.reference ?? null,
-      description: input.description ?? null,
-      total_debit: total,
-      total_credit: total,
-      updatedAt: new Date(),
-    },
-    { transaction: t }
-  );
-  await JournalLine.bulkCreate(rows.map((r) => ({ ...r, entry_id: existing._uuid })), { transaction: t });
-  return existing;
+  const { rows } = await buildLines(input, t);
+  const before: any[] = await JournalLine.findAll({ where: { entry_id: existing._uuid }, order: [["line_no", "ASC"]], transaction: t });
+  if (String(existing.entry_date) === input.date && sameLines(before, rows)) {
+    const reference = input.reference ?? null;
+    const description = input.description ?? null;
+    if (existing.reference !== reference || existing.description !== description) {
+      await existing.update({ reference, description, updatedAt: new Date() }, { transaction: t });
+    }
+    return existing;
+  }
+  await reverseEntry(existing, t, {
+    date: existing.entry_date,
+    actorId: input.actorId,
+    description: `ແກ້ໄຂເອກະສານ — ກັບລາຍການ ${existing.entry_number}${existing.description ? ` (${existing.description})` : ""}`,
+  });
+  return postEntry(input, t);
 };
 
 /**
@@ -287,7 +330,7 @@ export const postSource = async (input: EntryInput & { sourceId: string | number
 export const reverseEntry = async (entry: any, t: Transaction, options: { date?: string; actorId?: number | null; description?: string } = {}) => {
   if (entry.reversed_by) throw new GlError(`ໃບ ${entry.entry_number} ຖືກກັບລາຍການແລ້ວ`);
   if (entry.reversal_of) throw new GlError(`ໃບ ${entry.entry_number} ເປັນໃບກັບລາຍການ — ກັບຊ້ຳບໍ່ໄດ້`);
-  const date = options.date ?? ((await closedFiscalOf(entry.entry_date, t)) ? moment().utcOffset("+07:00").format("YYYY-MM-DD") : entry.entry_date);
+  const date = options.date ?? ((await periodLockReason(entry.entry_date, t)) ? moment().utcOffset("+07:00").format("YYYY-MM-DD") : entry.entry_date);
   await assertOpenPeriod(date, t);
   const lines: any[] = await JournalLine.findAll({ where: { entry_id: entry._uuid }, order: [["line_no", "ASC"]], transaction: t });
   const reversal: any = await JournalEntry.create(
