@@ -12,6 +12,8 @@ class TreasuryAccount extends Model {
   public balance_treasury!: number;
   public balance_unable!: number;
   public status!: number;
+  /** ລຳດັບໃນກຸ່ມ (ໜ້າ ເງິນສົດ ແລະ ທະນາຄານ — ລາກຍ້າຍບັດ) ແລະ ໃນລາຍການເລືອກບັນຊີ; ເທົ່າກັນ = ຕາມລຳດັບທີ່ສ້າງ */
+  public sort!: number;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -32,6 +34,11 @@ TreasuryAccount.init(
    status: {
       type: DataTypes.INTEGER,
       defaultValue: 1
+    },
+    sort: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
     },
     createdAt:{
       type: DataTypes.DATE,

@@ -25,7 +25,8 @@ import {
     getAcountOption,
     getAcountOptionExcept,
     getTreasuryAcountOption,
-    getTreasurtypeone
+    getTreasurtypeone,
+    sortTreasuryAccounts,
 } from "../controllers/bansi/treasuryAcountController";
 import { createTransferMoney, getTransferMoney, getAccountStatement } from "../controllers/bansi/transferMoneyControlle";
 import { getTypeInexp, getTypeInexpOption, createTypeInexp, updateTypeInexp, addSubCategory } from "../controllers/bansi/typeinexpController";
@@ -202,6 +203,8 @@ router.post("/treasury-account/option", getTreasuryAcountOption);
 router.post("/treasury-account/option/except", getAcountOptionExcept);
 router.post("/treasury-account/create", createTreasuryAcount);
 router.get("/treasury-account/typeone/:id", getTreasurtypeone);
+// ລາກຍ້າຍບັດ — ກ່ອນ /:id ບໍ່ດັ່ງນັ້ນ "sort" ຈະຖືກຈັບເປັນ :id
+router.put("/treasury-account/sort", requirePermission("updates"), sortTreasuryAccounts);
 router.put("/treasury-account/:id", updateTreasuryAcount);
 // ========= ໂອນເງິນລະຫວ່າງບັນຊີ (bansi transfer money) routes
 router.post("/transfer-money/fetch", getTransferMoney);

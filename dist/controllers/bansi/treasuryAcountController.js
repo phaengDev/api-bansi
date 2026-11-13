@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTreasurtypeone = exports.getTreasuryAcountOption = exports.getAcountOptionExcept = exports.getAcountOption = exports.getTreasuryAcount = exports.deleteTreasuryAcount = exports.updateTreasuryAcount = exports.createTreasuryAcount = void 0;
+exports.sortTreasuryAccounts = exports.getTreasurtypeone = exports.getTreasuryAcountOption = exports.getAcountOptionExcept = exports.getAcountOption = exports.getTreasuryAcount = exports.deleteTreasuryAcount = exports.updateTreasuryAcount = exports.createTreasuryAcount = void 0;
 const sequelize_1 = require("sequelize");
 const utils_1 = require("../../utils");
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
@@ -17,6 +17,9 @@ const accountMovement_1 = require("./accountMovement");
 const glCore_1 = require("./glCore");
 const glPosting_1 = require("./glPosting");
 const journalHelpers_1 = require("./journalHelpers");
+// import HistoryTransfer from "../../models/historyTransfer";
+/** ລຳດັບທີ່ຜູ້ໃຊ້ຈັດ (ລາກຍ້າຍບັດ) ແລ້ວລຳດັບທີ່ສ້າງ */
+const USER_ORDER = [["sort", "ASC"], ["_uuid", "ASC"]];
 // created TreasuryAcount
 const createTreasuryAcount = async (req, res) => {
     const transaction = await treasuryAcount_1.default.sequelize.transaction(); // Start transaction
@@ -30,7 +33,9 @@ const createTreasuryAcount = async (req, res) => {
         // ບັນຊີເງິນສົດ (ໝວດ 101) ບໍ່ຜູກທະນາຄານ
         if (await (0, journalHelpers_1.isCashAccount)(req.body, transaction))
             req.body.bankId = null;
-        const result = await treasuryAcount_1.default.create({ ...req.body, balance_treasury: 0, balance_unable: 0 }, { transaction });
+        // ບັນຊີໃໝ່ຕໍ່ທ້າຍກຸ່ມ
+        const sort = (Number(await treasuryAcount_1.default.max("sort", { transaction })) || 0) + 1;
+        const result = await treasuryAcount_1.default.create({ ...req.body, sort, balance_treasury: 0, balance_unable: 0 }, { transaction });
         const actorId = Number((0, bansiHelpers_1.actorOf)(req));
         const opening = [
             { kind: accountMovement_1.KIND_USABLE, value: usable },
@@ -102,8 +107,9 @@ exports.deleteTreasuryAcount = deleteTreasuryAcount;
 // get TreasuryAcount
 const getTreasuryAcount = async (req, res) => {
     try {
-        const orderBy = req.query.orderBy || "_uuid";
         const order = (req.query.order || "ASC").toUpperCase();
+        // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+        const orderBy = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
         const { bankId, type_treasuryid } = req.body;
         const whereCondition = {};
         if (bankId) {
@@ -113,7 +119,7 @@ const getTreasuryAcount = async (req, res) => {
             whereCondition.type_treasuryid = type_treasuryid;
         }
         const result = await treasuryAcount_1.default.findAll({
-            order: [[orderBy, order]],
+            order: orderBy,
             where: whereCondition,
             include: [
                 {
@@ -158,11 +164,12 @@ exports.getTreasuryAcount = getTreasuryAcount;
 // get TreasuryAcount
 const getAcountOption = async (req, res) => {
     try {
-        const orderBy = req.query.orderBy || "_uuid";
         const order = (req.query.order || "ASC").toUpperCase();
+        // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+        const orderBy = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
         const whereCondition = { status: 1 };
         const result = await treasuryAcount_1.default.findAll({
-            order: [[orderBy, order]],
+            order: orderBy,
             where: whereCondition,
             include: [
                 {
@@ -207,8 +214,9 @@ exports.getAcountOption = getAcountOption;
 // get TreasuryAcount
 const getAcountOptionExcept = async (req, res) => {
     try {
-        const orderBy = req.query.orderBy || "_uuid";
         const order = (req.query.order || "ASC").toUpperCase();
+        // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+        const orderBy = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
         const { _uuid, currencyId } = req.body;
         const whereCondition = { status: 1 };
         if (_uuid) {
@@ -220,7 +228,7 @@ const getAcountOptionExcept = async (req, res) => {
             whereCondition['$treasury.currencyId$'] = currencyId;
         }
         const result = await treasuryAcount_1.default.findAll({
-            order: [[orderBy, order]],
+            order: orderBy,
             where: whereCondition,
             include: [
                 {
@@ -279,6 +287,7 @@ const getTreasuryAcountOption = async (req, res) => {
         const result = await treasuryAcount_1.default.findAll({
             where: whereCondition,
             include: [{ model: typeTreasury_1.default, as: 'treasury', attributes: [] }],
+            order: USER_ORDER,
         });
         res.status(200).json({ data: result });
     }
@@ -343,7 +352,7 @@ exports.getTreasurtypeone = getTreasurtypeone;
 //     const { rows, count } = await HistoryTransfer.findAndCountAll({
 //       limit,
 //       offset,
-//       order: [[orderBy, order]],
+//       order: orderBy,
 //       where: { accountid: id },
 //       include: [
 //         {
@@ -402,3 +411,36 @@ exports.getTreasurtypeone = getTreasurtypeone;
 //     res.status(500).json({ message: "Error fetching typeTreasury", error });
 //   }
 // };
+/**
+ * PUT /treasury-account/sort { ids: [_uuid, …] } — ລາກຍ້າຍບັດໃນໜ້າ ເງິນສົດ ແລະ ທະນາຄານ: ບັດຂອງກຸ່ມດຽວກັນ (ປະເພດບັນຊີດຽວກັນ)
+ * ຕາມລຳດັບໃໝ່ → sort = 1, 2, 3…
+ */
+const sortTreasuryAccounts = async (req, res) => {
+    try {
+        const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n) => n > 0))];
+        if (!ids.length) {
+            res.status(400).json({ message: "ບໍ່ມີບັນຊີໃຫ້ຈັດລຽງ" });
+            return;
+        }
+        const rows = await treasuryAcount_1.default.findAll({ where: { _uuid: { [sequelize_1.Op.in]: ids } }, attributes: ["_uuid", "type_treasuryid"] });
+        if (rows.length !== ids.length) {
+            res.status(404).json({ message: "ບໍ່ພົບບາງບັນຊີ" });
+            return;
+        }
+        if (new Set(rows.map((r) => Number(r.type_treasuryid))).size > 1) {
+            res.status(400).json({ message: "ຈັດລຽງໄດ້ສະເພາະບັນຊີໃນກຸ່ມ (ປະເພດບັນຊີ) ດຽວກັນ" });
+            return;
+        }
+        await treasuryAcount_1.default.sequelize.transaction(async (transaction) => {
+            for (const [index, id] of ids.entries()) {
+                await treasuryAcount_1.default.update({ sort: index + 1 }, { where: { _uuid: id }, transaction, silent: true });
+            }
+        });
+        res.status(200).json({ message: "ຈັດລຽງແລ້ວ" });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error sorting treasury accounts" });
+    }
+};
+exports.sortTreasuryAccounts = sortTreasuryAccounts;

@@ -13,6 +13,9 @@ import { replyGlError } from "./glCore";
 import { postAccountOpening } from "./glPosting";
 import { isCashAccount, todayLao } from "./journalHelpers";
 // import HistoryTransfer from "../../models/historyTransfer";
+
+/** ລຳດັບທີ່ຜູ້ໃຊ້ຈັດ (ລາກຍ້າຍບັດ) ແລ້ວລຳດັບທີ່ສ້າງ */
+const USER_ORDER: [string, string][] = [["sort", "ASC"], ["_uuid", "ASC"]];
 interface QueryParams {
   limit?: string;
   skip?: string;
@@ -31,7 +34,9 @@ export const createTreasuryAcount = async (req: Request, res: Response) => {
     const held = Number(req.body.balance_unable) || 0;
     // ບັນຊີເງິນສົດ (ໝວດ 101) ບໍ່ຜູກທະນາຄານ
     if (await isCashAccount(req.body, transaction)) req.body.bankId = null;
-    const result = await TreasuryAccount.create({ ...req.body, balance_treasury: 0, balance_unable: 0 }, { transaction });
+    // ບັນຊີໃໝ່ຕໍ່ທ້າຍກຸ່ມ
+    const sort = (Number(await TreasuryAccount.max("sort", { transaction })) || 0) + 1;
+    const result = await TreasuryAccount.create({ ...req.body, sort, balance_treasury: 0, balance_unable: 0 }, { transaction });
     const actorId = Number(actorOf(req));
     const opening = [
       { kind: KIND_USABLE, value: usable },
@@ -98,8 +103,9 @@ export const getTreasuryAcount = async (
   res: Response
 ): Promise<void> => {
   try {
-    const orderBy = req.query.orderBy || "_uuid";
     const order = (req.query.order || "ASC").toUpperCase() as "ASC" | "DESC";
+    // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+    const orderBy: any = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
     const { bankId, type_treasuryid } = req.body as any;
     const whereCondition: any = {};
     if (bankId) {
@@ -110,7 +116,7 @@ export const getTreasuryAcount = async (
     }
 
     const result = await TreasuryAccount.findAll({
-      order: [[orderBy, order]],
+      order: orderBy,
       where: whereCondition,
       include: [
         {
@@ -160,11 +166,12 @@ export const getAcountOption = async (
   res: Response
 ): Promise<void> => {
   try {
-    const orderBy = req.query.orderBy || "_uuid";
     const order = (req.query.order || "ASC").toUpperCase() as "ASC" | "DESC";
+    // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+    const orderBy: any = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
     const whereCondition: any = { status: 1 };
     const result = await TreasuryAccount.findAll({
-      order: [[orderBy, order]],
+      order: orderBy,
       where: whereCondition,
       include: [
         {
@@ -213,8 +220,9 @@ export const getAcountOptionExcept = async (
   res: Response
 ): Promise<void> => {
   try {
-    const orderBy = req.query.orderBy || "_uuid";
     const order = (req.query.order || "ASC").toUpperCase() as "ASC" | "DESC";
+    // ບໍ່ລະບຸ = ຕາມລຳດັບທີ່ຈັດໄວ້ (sort) ແລ້ວລຳດັບທີ່ສ້າງ
+    const orderBy: any = req.query.orderBy ? [[req.query.orderBy, order]] : USER_ORDER;
     const { _uuid, currencyId } = req.body as any;
     const whereCondition: any = { status: 1 };
     if (_uuid) {
@@ -226,7 +234,7 @@ export const getAcountOptionExcept = async (
       whereCondition['$treasury.currencyId$'] = currencyId;
     }
     const result = await TreasuryAccount.findAll({
-      order: [[orderBy, order]],
+      order: orderBy,
       where: whereCondition,
       include: [
         {
@@ -285,6 +293,7 @@ export const getTreasuryAcountOption = async (req: Request<{}>, res: Response) =
     const result = await TreasuryAccount.findAll({
       where: whereCondition,
       include: [{ model: TypeTreasury, as: 'treasury', attributes: [] }],
+      order: USER_ORDER,
     });
     res.status(200).json({ data: result });
   } catch (error) {
@@ -354,7 +363,7 @@ export const getTreasurtypeone = async (
 //     const { rows, count } = await HistoryTransfer.findAndCountAll({
 //       limit,
 //       offset,
-//       order: [[orderBy, order]],
+//       order: orderBy,
 //       where: { accountid: id },
 //       include: [
 //         {
@@ -413,3 +422,34 @@ export const getTreasurtypeone = async (
 //     res.status(500).json({ message: "Error fetching typeTreasury", error });
 //   }
 // };
+/**
+ * PUT /treasury-account/sort { ids: [_uuid, …] } — ລາກຍ້າຍບັດໃນໜ້າ ເງິນສົດ ແລະ ທະນາຄານ: ບັດຂອງກຸ່ມດຽວກັນ (ປະເພດບັນຊີດຽວກັນ)
+ * ຕາມລຳດັບໃໝ່ → sort = 1, 2, 3…
+ */
+export const sortTreasuryAccounts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n: number) => n > 0))] as number[];
+    if (!ids.length) {
+      res.status(400).json({ message: "ບໍ່ມີບັນຊີໃຫ້ຈັດລຽງ" });
+      return;
+    }
+    const rows = await TreasuryAccount.findAll({ where: { _uuid: { [Op.in]: ids } }, attributes: ["_uuid", "type_treasuryid"] });
+    if (rows.length !== ids.length) {
+      res.status(404).json({ message: "ບໍ່ພົບບາງບັນຊີ" });
+      return;
+    }
+    if (new Set(rows.map((r) => Number(r.type_treasuryid))).size > 1) {
+      res.status(400).json({ message: "ຈັດລຽງໄດ້ສະເພາະບັນຊີໃນກຸ່ມ (ປະເພດບັນຊີ) ດຽວກັນ" });
+      return;
+    }
+    await TreasuryAccount.sequelize!.transaction(async (transaction) => {
+      for (const [index, id] of ids.entries()) {
+        await TreasuryAccount.update({ sort: index + 1 }, { where: { _uuid: id }, transaction, silent: true });
+      }
+    });
+    res.status(200).json({ message: "ຈັດລຽງແລ້ວ" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error sorting treasury accounts" });
+  }
+};

@@ -135,6 +135,8 @@ router.post("/treasury-account/option", treasuryAcountController_1.getTreasuryAc
 router.post("/treasury-account/option/except", treasuryAcountController_1.getAcountOptionExcept);
 router.post("/treasury-account/create", treasuryAcountController_1.createTreasuryAcount);
 router.get("/treasury-account/typeone/:id", treasuryAcountController_1.getTreasurtypeone);
+// ລາກຍ້າຍບັດ — ກ່ອນ /:id ບໍ່ດັ່ງນັ້ນ "sort" ຈະຖືກຈັບເປັນ :id
+router.put("/treasury-account/sort", (0, permission_1.requirePermission)("updates"), treasuryAcountController_1.sortTreasuryAccounts);
 router.put("/treasury-account/:id", treasuryAcountController_1.updateTreasuryAcount);
 // ========= ໂອນເງິນລະຫວ່າງບັນຊີ (bansi transfer money) routes
 router.post("/transfer-money/fetch", transferMoneyControlle_1.getTransferMoney);
