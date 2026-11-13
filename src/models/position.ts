@@ -7,7 +7,7 @@ import { autoSync } from "../utils/autoSync";
  * level = Level 1, 2, 3… (1 = ສູງສຸດ, ບໍ່ຈຳກັດຈຳນວນຂັ້ນ; null = ຍັງບໍ່ກຳນົດ) — ໃຊ້ແນະນຳ "ຫົວໜ້າສາຍງານ"
  * ໃນຟອມພະນັກງານ ແລະ ລຽງໂຄງຮ່າງ. ຫົວໜ້າສາຍງານຕົວຈິງຢູ່ tbl_employee.reports_to_id.
  * ຕຳແໜ່ງທີ່ເຄີຍມີພະນັກງານ ລຶບບໍ່ໄດ້ — ປິດ (status 0) ແທນ.
- * (ຖັນ department_id ເກົ່າ ຍັງຢູ່ໃນ DB ໃຫ້ server ທີ່ຍັງບໍ່ທັນ deploy — ບໍ່ໃຊ້ແລ້ວ)
+ * ຕຳແໜ່ງບໍ່ຂຶ້ນກັບພະແນກ (ຖັນ department_id ເກົ່າ ລຶບອອກຈາກ DB ແລ້ວ 2026-11-13); ພະແນກຂອງຄົນຢູ່ tbl_employee.department_id
  */
 class Position extends Model {
   public _uuid!: number;
