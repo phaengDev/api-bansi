@@ -77,6 +77,23 @@ const syncTable = async (model, { rename = {} }) => {
         await qi.addColumn(table, field, { ...attr, ...(i === 0 ? { first: true } : { after: fields[i - 1].field }) });
         log(`add ${field}`);
     }
+    // ຖັນເກົ່າທີ່ເອົາອອກຈາກ model ແລ້ວ (autoSync ບໍ່ລຶບ) ແຕ່ຍັງ NOT NULL ແລະ ບໍ່ມີຄ່າຕັ້ງຕົ້ນ — model ບໍ່ສົ່ງຖັນນີ້ຕອນເພີ່ມແຖວ
+    // ຈຶ່ງ error "Field 'x' doesn't have a default value" (ເຊັ່ນ tbl_position.department_id ຫຼັງຕຳແໜ່ງບໍ່ຂຶ້ນກັບພະແນກ)
+    // → ໃຫ້ວ່າງໄດ້ (NULL); ຂໍ້ມູນເດີມບໍ່ປ່ຽນ
+    const modelFields = new Set(fields.map((f) => f.field));
+    for (const [column, definition] of columns) {
+        if (modelFields.has(column))
+            continue;
+        if (!/\bNOT NULL\b/i.test(definition) || /\b(DEFAULT|AUTO_INCREMENT|GENERATED)\b/i.test(definition))
+            continue;
+        try {
+            await database_1.default.query(`ALTER TABLE ${q(table)} MODIFY COLUMN ${q(column)} ${definition.replace(/\bNOT NULL\b/i, "NULL")}`);
+            log(`allow NULL in unused column ${column}`);
+        }
+        catch (error) {
+            console.error(`❌ autoSync ${table}.${column} → NULL:`, error?.parent?.sqlMessage ?? error);
+        }
+    }
 };
 /** ເອີ້ນເທື່ອດຽວຫຼັງເຊື່ອມ DB ໄດ້ (App.ts) — ຕາຕະລາງໃດຜິດພາດ ບັນທຶກ log ແລ້ວເຮັດຕາຕະລາງອື່ນຕໍ່ */
 const runAutoSync = async () => {
