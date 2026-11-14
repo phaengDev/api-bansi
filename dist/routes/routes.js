@@ -45,6 +45,7 @@ const voiceController_1 = require("../controllers/hr/voiceController");
 const appReleaseController_1 = require("../controllers/hr/appReleaseController");
 const myWorkPlanController_1 = require("../controllers/hr/myWorkPlanController");
 const myMoneyController_1 = require("../controllers/hr/myMoneyController");
+const noteController_1 = require("../controllers/hr/noteController");
 const attendanceController_1 = require("../controllers/hr/attendanceController");
 const payrollController_1 = require("../controllers/hr/payrollController");
 const leaveController_1 = require("../controllers/hr/leaveController");
@@ -65,6 +66,7 @@ const hrSummaryController_1 = require("../controllers/hr/hrSummaryController");
 const taskController_1 = require("../controllers/hr/taskController");
 const birthdayController_1 = require("../controllers/hr/birthdayController");
 const notificationController_1 = require("../controllers/hr/notificationController");
+const weatherController_1 = require("../controllers/hr/weatherController");
 const router = (0, express_1.Router)();
 // ================= public — ທຸກ route ທີ່ຢູ່ເທິງ router.use(verifyToken) ບໍ່ຕ້ອງ login
 router.post("/user/login", auth_1.login);
@@ -336,6 +338,14 @@ router.get("/employee/me/workplan/:id", myWorkPlanController_1.getMyWorkPlan);
 router.put("/employee/me/workplan/:id", myWorkPlanController_1.updateMyWorkPlan);
 router.post("/employee/me/workplan/:id/progress", myWorkPlanController_1.addMyWorkPlanProgress);
 router.delete("/employee/me/workplan/:id", myWorkPlanController_1.deleteMyWorkPlan);
+// ໂນດສ່ວນຕົວ (app → ເມນູ "ໂນດ") — ຂໍ້ຄວາມ + ຮູບຂີດແຕ້ມ, ສະເພາະຂອງຕົນເອງ
+router.get("/note/me", noteController_1.getMyNotes);
+router.post("/note/me", noteController_1.createMyNote);
+router.post("/note/me/folders", noteController_1.createMyNoteFolder);
+router.put("/note/me/folders/:id", noteController_1.renameMyNoteFolder);
+router.delete("/note/me/folders/:id", noteController_1.deleteMyNoteFolder);
+router.put("/note/me/:id", noteController_1.updateMyNote);
+router.delete("/note/me/:id", noteController_1.deleteMyNote);
 // ບັນຊີເງິນສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
 router.get("/money/me/accounts", myMoneyController_1.getMyMoneyAccounts);
 router.post("/money/me/accounts", myMoneyController_1.createMyMoneyAccount);
@@ -381,6 +391,8 @@ router.delete("/app-release/:id", (0, permission_1.requirePermission)("deletes")
 // ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
 router.post("/attendance/scan", attendanceController_1.scanAttendance);
 router.get("/attendance/me", attendanceController_1.getMyAttendance);
+// ອາກາດຕອນນີ້ ທີ່ຕັ້ງບໍລິສັດ (ຫົວໜ້າຫຼັກຂອງແອັບ) — MET Norway, ເກັບໄວ້ 30 ນາທີ
+router.get("/weather/me", weatherController_1.getMyWeather);
 router.post("/attendance/daily", attendanceController_1.getDailyAttendance);
 router.post("/attendance/monthly", attendanceController_1.getMonthlyAttendance);
 router.post("/attendance/records", attendanceController_1.getEmployeeAttendance);

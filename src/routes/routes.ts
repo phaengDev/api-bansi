@@ -92,6 +92,9 @@ import {
   updateMyMoneyAccount, updateMyMoneyCategory, updateMyMoneyEntry,
 } from "../controllers/hr/myMoneyController";
 import {
+  createMyNote, createMyNoteFolder, deleteMyNote, deleteMyNoteFolder, getMyNotes, renameMyNoteFolder, updateMyNote,
+} from "../controllers/hr/noteController";
+import {
   scanAttendance, getMyAttendance, getDailyAttendance, getMonthlyAttendance, getEmployeeAttendance,
   saveAttendance, deleteAttendance, getHolidays, getMyHolidays, createHoliday, deleteHoliday,
 } from "../controllers/hr/attendanceController";
@@ -130,6 +133,7 @@ import {
 } from "../controllers/hr/taskController";
 import { getBirthdayWall, getMyBirthdayReplies, getMyBirthdays, getMyBirthdayWishes, replyBirthdayWish, sendBirthdayWish } from "../controllers/hr/birthdayController";
 import { announce, getMyNotifications, readAllMyNotifications, readMyNotification, streamMyNotifications, registerDeviceToken } from "../controllers/hr/notificationController";
+import { getMyWeather } from "../controllers/hr/weatherController";
 
 const router = Router();
 
@@ -411,6 +415,14 @@ router.get("/employee/me/workplan/:id", getMyWorkPlan);
 router.put("/employee/me/workplan/:id", updateMyWorkPlan);
 router.post("/employee/me/workplan/:id/progress", addMyWorkPlanProgress);
 router.delete("/employee/me/workplan/:id", deleteMyWorkPlan);
+// ໂນດສ່ວນຕົວ (app → ເມນູ "ໂນດ") — ຂໍ້ຄວາມ + ຮູບຂີດແຕ້ມ, ສະເພາະຂອງຕົນເອງ
+router.get("/note/me", getMyNotes);
+router.post("/note/me", createMyNote);
+router.post("/note/me/folders", createMyNoteFolder);
+router.put("/note/me/folders/:id", renameMyNoteFolder);
+router.delete("/note/me/folders/:id", deleteMyNoteFolder);
+router.put("/note/me/:id", updateMyNote);
+router.delete("/note/me/:id", deleteMyNote);
 // ບັນຊີເງິນສ່ວນຕົວຂອງພະນັກງານ (app) — ເຫັນສະເພາະຂອງຕົນເອງ; ຮູບໃບບິນເປີດຜ່ານ API ນີ້ເທົ່ານັ້ນ
 router.get("/money/me/accounts", getMyMoneyAccounts);
 router.post("/money/me/accounts", createMyMoneyAccount);
@@ -456,6 +468,8 @@ router.delete("/app-release/:id", requirePermission("deletes"), deleteAppRelease
 // ========= ການເຂົ້າ-ອອກວຽກ — /scan, /me ສຳລັບ app ມືຖືຂອງພະນັກງານ (ບັນຊີຕ້ອງຜູກກັບພະນັກງານ); ອື່ນໆ ສຳລັບ HR
 router.post("/attendance/scan", scanAttendance);
 router.get("/attendance/me", getMyAttendance);
+// ອາກາດຕອນນີ້ ທີ່ຕັ້ງບໍລິສັດ (ຫົວໜ້າຫຼັກຂອງແອັບ) — MET Norway, ເກັບໄວ້ 30 ນາທີ
+router.get("/weather/me", getMyWeather);
 router.post("/attendance/daily", getDailyAttendance);
 router.post("/attendance/monthly", getMonthlyAttendance);
 router.post("/attendance/records", getEmployeeAttendance);

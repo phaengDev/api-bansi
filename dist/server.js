@@ -19,7 +19,8 @@ app.use((0, cors_1.default)({
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
 }));
-app.use(express_1.default.json()); // parse JSON requests
+// parse JSON requests — ໂນດມີຮູບຂີດແຕ້ມ (JSON ເສັ້ນ vector) ໃຫຍ່ກວ່າ 100kb ຂອງຄ່າເລີ່ມຕົ້ນ
+app.use(express_1.default.json({ limit: "5mb" }));
 app.use(express_1.default.urlencoded({ extended: true }));
 // Express 5: req.body ເປັນ undefined ຖ້າ request ບໍ່ມີ body — controller ທີ່ destructure req.body ຈະ crash
 app.use((req, _res, next) => {
