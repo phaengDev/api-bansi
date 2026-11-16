@@ -83,6 +83,24 @@ const parseInput = async (body) => {
         return { error: "ເວລາເຂົ້າ-ອອກວຽກບໍ່ຖືກຕ້ອງ (HH:mm)" };
     if (end <= start)
         return { error: "ເວລາອອກວຽກຕ້ອງຫຼັງເວລາເຂົ້າວຽກ" };
+    // ພັກທ່ຽງ (ບໍ່ບັງຄັບ): ວ່າງທັງສອງ = ບໍ່ມີເວລາພັກທ່ຽງ; ບໍ່ສົ່ງມາ (ໜ້າເວັບລຸ້ນເກົ່າ) = ບໍ່ແຕະຂອງເດີມ
+    let lunch = null;
+    if (body.break_start !== undefined || body.break_end !== undefined) {
+        const breakStart = String(body.break_start ?? "").trim();
+        const breakEnd = String(body.break_end ?? "").trim();
+        if (!breakStart && !breakEnd) {
+            lunch = { break_start: null, break_end: null };
+        }
+        else {
+            if (!TIME.test(breakStart) || !TIME.test(breakEnd))
+                return { error: "ເວລາພັກທ່ຽງບໍ່ຖືກຕ້ອງ (HH:mm) — ປ້ອນໃຫ້ຄົບທັງເວລາພັກ ແລະ ເວລາເຂົ້າວຽກຄືນ" };
+            if (breakEnd <= breakStart)
+                return { error: "ເວລາເຂົ້າວຽກຄືນຕ້ອງຫຼັງເວລາພັກທ່ຽງ" };
+            if (breakStart <= start || breakEnd >= end)
+                return { error: "ເວລາພັກທ່ຽງຕ້ອງຢູ່ລະຫວ່າງເວລາເຂົ້າ ແລະ ອອກວຽກ" };
+            lunch = { break_start: breakStart, break_end: breakEnd };
+        }
+    }
     // ວັນພັກ "6,0" ຫຼື ["6","0"] — 0 ອາທິດ … 6 ເສົາ, ຕ້ອງເຫຼືອວັນເຮັດວຽກຢ່າງໜ້ອຍ 1 ວັນ
     const raw = Array.isArray(body.days_off) ? body.days_off : String(body.days_off ?? "").split(",");
     const days = [...new Set(raw.map((d) => String(d).trim()).filter((d) => d !== ""))].map(Number);
@@ -112,6 +130,7 @@ const parseInput = async (body) => {
         scan_radius: radius,
         work_start: start,
         work_end: end,
+        ...lunch,
         days_off: days.join(","),
         ...uniform,
     };

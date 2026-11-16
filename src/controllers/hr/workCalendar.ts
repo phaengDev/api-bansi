@@ -28,7 +28,15 @@ export const RESIGNED = 2;
 export const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export type WorkRules = { start: string; end: string; daysOff: number[]; minutesPerDay: number };
+/** breakStart / breakEnd = ພັກທ່ຽງ (null = ບໍລິສັດບໍ່ມີເວລາພັກທ່ຽງ); minutesPerDay = ນາທີເຮັດວຽກແທ້ຕໍ່ມື້ (ບໍ່ລວມເວລາພັກ) */
+export type WorkRules = {
+  start: string;
+  end: string;
+  breakStart: string | null;
+  breakEnd: string | null;
+  daysOff: number[];
+  minutesPerDay: number;
+};
 
 export const minutesOf = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -37,14 +45,32 @@ export const minutesOf = (hhmm: string) => {
 
 export const findCompany = (t?: Transaction) => Company.findOne({ order: [["_uuid", "ASC"]], transaction: t });
 
-/** ເວລາເຮັດວຽກຂອງບໍລິສັດ — ຍັງບໍ່ໄດ້ຕັ້ງ = 08:00–17:00, ພັກ ເສົາ-ອາທິດ (ຄືຄ່າເລີ່ມຕົ້ນຂອງ tbl_company) */
+/** ນາທີທີ່ຊ່ວງ from–to ("HH:mm") ທັບກັບເວລາພັກທ່ຽງ */
+const breakOverlap = (rules: Pick<WorkRules, "breakStart" | "breakEnd">, from: number, to: number) =>
+  rules.breakStart && rules.breakEnd
+    ? Math.max(0, Math.min(to, minutesOf(rules.breakEnd)) - Math.max(from, minutesOf(rules.breakStart)))
+    : 0;
+
+/** ນາທີເຮັດວຽກໃນຊ່ວງ from–to (ນາທີຂອງມື້) ໂດຍບໍ່ນັບເວລາພັກທ່ຽງ */
+export const workMinutesBetween = (rules: Pick<WorkRules, "breakStart" | "breakEnd">, from: number, to: number) =>
+  Math.max(0, to - from - breakOverlap(rules, from, to));
+
+/**
+ * ເວລາເຮັດວຽກຂອງບໍລິສັດ — ຍັງບໍ່ໄດ້ຕັ້ງ = 08:00–17:00, ພັກ ເສົາ-ອາທິດ (ຄືຄ່າເລີ່ມຕົ້ນຂອງ tbl_company);
+ * ພັກທ່ຽງນັບສະເພາະເມື່ອຕັ້ງຄົບ ແລະ ຢູ່ພາຍໃນເວລາເຮັດວຽກ
+ */
 export const workRulesOf = (company: Company | null): WorkRules => {
   const start = company?.work_start || "08:00";
   const end = company?.work_end || "17:00";
   const daysOff = company
     ? String(company.days_off ?? "").split(",").filter((d) => d !== "").map(Number)
     : [6, 0];
-  return { start, end, daysOff, minutesPerDay: Math.max(1, minutesOf(end) - minutesOf(start)) };
+  const hasBreak = !!company?.break_start && !!company?.break_end
+    && start < company.break_start && company.break_start < company.break_end && company.break_end < end;
+  const breakStart = hasBreak ? company!.break_start : null;
+  const breakEnd = hasBreak ? company!.break_end : null;
+  const minutesPerDay = Math.max(1, workMinutesBetween({ breakStart, breakEnd }, minutesOf(start), minutesOf(end)));
+  return { start, end, breakStart, breakEnd, daysOff, minutesPerDay };
 };
 
 export const nowLao = () => moment().utcOffset(BUSINESS_OFFSET);
@@ -58,14 +84,19 @@ export const clockOf = (value: Date | string | null | undefined) =>
 /** ວັນທີ + "HH:mm" ເວລາລາວ → Date */
 export const atLao = (date: string, hhmm: string) => moment(`${date}T${hhmm}:00${BUSINESS_OFFSET}`).toDate();
 
-/** ມາຊ້າ / ອອກກ່ອນເວລາ (ນາທີ) — ຄິດສະເພາະມື້ເຮັດວຽກ */
+/**
+ * ມາຊ້າ / ອອກກ່ອນເວລາ (ນາທີ) — ຄິດສະເພາະມື້ເຮັດວຽກ; ນາທີທີ່ຢູ່ໃນເວລາພັກທ່ຽງບໍ່ນັບ
+ * (ເຊັ່ນ ພັກ 12:00–13:00: ເຂົ້າ 12:30 = ຊ້າເທົ່າກັບ 08:00–12:00, ອອກ 12:30 = ອອກກ່ອນເທົ່າກັບ 13:00–17:00)
+ */
 export const lateEarlyOf = (rules: WorkRules, checkIn: Date | null, checkOut: Date | null, workday: boolean) => {
   if (!workday) return { late_minutes: 0, early_minutes: 0 };
   const inClock = clockOf(checkIn);
   const outClock = clockOf(checkOut);
+  const start = minutesOf(rules.start);
+  const end = minutesOf(rules.end);
   return {
-    late_minutes: inClock ? Math.max(0, minutesOf(inClock) - minutesOf(rules.start)) : 0,
-    early_minutes: outClock ? Math.max(0, minutesOf(rules.end) - minutesOf(outClock)) : 0,
+    late_minutes: inClock ? workMinutesBetween(rules, start, Math.min(minutesOf(inClock), end)) : 0,
+    early_minutes: outClock ? workMinutesBetween(rules, Math.max(minutesOf(outClock), start), end) : 0,
   };
 };
 

@@ -11,7 +11,8 @@ const district_1 = __importDefault(require("./district"));
  * ຂໍ້ມູນບໍລິສັດ — ມີແຖວດຽວ. ທີ່ຢູ່ເກັບແຕ່ district_id (ແຂວງເອົາຈາກ tbl_district.province_id). ພິກັດ + scan_radius (ແມັດ) = ຂອບເຂດທີ່ພະນັກງານສະແກນເຂົ້າ-ອອກວຽກໄດ້.
  * QR ສະແກນເຂົ້າ-ອອກວຽກ: scan_token = ລະຫັດລັບໃນ QR ທີ່ຕິດໄວ້ບໍລິສັດ (ສ້າງໃໝ່ = QR ເກົ່າໃຊ້ບໍ່ໄດ້), scan_require_qr = 1
  * ຕ້ອງສະແກນ QR ນຳ (ນອກຈາກ GPS). scan_token ບໍ່ສົ່ງອອກທາງ GET /company — ອ່ານໄດ້ສະເພາະ HR ຜ່ານ /company/scan-qr
- * work_start / work_end = "HH:mm", days_off = ວັນພັກປະຈຳອາທິດ "6,0" (0 ອາທິດ … 6 ເສົາ ຄື Date.getDay())
+ * work_start / work_end = "HH:mm"; break_start / break_end = ພັກທ່ຽງ "HH:mm" (ບໍ່ບັງຄັບ — null = ບໍລິສັດບໍ່ມີເວລາພັກທ່ຽງ,
+ *   ກຳນົດແຕ່ເວລາເຂົ້າ-ອອກ); ມີ = ຊົ່ວໂມງວຽກຕໍ່ມື້ບໍ່ນັບເວລາພັກ ແລະ ມາຊ້າ/ອອກກ່ອນບໍ່ນັບນາທີທີ່ຢູ່ໃນເວລາພັກ. days_off = ວັນພັກປະຈຳອາທິດ "6,0" (0 ອາທິດ … 6 ເສົາ ຄື Date.getDay())
  * uniform_days = ເຄື່ອງແບບປະຈຳວັນ 7 ຄ່າ ລຽງຕາມ Date.getDay() (ອາທິດ → ເສົາ), ເຊັ່ນ "3,1,1,2,2,3,3":
  *   0 ບໍ່ກຳນົດ, 1 ເສື້ອໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ; null = ຍັງບໍ່ໄດ້ຕັ້ງ
  * uniform_photo_1..3 = ຮູບເສື້ອແທ້ຂອງແຕ່ລະແບບ (ຊື່ໄຟລ໌ໃນ uploads/company, ຄືໂລໂກ້) — null = ໃຊ້ໄອຄອນ
@@ -58,6 +59,8 @@ Company.init({
         allowNull: false,
         defaultValue: "17:00"
     },
+    break_start: sequelize_1.DataTypes.STRING(5),
+    break_end: sequelize_1.DataTypes.STRING(5),
     days_off: {
         type: sequelize_1.DataTypes.STRING(20),
         allowNull: false,

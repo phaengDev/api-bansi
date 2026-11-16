@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.attendanceByEmployee = exports.monthStatsOf = exports.dayStateOf = exports.employedOn = exports.isWorkday = exports.holidaysBetween = exports.monthOf = exports.distanceMeters = exports.lateEarlyOf = exports.atLao = exports.clockOf = exports.currentPeriod = exports.todayLao = exports.nowLao = exports.workRulesOf = exports.findCompany = exports.minutesOf = exports.HHMM = exports.PERIOD = exports.RESIGNED = exports.WORKING = exports.BY_HR = exports.BY_SCAN = exports.ATTENDANCE_STATUSES = exports.UNPAID_LEAVE = exports.PAID_LEAVE = exports.PRESENT = void 0;
+exports.attendanceByEmployee = exports.monthStatsOf = exports.dayStateOf = exports.employedOn = exports.isWorkday = exports.holidaysBetween = exports.monthOf = exports.distanceMeters = exports.lateEarlyOf = exports.atLao = exports.clockOf = exports.currentPeriod = exports.todayLao = exports.nowLao = exports.workRulesOf = exports.workMinutesBetween = exports.findCompany = exports.minutesOf = exports.HHMM = exports.PERIOD = exports.RESIGNED = exports.WORKING = exports.BY_HR = exports.BY_SCAN = exports.ATTENDANCE_STATUSES = exports.UNPAID_LEAVE = exports.PAID_LEAVE = exports.PRESENT = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const company_1 = __importDefault(require("../../models/company"));
@@ -36,14 +36,29 @@ const minutesOf = (hhmm) => {
 exports.minutesOf = minutesOf;
 const findCompany = (t) => company_1.default.findOne({ order: [["_uuid", "ASC"]], transaction: t });
 exports.findCompany = findCompany;
-/** ເວລາເຮັດວຽກຂອງບໍລິສັດ — ຍັງບໍ່ໄດ້ຕັ້ງ = 08:00–17:00, ພັກ ເສົາ-ອາທິດ (ຄືຄ່າເລີ່ມຕົ້ນຂອງ tbl_company) */
+/** ນາທີທີ່ຊ່ວງ from–to ("HH:mm") ທັບກັບເວລາພັກທ່ຽງ */
+const breakOverlap = (rules, from, to) => rules.breakStart && rules.breakEnd
+    ? Math.max(0, Math.min(to, (0, exports.minutesOf)(rules.breakEnd)) - Math.max(from, (0, exports.minutesOf)(rules.breakStart)))
+    : 0;
+/** ນາທີເຮັດວຽກໃນຊ່ວງ from–to (ນາທີຂອງມື້) ໂດຍບໍ່ນັບເວລາພັກທ່ຽງ */
+const workMinutesBetween = (rules, from, to) => Math.max(0, to - from - breakOverlap(rules, from, to));
+exports.workMinutesBetween = workMinutesBetween;
+/**
+ * ເວລາເຮັດວຽກຂອງບໍລິສັດ — ຍັງບໍ່ໄດ້ຕັ້ງ = 08:00–17:00, ພັກ ເສົາ-ອາທິດ (ຄືຄ່າເລີ່ມຕົ້ນຂອງ tbl_company);
+ * ພັກທ່ຽງນັບສະເພາະເມື່ອຕັ້ງຄົບ ແລະ ຢູ່ພາຍໃນເວລາເຮັດວຽກ
+ */
 const workRulesOf = (company) => {
     const start = company?.work_start || "08:00";
     const end = company?.work_end || "17:00";
     const daysOff = company
         ? String(company.days_off ?? "").split(",").filter((d) => d !== "").map(Number)
         : [6, 0];
-    return { start, end, daysOff, minutesPerDay: Math.max(1, (0, exports.minutesOf)(end) - (0, exports.minutesOf)(start)) };
+    const hasBreak = !!company?.break_start && !!company?.break_end
+        && start < company.break_start && company.break_start < company.break_end && company.break_end < end;
+    const breakStart = hasBreak ? company.break_start : null;
+    const breakEnd = hasBreak ? company.break_end : null;
+    const minutesPerDay = Math.max(1, (0, exports.workMinutesBetween)({ breakStart, breakEnd }, (0, exports.minutesOf)(start), (0, exports.minutesOf)(end)));
+    return { start, end, breakStart, breakEnd, daysOff, minutesPerDay };
 };
 exports.workRulesOf = workRulesOf;
 const nowLao = () => (0, moment_1.default)().utcOffset(journalHelpers_1.BUSINESS_OFFSET);
@@ -58,15 +73,20 @@ exports.clockOf = clockOf;
 /** ວັນທີ + "HH:mm" ເວລາລາວ → Date */
 const atLao = (date, hhmm) => (0, moment_1.default)(`${date}T${hhmm}:00${journalHelpers_1.BUSINESS_OFFSET}`).toDate();
 exports.atLao = atLao;
-/** ມາຊ້າ / ອອກກ່ອນເວລາ (ນາທີ) — ຄິດສະເພາະມື້ເຮັດວຽກ */
+/**
+ * ມາຊ້າ / ອອກກ່ອນເວລາ (ນາທີ) — ຄິດສະເພາະມື້ເຮັດວຽກ; ນາທີທີ່ຢູ່ໃນເວລາພັກທ່ຽງບໍ່ນັບ
+ * (ເຊັ່ນ ພັກ 12:00–13:00: ເຂົ້າ 12:30 = ຊ້າເທົ່າກັບ 08:00–12:00, ອອກ 12:30 = ອອກກ່ອນເທົ່າກັບ 13:00–17:00)
+ */
 const lateEarlyOf = (rules, checkIn, checkOut, workday) => {
     if (!workday)
         return { late_minutes: 0, early_minutes: 0 };
     const inClock = (0, exports.clockOf)(checkIn);
     const outClock = (0, exports.clockOf)(checkOut);
+    const start = (0, exports.minutesOf)(rules.start);
+    const end = (0, exports.minutesOf)(rules.end);
     return {
-        late_minutes: inClock ? Math.max(0, (0, exports.minutesOf)(inClock) - (0, exports.minutesOf)(rules.start)) : 0,
-        early_minutes: outClock ? Math.max(0, (0, exports.minutesOf)(rules.end) - (0, exports.minutesOf)(outClock)) : 0,
+        late_minutes: inClock ? (0, exports.workMinutesBetween)(rules, start, Math.min((0, exports.minutesOf)(inClock), end)) : 0,
+        early_minutes: outClock ? (0, exports.workMinutesBetween)(rules, Math.max((0, exports.minutesOf)(outClock), start), end) : 0,
     };
 };
 exports.lateEarlyOf = lateEarlyOf;

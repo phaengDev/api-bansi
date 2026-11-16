@@ -111,7 +111,7 @@ const contextOf = async (employee, today) => {
     return [
         `ມື້ນີ້: ${dayLabel(today)}`,
         `ພະນັກງານ: ${name}${job ? ` (${job})` : ""}`,
-        `ເວລາເຮັດວຽກ: ${rules.start}–${rules.end}; ວັນພັກປະຈຳອາທິດ: ${rules.daysOff.map((d) => `ວັນ${WEEKDAYS[d]}`).join(", ") || "ບໍ່ມີ"}`,
+        `ເວລາເຮັດວຽກ: ${rules.start}–${rules.end}${rules.breakStart ? ` (ພັກທ່ຽງ ${rules.breakStart}–${rules.breakEnd})` : ""}; ວັນພັກປະຈຳອາທິດ: ${rules.daysOff.map((d) => `ວັນ${WEEKDAYS[d]}`).join(", ") || "ບໍ່ມີ"}`,
         `ວັນພັກ ${AHEAD_DAYS} ມື້ຂ້າງໜ້າ: ${[...holidays].map(([d, n]) => `${d} ${n}`).join("; ") || "ບໍ່ມີ"}`,
         `ແຜນວຽກ (${PAST_DAYS} ມື້ຜ່ານມາ ຮອດ ${AHEAD_DAYS} ມື້ຂ້າງໜ້າ, ລວມແຜນເກົ່າທີ່ຍັງບໍ່ສຳເລັດ):`,
         plans.length ? plans.join("\n") : "- (ຍັງບໍ່ມີແຜນວຽກ)",
