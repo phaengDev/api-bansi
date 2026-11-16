@@ -9,9 +9,10 @@ const autoSync_1 = require("../utils/autoSync");
 const fiscalYear_1 = __importDefault(require("./fiscalYear"));
 const typeIncomeModel_1 = __importDefault(require("./typeIncomeModel"));
 const budgetMonth_1 = __importDefault(require("./budgetMonth"));
+const financeSubCategory_1 = __importDefault(require("./financeSubCategory"));
 /**
- * ງົບປະມານລາຍຈ່າຍ — ໜຶ່ງໝວດລາຍຈ່າຍ (tbl_finance_categories typestatus 2) ມີໄດ້ແຖວດຽວຕໍ່ປີການເງິນ
- * (UNIQUE fiscal_id + category_id). amount = ງົບທັງປີ ເປັນສະກຸນຫຼັກ (LAK); is_monthly 1 = ແບ່ງລາຍເດືອນ
+ * ງົບປະມານລາຍຈ່າຍ — ຕັ້ງໃຫ້ທັງປະເພດລາຍຈ່າຍ (sub_category_id null) ຫຼື ແຍກຕາມປະເພດຍ່ອຍ (tbl_finance_subcategory),
+ * ໃນປະເພດດຽວກັນ ໃຊ້ໄດ້ແບບດຽວ (budgetController ກວດ) — UNIQUE fiscal_id + category_id + sub_category_id. amount = ງົບທັງປີ ເປັນສະກຸນຫຼັກ (LAK); is_monthly 1 = ແບ່ງລາຍເດືອນ
  * (tbl_budget_month) ແລະ amount = ຜົນລວມຂອງທຸກເດືອນ. ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍທຸກເທື່ອ ບໍ່ເກັບໄວ້
  */
 class Budget extends sequelize_1.Model {
@@ -30,6 +31,7 @@ Budget.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false
     },
+    sub_category_id: sequelize_1.DataTypes.INTEGER,
     amount: {
         type: sequelize_1.DataTypes.DECIMAL(16, 2),
         allowNull: false,
@@ -58,6 +60,7 @@ Budget.init({
 });
 Budget.belongsTo(fiscalYear_1.default, { foreignKey: "fiscal_id", as: "fiscal" });
 Budget.belongsTo(typeIncomeModel_1.default, { foreignKey: "category_id", as: "category" });
+Budget.belongsTo(financeSubCategory_1.default, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Budget.hasMany(budgetMonth_1.default, { foreignKey: "budget_id", as: "months" });
 (0, autoSync_1.autoSync)(Budget);
 exports.default = Budget;

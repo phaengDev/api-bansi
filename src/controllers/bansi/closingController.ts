@@ -33,12 +33,12 @@ const parseMonth = (value: unknown) => {
   return m.format("YYYY-MM");
 };
 
-type Treasury = { id: number; name: string; number: string | null; bank: string | null; currency: string | null; is_cash: boolean };
+type Treasury = { id: number; code: string | null; name: string; number: string | null; bank: string | null; currency: string | null; is_cash: boolean };
 
 /** ບັນຊີເງິນຄັງທີ່ໃຊ້ງານ ພ້ອມສະກຸນ ແລະ ທະນາຄານ */
 const treasuries = async (): Promise<Treasury[]> => {
   const rows = await sequelize.query<any>(
-    `SELECT a._uuid AS id, a.acountName AS name, a.acount_number AS number, b.abbr AS bank, c.name AS currency, ta.type_code
+    `SELECT a._uuid AS id, a.account_code AS code, a.acountName AS name, a.acount_number AS number, b.abbr AS bank, c.name AS currency, ta.type_code
      FROM tbl_treasury_account a
      LEFT JOIN tbl_type_treasury tt ON tt._uuid = a.type_treasuryid
      LEFT JOIN tbl_currency c ON c._id = tt.currencyId
@@ -49,7 +49,7 @@ const treasuries = async (): Promise<Treasury[]> => {
     { type: QueryTypes.SELECT }
   );
   return rows.map((r) => ({
-    id: Number(r.id), name: r.name, number: r.number ?? null, bank: r.bank ?? null, currency: r.currency ?? null,
+    id: Number(r.id), code: r.code ?? null, name: r.name, number: r.number ?? null, bank: r.bank ?? null, currency: r.currency ?? null,
     is_cash: String(r.type_code ?? "") === CASH_CLASS_CODE,
   }));
 };

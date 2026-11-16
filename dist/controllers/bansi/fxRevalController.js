@@ -47,19 +47,19 @@ const compute = async (month, t) => {
             items.push({ ...item, rate, target, diff });
     };
     // ບັນຊີເງິນຄັງ: ຍອດສະກຸນ = Σ amount_currency, ກີບ = Σ ໜີ້ − ມີ (ລວມແຖວປັບຄັ້ງກ່ອນ)
-    const treasuries = await database_1.default.query(`SELECT l.treasury_account_id AS tid, l.account_id, l.currency_id, a.acountName AS name,
+    const treasuries = await database_1.default.query(`SELECT l.treasury_account_id AS tid, l.account_id, l.currency_id, a.account_code AS code, a.acountName AS name,
             SUM(l.amount_currency) AS foreign_total, SUM(l.debit - l.credit) AS book
      FROM tbl_journal_line l
      JOIN tbl_journal_entry e ON e._uuid = l.entry_id
      LEFT JOIN tbl_treasury_account a ON a._uuid = l.treasury_account_id
      WHERE l.treasury_account_id IS NOT NULL AND l.currency_id IS NOT NULL AND e.entry_date <= :end
-     GROUP BY l.treasury_account_id, l.account_id, l.currency_id, a.acountName`, { type: sequelize_1.QueryTypes.SELECT, replacements: { end }, transaction: t });
+     GROUP BY l.treasury_account_id, l.account_id, l.currency_id, a.account_code, a.acountName`, { type: sequelize_1.QueryTypes.SELECT, replacements: { end }, transaction: t });
     for (const r of treasuries) {
         const currency = foreignName(r.currency_id);
         if (!currency)
             continue;
         await add({
-            kind: "treasury", label: r.name ?? `#${r.tid}`, currency, currency_id: Number(r.currency_id), account_id: Number(r.account_id),
+            kind: "treasury", label: [r.code, r.name ?? `#${r.tid}`].filter(Boolean).join(" "), currency, currency_id: Number(r.currency_id), account_id: Number(r.account_id),
             treasury_id: Number(r.tid), foreign: (0, glCore_1.round2)(Number(r.foreign_total)), book: (0, glCore_1.round2)(Number(r.book)),
         });
     }

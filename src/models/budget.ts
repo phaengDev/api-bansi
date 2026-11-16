@@ -4,16 +4,19 @@ import { autoSync } from "../utils/autoSync";
 import FiscalYear from "./fiscalYear";
 import FinanceCategories from "./typeIncomeModel";
 import BudgetMonth from "./budgetMonth";
+import FinanceSubCategory from "./financeSubCategory";
 
 /**
- * ງົບປະມານລາຍຈ່າຍ — ໜຶ່ງໝວດລາຍຈ່າຍ (tbl_finance_categories typestatus 2) ມີໄດ້ແຖວດຽວຕໍ່ປີການເງິນ
- * (UNIQUE fiscal_id + category_id). amount = ງົບທັງປີ ເປັນສະກຸນຫຼັກ (LAK); is_monthly 1 = ແບ່ງລາຍເດືອນ
+ * ງົບປະມານລາຍຈ່າຍ — ຕັ້ງໃຫ້ທັງປະເພດລາຍຈ່າຍ (sub_category_id null) ຫຼື ແຍກຕາມປະເພດຍ່ອຍ (tbl_finance_subcategory),
+ * ໃນປະເພດດຽວກັນ ໃຊ້ໄດ້ແບບດຽວ (budgetController ກວດ) — UNIQUE fiscal_id + category_id + sub_category_id. amount = ງົບທັງປີ ເປັນສະກຸນຫຼັກ (LAK); is_monthly 1 = ແບ່ງລາຍເດືອນ
  * (tbl_budget_month) ແລະ amount = ຜົນລວມຂອງທຸກເດືອນ. ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍທຸກເທື່ອ ບໍ່ເກັບໄວ້
  */
 class Budget extends Model {
   public _uuid!: number;
   public fiscal_id!: number;
   public category_id!: number;
+  /** null = ງົບທັງປະເພດ (ທຸກປະເພດຍ່ອຍ) */
+  public sub_category_id!: number | null;
   public amount!: string;
   public is_monthly!: number;
   public description!: string | null;
@@ -37,6 +40,7 @@ Budget.init(
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    sub_category_id: DataTypes.INTEGER,
     amount: {
       type: DataTypes.DECIMAL(16, 2),
       allowNull: false,
@@ -68,6 +72,7 @@ Budget.init(
 
 Budget.belongsTo(FiscalYear, { foreignKey: "fiscal_id", as: "fiscal" });
 Budget.belongsTo(FinanceCategories, { foreignKey: "category_id", as: "category" });
+Budget.belongsTo(FinanceSubCategory, { foreignKey: "sub_category_id", as: "sub", constraints: false });
 Budget.hasMany(BudgetMonth, { foreignKey: "budget_id", as: "months" });
 
 autoSync(Budget);

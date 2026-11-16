@@ -239,7 +239,7 @@ const getGlMappings = async (_req, res) => {
             typeIncomeModel_1.default.findAll({ order: [["typestatus", "ASC"], ["type_code", "ASC"]] }),
             treasuryAcount_1.default.findAll({
                 order: [["_uuid", "ASC"]],
-                attributes: ["_uuid", "acountName", "acount_number", "status"],
+                attributes: ["_uuid", "account_code", "acountName", "acount_number", "status"],
                 include: [
                     { model: bankModel_1.default, as: "banks", attributes: ["_uuid", "abbr"] },
                     {

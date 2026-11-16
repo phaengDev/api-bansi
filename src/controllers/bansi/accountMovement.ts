@@ -118,7 +118,7 @@ export const getAccountMovements = async (req: Request, res: Response) => {
         {
           model: TreasuryAccount,
           as: "counterpart",
-          attributes: ["_uuid", "acountName", "acount_number"],
+          attributes: ["_uuid", "account_code", "acountName", "acount_number"],
           include: [{ model: Banks, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] }],
         },
         { model: Users, as: "user", attributes: ["user_uuid", "user_name"] },

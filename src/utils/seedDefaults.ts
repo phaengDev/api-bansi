@@ -1,4 +1,5 @@
 import { Op, QueryTypes } from "sequelize";
+import { ensureTreasuryAccountCodes } from "../controllers/bansi/treasuryAcountController";
 import { seedHrOptions } from "../controllers/hr/hrOptionController";
 import { seedSkills } from "../controllers/hr/skillController";
 import moment from "moment";
@@ -169,7 +170,7 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_work_plan", "idx_tbl_work_plan_range", ["start_date", "end_date"], false],
   ["tbl_work_plan", "idx_tbl_work_plan_status", ["status"], false],
   // ງົບປະມານລາຍຈ່າຍ (controllers/bansi/budgetController.ts)
-  ["tbl_budget", "uq_budget_fiscal_category", ["fiscal_id", "category_id"], true],
+  ["tbl_budget", "uq_budget_fiscal_category_sub", ["fiscal_id", "category_id", "sub_category_id"], true],
   ["tbl_budget_month", "uq_budget_month_period", ["budget_id", "period"], true],
   // ຂໍ້ມູນພື້ນຖານ (HR) — controllers/hr/*
   ["tbl_department", "uq_department_code", ["depart_code"], true],
@@ -224,6 +225,23 @@ const ensureIndexes = async () => {
   }
 };
 
+/** [ຕາຕະລາງ, ຊື່ index] ທີ່ຖືກແທນແລ້ວ — ລຶບຫຼັງສ້າງອັນໃໝ່ (ເຊັ່ນ ງົບແຍກຕາມປະເພດຍ່ອຍ ແທນ unique ປີ + ປະເພດ) */
+const OBSOLETE_INDEXES: [string, string][] = [
+  ["tbl_budget", "uq_budget_fiscal_category"],
+];
+
+const dropObsoleteIndexes = async () => {
+  for (const [table, name] of OBSOLETE_INDEXES) {
+    if (!(await tableExists(table))) continue;
+    if (!(await count(
+      "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :table AND index_name = :name",
+      { table, name }
+    ))) continue;
+    await sequelize.query(`DROP INDEX \`${name}\` ON \`${table}\``);
+    console.log(`🛠️  ${table}: drop index ${name}`);
+  }
+};
+
 const ensureForeignKeys = async () => {
   for (const [table, name, column, refTable, refColumn] of FOREIGN_KEYS) {
     if (!(await tableExists(table)) || !(await tableExists(refTable))) continue;
@@ -271,6 +289,7 @@ const ACCOUNT_MENUS = [
 
 export const seedDefaults = async () => {
   await ensureIndexes();
+  await dropObsoleteIndexes();
   await ensureForeignKeys();
 
   if ((await Currency.count()) === 0) {
@@ -296,6 +315,7 @@ export const seedDefaults = async () => {
   }
 
   await seedAccountingSettings();
+  await ensureTreasuryAccountCodes();
   await seedHrDefaults();
   await seedHrOptions();
   await seedSkills();

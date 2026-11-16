@@ -11,7 +11,7 @@ const crud = createCrudHandlers(PaymentMethod, {
     "require_ref", "fee_percent", "sort", "description", "status",
   ],
   order: [["sort", "ASC"], ["method_code", "ASC"]],
-  include: [{ model: TreasuryAccount, as: "account", attributes: ["_uuid", "acountName", "acount_number"] }],
+  include: [{ model: TreasuryAccount, as: "account", attributes: ["_uuid", "account_code", "acountName", "acount_number"] }],
 });
 
 export const getPaymentMethods = crud.fetch;

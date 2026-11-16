@@ -154,7 +154,7 @@ const BUSINESS_OFFSET = "+07:00";
 const counterpartInclude = (as) => ({
     model: treasuryAcount_1.default,
     as,
-    attributes: ["_uuid", "acountName", "acount_number", "bankId"],
+    attributes: ["_uuid", "account_code", "acountName", "acount_number", "bankId"],
     include: [
         { model: bankModel_1.default, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] },
         {
@@ -215,6 +215,7 @@ const getAccountStatement = async (req, res) => {
                 counterpart: other
                     ? {
                         _uuid: other._uuid,
+                        account_code: other.account_code ?? null,
                         acountName: other.acountName,
                         acount_number: other.acount_number,
                         bank: other.banks?.abbr ?? other.banks?.name_la ?? null,

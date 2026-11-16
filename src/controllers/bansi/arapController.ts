@@ -389,7 +389,7 @@ const paymentInclude = [
   {
     model: TreasuryAccount,
     as: "account",
-    attributes: ["_uuid", "acountName", "acount_number", "bankId", "type_treasuryid"],
+    attributes: ["_uuid", "account_code", "acountName", "acount_number", "bankId", "type_treasuryid"],
     include: [
       { model: Banks, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] },
       {

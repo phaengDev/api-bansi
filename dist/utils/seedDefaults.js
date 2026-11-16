@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedDefaults = void 0;
 const sequelize_1 = require("sequelize");
+const treasuryAcountController_1 = require("../controllers/bansi/treasuryAcountController");
 const hrOptionController_1 = require("../controllers/hr/hrOptionController");
 const skillController_1 = require("../controllers/hr/skillController");
 const moment_1 = __importDefault(require("moment"));
@@ -163,7 +164,7 @@ const INDEXES = [
     ["tbl_work_plan", "idx_tbl_work_plan_range", ["start_date", "end_date"], false],
     ["tbl_work_plan", "idx_tbl_work_plan_status", ["status"], false],
     // ງົບປະມານລາຍຈ່າຍ (controllers/bansi/budgetController.ts)
-    ["tbl_budget", "uq_budget_fiscal_category", ["fiscal_id", "category_id"], true],
+    ["tbl_budget", "uq_budget_fiscal_category_sub", ["fiscal_id", "category_id", "sub_category_id"], true],
     ["tbl_budget_month", "uq_budget_month_period", ["budget_id", "period"], true],
     // ຂໍ້ມູນພື້ນຖານ (HR) — controllers/hr/*
     ["tbl_department", "uq_department_code", ["depart_code"], true],
@@ -211,6 +212,20 @@ const ensureIndexes = async () => {
         console.log(`🛠️  ${table}: index ${name}`);
     }
 };
+/** [ຕາຕະລາງ, ຊື່ index] ທີ່ຖືກແທນແລ້ວ — ລຶບຫຼັງສ້າງອັນໃໝ່ (ເຊັ່ນ ງົບແຍກຕາມປະເພດຍ່ອຍ ແທນ unique ປີ + ປະເພດ) */
+const OBSOLETE_INDEXES = [
+    ["tbl_budget", "uq_budget_fiscal_category"],
+];
+const dropObsoleteIndexes = async () => {
+    for (const [table, name] of OBSOLETE_INDEXES) {
+        if (!(await tableExists(table)))
+            continue;
+        if (!(await count("SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :table AND index_name = :name", { table, name })))
+            continue;
+        await database_1.default.query(`DROP INDEX \`${name}\` ON \`${table}\``);
+        console.log(`🛠️  ${table}: drop index ${name}`);
+    }
+};
 const ensureForeignKeys = async () => {
     for (const [table, name, column, refTable, refColumn] of FOREIGN_KEYS) {
         if (!(await tableExists(table)) || !(await tableExists(refTable)))
@@ -252,6 +267,7 @@ const ACCOUNT_MENUS = [
 ];
 const seedDefaults = async () => {
     await ensureIndexes();
+    await dropObsoleteIndexes();
     await ensureForeignKeys();
     if ((await currencyModel_1.default.count()) === 0) {
         const now = new Date();
@@ -274,6 +290,7 @@ const seedDefaults = async () => {
         console.log(`🌱 tbl_main_menu: ${missing.length} account menus`);
     }
     await seedAccountingSettings();
+    await (0, treasuryAcountController_1.ensureTreasuryAccountCodes)();
     await seedHrDefaults();
     await (0, hrOptionController_1.seedHrOptions)();
     await (0, skillController_1.seedSkills)();

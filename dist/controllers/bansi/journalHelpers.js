@@ -43,7 +43,7 @@ exports.entryDateOf = entryDateOf;
 exports.accountInclude = {
     model: treasuryAcount_1.default,
     as: "acount",
-    attributes: ["_uuid", "acountName", "acount_number", "bankId", "type_treasuryid", "balance_treasury", "status"],
+    attributes: ["_uuid", "account_code", "acountName", "acount_number", "bankId", "type_treasuryid", "balance_treasury", "status"],
     include: [
         { model: bankModel_1.default, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] },
         {

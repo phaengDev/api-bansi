@@ -39,7 +39,7 @@ export const entryDateOf = (value: unknown, label: string): { date: string } | {
 export const accountInclude = {
   model: TreasuryAccount,
   as: "acount",
-  attributes: ["_uuid", "acountName", "acount_number", "bankId", "type_treasuryid", "balance_treasury", "status"],
+  attributes: ["_uuid", "account_code", "acountName", "acount_number", "bankId", "type_treasuryid", "balance_treasury", "status"],
   include: [
     { model: Banks, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] },
     {

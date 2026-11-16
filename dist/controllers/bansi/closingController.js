@@ -36,7 +36,7 @@ const parseMonth = (value) => {
 };
 /** ບັນຊີເງິນຄັງທີ່ໃຊ້ງານ ພ້ອມສະກຸນ ແລະ ທະນາຄານ */
 const treasuries = async () => {
-    const rows = await database_1.default.query(`SELECT a._uuid AS id, a.acountName AS name, a.acount_number AS number, b.abbr AS bank, c.name AS currency, ta.type_code
+    const rows = await database_1.default.query(`SELECT a._uuid AS id, a.account_code AS code, a.acountName AS name, a.acount_number AS number, b.abbr AS bank, c.name AS currency, ta.type_code
      FROM tbl_treasury_account a
      LEFT JOIN tbl_type_treasury tt ON tt._uuid = a.type_treasuryid
      LEFT JOIN tbl_currency c ON c._id = tt.currencyId
@@ -45,7 +45,7 @@ const treasuries = async () => {
      WHERE a.status = 1
      ORDER BY a.sort ASC, a._uuid ASC`, { type: sequelize_1.QueryTypes.SELECT });
     return rows.map((r) => ({
-        id: Number(r.id), name: r.name, number: r.number ?? null, bank: r.bank ?? null, currency: r.currency ?? null,
+        id: Number(r.id), code: r.code ?? null, name: r.name, number: r.number ?? null, bank: r.bank ?? null, currency: r.currency ?? null,
         is_cash: String(r.type_code ?? "") === journalHelpers_1.CASH_CLASS_CODE,
     }));
 };

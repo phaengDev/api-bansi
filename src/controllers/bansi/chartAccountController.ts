@@ -222,7 +222,7 @@ export const getGlMappings = async (_req: Request, res: Response) => {
       FinanceCategories.findAll({ order: [["typestatus", "ASC"], ["type_code", "ASC"]] }),
       TreasuryAccount.findAll({
         order: [["_uuid", "ASC"]],
-        attributes: ["_uuid", "acountName", "acount_number", "status"],
+        attributes: ["_uuid", "account_code", "acountName", "acount_number", "status"],
         include: [
           { model: Banks, as: "banks", attributes: ["_uuid", "abbr"] },
           {

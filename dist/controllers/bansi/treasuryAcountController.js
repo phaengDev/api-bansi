@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sortTreasuryAccounts = exports.getTreasurtypeone = exports.getTreasuryAcountOption = exports.getAcountOptionExcept = exports.getAcountOption = exports.getTreasuryAcount = exports.deleteTreasuryAcount = exports.updateTreasuryAcount = exports.createTreasuryAcount = void 0;
+exports.sortTreasuryAccounts = exports.getTreasurtypeone = exports.getTreasuryAcountOption = exports.getAcountOptionExcept = exports.getAcountOption = exports.getTreasuryAcount = exports.deleteTreasuryAcount = exports.updateTreasuryAcount = exports.createTreasuryAcount = exports.ensureTreasuryAccountCodes = void 0;
 const sequelize_1 = require("sequelize");
 const utils_1 = require("../../utils");
 const treasuryAcount_1 = __importDefault(require("../../models/treasuryAcount"));
@@ -21,11 +21,37 @@ const journalHelpers_1 = require("./journalHelpers");
 /** ລຳດັບທີ່ຜູ້ໃຊ້ຈັດ (ລາກຍ້າຍບັດ) ແລ້ວລຳດັບທີ່ສ້າງ */
 const USER_ORDER = [["sort", "ASC"], ["_uuid", "ASC"]];
 // created TreasuryAcount
+/** ລະຫັດບັນຊີຖັດໄປຂອງປະເພດ — ລະຫັດປະເພດ + ເລກທຳອິດທີ່ຍັງວ່າງ (1021 → 10211, 10212…); ປະເພດບໍ່ມີລະຫັດ = null */
+const nextAccountCode = async (typeId) => {
+    const type = Number(typeId) ? await typeTreasury_1.default.findByPk(Number(typeId), { attributes: ["treasury_code"] }) : null;
+    return type?.treasury_code ? (0, utils_1.codeType)(treasuryAcount_1.default, "account_code", type.treasury_code) : null;
+};
+/**
+ * ຕອນເປີດ server: ບັນຊີທີ່ຍັງບໍ່ມີລະຫັດ (ສ້າງກ່ອນມີລະຫັດບັນຊີ) ໄດ້ລະຫັດຕາມປະເພດ ລຽງຕາມລຳດັບໃນໜ້າ (sort) ແລ້ວລຳດັບທີ່ສ້າງ.
+ * ບັນຊີທີ່ມີລະຫັດແລ້ວບໍ່ແຕະ
+ */
+const ensureTreasuryAccountCodes = async () => {
+    const rows = await treasuryAcount_1.default.findAll({
+        where: { [sequelize_1.Op.or]: [{ account_code: null }, { account_code: "" }] },
+        attributes: ["_uuid", "type_treasuryid"],
+        order: [["type_treasuryid", "ASC"], ["sort", "ASC"], ["_uuid", "ASC"]],
+    });
+    for (const row of rows) {
+        const code = await nextAccountCode(row.type_treasuryid);
+        if (code)
+            await row.update({ account_code: code });
+    }
+    if (rows.length)
+        console.log(`🌱 tbl_treasury_account: account_code for ${rows.length} accounts`);
+};
+exports.ensureTreasuryAccountCodes = ensureTreasuryAccountCodes;
 const createTreasuryAcount = async (req, res) => {
     const transaction = await treasuryAcount_1.default.sequelize.transaction(); // Start transaction
     try {
         const code = await (0, utils_1.maxid)(treasuryAcount_1.default, "_uuid");
         req.body._uuid = code;
+        // ລະຫັດບັນຊີ ຕໍ່ຈາກລະຫັດປະເພດ (1021 → 10211) — ບໍ່ຮັບຄ່າທີ່ສົ່ງມາ
+        req.body.account_code = await nextAccountCode(req.body.type_treasuryid);
         req.body.createdAt = new Date();
         // ສ້າງດ້ວຍຍອດ 0 ແລ້ວໃສ່ຍອດເລີ່ມຕົ້ນຜ່ານ moveBalance — ໃຫ້ປະຫວັດເລີ່ມຈາກ 0 → ຍອດທີ່ປ້ອນ (OPENING)
         const usable = Number(req.body.balance_treasury) || 0;
@@ -76,6 +102,7 @@ const updateTreasuryAcount = async (req, res) => {
         delete body.balance_treasury;
         delete body.balance_unable;
         delete body._uuid;
+        delete body.account_code;
         // ບັນຊີເງິນສົດ (ໝວດ 101) ບໍ່ຜູກທະນາຄານ — ໝວດເບິ່ງຈາກປະເພດທີ່ບັນທຶກໄວ້ ບໍ່ເຊື່ອຄ່າທີ່ສົ່ງມາ
         const current = await treasuryAcount_1.default.findByPk(_uuid, { attributes: ["type_treasuryid"] });
         if (current && (await (0, journalHelpers_1.isCashAccount)(current.get({ plain: true }))))

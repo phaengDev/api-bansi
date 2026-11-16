@@ -16,7 +16,7 @@ const crud = (0, bansiHelpers_1.createCrudHandlers)(paymentMethod_1.default, {
         "require_ref", "fee_percent", "sort", "description", "status",
     ],
     order: [["sort", "ASC"], ["method_code", "ASC"]],
-    include: [{ model: treasuryAcount_1.default, as: "account", attributes: ["_uuid", "acountName", "acount_number"] }],
+    include: [{ model: treasuryAcount_1.default, as: "account", attributes: ["_uuid", "account_code", "acountName", "acount_number"] }],
 });
 exports.getPaymentMethods = crud.fetch;
 exports.getPaymentMethodOption = crud.option;

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { Op } from "sequelize";
-import { maxid, url } from "../../utils";
+import { codeType, maxid, url } from "../../utils";
 import TreasuryAccount from "../../models/treasuryAcount";
 import Banks from "../../models/bankModel";
 import TypeAcount from "../../models/typeAcount";
@@ -23,11 +23,36 @@ interface QueryParams {
   order?: string;
 }
 // created TreasuryAcount
+/** ລະຫັດບັນຊີຖັດໄປຂອງປະເພດ — ລະຫັດປະເພດ + ເລກທຳອິດທີ່ຍັງວ່າງ (1021 → 10211, 10212…); ປະເພດບໍ່ມີລະຫັດ = null */
+const nextAccountCode = async (typeId: unknown) => {
+  const type: any = Number(typeId) ? await TypeTreasury.findByPk(Number(typeId), { attributes: ["treasury_code"] }) : null;
+  return type?.treasury_code ? codeType(TreasuryAccount, "account_code", type.treasury_code) : null;
+};
+
+/**
+ * ຕອນເປີດ server: ບັນຊີທີ່ຍັງບໍ່ມີລະຫັດ (ສ້າງກ່ອນມີລະຫັດບັນຊີ) ໄດ້ລະຫັດຕາມປະເພດ ລຽງຕາມລຳດັບໃນໜ້າ (sort) ແລ້ວລຳດັບທີ່ສ້າງ.
+ * ບັນຊີທີ່ມີລະຫັດແລ້ວບໍ່ແຕະ
+ */
+export const ensureTreasuryAccountCodes = async () => {
+  const rows = await TreasuryAccount.findAll({
+    where: { [Op.or]: [{ account_code: null }, { account_code: "" }] },
+    attributes: ["_uuid", "type_treasuryid"],
+    order: [["type_treasuryid", "ASC"], ["sort", "ASC"], ["_uuid", "ASC"]],
+  });
+  for (const row of rows) {
+    const code = await nextAccountCode(row.type_treasuryid);
+    if (code) await row.update({ account_code: code });
+  }
+  if (rows.length) console.log(`🌱 tbl_treasury_account: account_code for ${rows.length} accounts`);
+};
+
 export const createTreasuryAcount = async (req: Request, res: Response) => {
   const transaction = await TreasuryAccount.sequelize!.transaction(); // Start transaction
   try {
     const code = await maxid(TreasuryAccount, "_uuid");
     req.body._uuid = code;
+    // ລະຫັດບັນຊີ ຕໍ່ຈາກລະຫັດປະເພດ (1021 → 10211) — ບໍ່ຮັບຄ່າທີ່ສົ່ງມາ
+    req.body.account_code = await nextAccountCode(req.body.type_treasuryid);
     req.body.createdAt = new Date();
     // ສ້າງດ້ວຍຍອດ 0 ແລ້ວໃສ່ຍອດເລີ່ມຕົ້ນຜ່ານ moveBalance — ໃຫ້ປະຫວັດເລີ່ມຈາກ 0 → ຍອດທີ່ປ້ອນ (OPENING)
     const usable = Number(req.body.balance_treasury) || 0;
@@ -73,6 +98,7 @@ export const updateTreasuryAcount = async (req: Request<{ id: string }>, res: Re
     delete body.balance_treasury;
     delete body.balance_unable;
     delete body._uuid;
+    delete body.account_code;
     // ບັນຊີເງິນສົດ (ໝວດ 101) ບໍ່ຜູກທະນາຄານ — ໝວດເບິ່ງຈາກປະເພດທີ່ບັນທຶກໄວ້ ບໍ່ເຊື່ອຄ່າທີ່ສົ່ງມາ
     const current = await TreasuryAccount.findByPk(_uuid, { attributes: ["type_treasuryid"] });
     if (current && (await isCashAccount(current.get({ plain: true })))) body.bankId = null;

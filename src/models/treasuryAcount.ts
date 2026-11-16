@@ -6,6 +6,8 @@ import Banks from "./bankModel";
 class TreasuryAccount extends Model {
   public _uuid!: number;
   public type_treasuryid!: number;
+  /** ລະຫັດບັນຊີ = ລະຫັດປະເພດ + ເລກລຳດັບ (1021 → 10211, 10212…) — ອອກໃຫ້ເອງຕອນສ້າງ, ປ່ຽນບໍ່ໄດ້ */
+  public account_code!: string | null;
   public bankId!: number | null;
   public acountName!: string;
   public acount_number!: string;
@@ -26,6 +28,7 @@ TreasuryAccount.init(
       autoIncrement: true,
     },
     type_treasuryid: DataTypes.INTEGER,
+    account_code: DataTypes.STRING(30),
     bankId: DataTypes.INTEGER || null,
     acountName: DataTypes.STRING,
     acount_number: DataTypes.STRING,

@@ -80,7 +80,7 @@ const getAccountMovements = async (req, res) => {
                 {
                     model: treasuryAcount_1.default,
                     as: "counterpart",
-                    attributes: ["_uuid", "acountName", "acount_number"],
+                    attributes: ["_uuid", "account_code", "acountName", "acount_number"],
                     include: [{ model: bankModel_1.default, as: "banks", attributes: ["_uuid", "abbr", "name_la", "logo"] }],
                 },
                 { model: userModel_1.default, as: "user", attributes: ["user_uuid", "user_name"] },

@@ -17,6 +17,7 @@ TreasuryAccount.init({
         autoIncrement: true,
     },
     type_treasuryid: sequelize_1.DataTypes.INTEGER,
+    account_code: sequelize_1.DataTypes.STRING(30),
     bankId: sequelize_1.DataTypes.INTEGER || null,
     acountName: sequelize_1.DataTypes.STRING,
     acount_number: sequelize_1.DataTypes.STRING,
