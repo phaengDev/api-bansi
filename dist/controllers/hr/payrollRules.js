@@ -8,6 +8,7 @@ const sequelize_1 = require("sequelize");
 const payrollSetting_1 = __importDefault(require("../../models/payrollSetting"));
 const overtime_1 = __importDefault(require("../../models/overtime"));
 const salaryAdvance_1 = __importDefault(require("../../models/salaryAdvance"));
+const accountSettingController_1 = require("../bansi/accountSettingController");
 exports.DEFAULT_TAX_BRACKETS = [
     { upto: 2500000, rate: 0 },
     { upto: 5000000, rate: 5 },
@@ -143,7 +144,14 @@ const presentSettings = (row) => {
 exports.presentSettings = presentSettings;
 const findPayrollSetting = (t) => payrollSetting_1.default.findOne({ order: [["_uuid", "ASC"]], transaction: t });
 exports.findPayrollSetting = findPayrollSetting;
-const loadPayrollSettings = async (t) => (0, exports.presentSettings)(await (0, exports.findPayrollSetting)(t));
+/**
+ * ຕັ້ງຄ່າທີ່ໃຊ້ຄິດເງິນເດືອນແທ້ — ບໍລິສັດແບບທຳມະດາ (ບໍ່ມີອາກອນ) ບໍ່ຫັກອາກອນລາຍໄດ້ ບໍ່ວ່າຈະຕັ້ງໄວ້ແນວໃດ
+ * (ຄ່າທີ່ຕັ້ງໄວ້ຍັງເກັບຢູ່ — ປ່ຽນກັບເປັນແບບຄົບຕາມມາດຕະຖານ ກໍ່ໃຊ້ຄືເກົ່າ)
+ */
+const loadPayrollSettings = async (t) => {
+    const settings = (0, exports.presentSettings)(await (0, exports.findPayrollSetting)(t));
+    return (await (0, accountSettingController_1.isSimpleMode)(t)) ? { ...settings, tax_enabled: false } : settings;
+};
 exports.loadPayrollSettings = loadPayrollSettings;
 /** ອາກອນແບບຂັ້ນໄດ — ແຕ່ລະອັດຕາຄິດສະເພາະສ່ວນທີ່ຢູ່ໃນຂັ້ນຂອງມັນ */
 const progressiveTax = (taxable, brackets) => {

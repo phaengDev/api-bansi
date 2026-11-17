@@ -30,6 +30,7 @@ import { selfEmployee } from "./attendanceController";
 import { companyLogoUrl } from "./hrHelpers";
 import { notify } from "./notificationController";
 import { AdvanceMismatch, applyPayrollRepayments, notifyAdvancesSettled, reversePayrollRepayments } from "./advanceController";
+import { isSimpleMode } from "../bansi/accountSettingController";
 
 /**
  * ເງິນເດືອນປະຈຳເດືອນ: ສ້າງໃບ (ຄິດຈາກເງິນເດືອນພື້ນຖານ + ການເຂົ້າວຽກ) → ແກ້ລາຍຄົນ (ເງິນເພີ່ມ / ຫັກ / ປກສ / ອາກອນ)
@@ -212,7 +213,9 @@ const draftOf = async (id: number | string, t: Transaction): Promise<Payroll | {
 /** GET /payroll/setting — ຕັ້ງຄ່າປັດຈຸບັນ (ຍັງບໍ່ເຄີຍບັນທຶກ = ຄ່າເລີ່ມຕົ້ນ) + ຄ່າເລີ່ມຕົ້ນ (ປຸ່ມ "ໃຊ້ຄ່າເລີ່ມຕົ້ນ") */
 export const getPayrollSetting = async (_req: Request, res: Response) => {
   try {
-    res.status(200).json({ data: await loadPayrollSettings(), defaults: DEFAULT_SETTINGS });
+    // ສົ່ງຄ່າທີ່ຕັ້ງໄວ້ແທ້ (ບໍ່ແມ່ນຄ່າທີ່ໃຊ້ຄິດ) ບໍ່ດັ່ງນັ້ນບັນທຶກຈາກໜ້າຕັ້ງຄ່າ ຈະທັບ tax_enabled ເປັນ 0;
+    // tax_locked = ບໍລິສັດແບບທຳມະດາ — ບໍ່ຫັກອາກອນລາຍໄດ້ (ໜ້າຕັ້ງຄ່າປິດສ່ວນອາກອນໄວ້)
+    res.status(200).json({ data: presentSettings(await findPayrollSetting()), defaults: DEFAULT_SETTINGS, tax_locked: await isSimpleMode() });
   } catch (error) {
     sendError(res, error, "Error getting payroll setting");
   }

@@ -4,7 +4,7 @@ import AccountSetting from "../../models/accountSetting";
 import { sendError } from "./bansiHelpers";
 
 /**
- * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ (tbl_account_setting, ແຖວດຽວ) — ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້,
+ * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ (tbl_account_setting, ແຖວດຽວ) — ຮູບແບບການໃຊ້ງານ (ທຳມະດາ / ຄົບຕາມມາດຕະຖານ), ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້,
  * ອັດຕາອາກອນກຳໄລ ແລະ ນະໂຍບາຍບັນຊີ. ວັນທີປິດງວດ (lock_date) ປ່ຽນຜ່ານ /period-close ເທົ່ານັ້ນ
  */
 
@@ -22,9 +22,23 @@ export const loadAccountSetting = async (t?: Transaction) => {
   return row ?? AccountSetting.create({}, { transaction: t });
 };
 
+/** ຮູບແບບການໃຊ້ງານ */
+export const SIMPLE_MODE = 1;
+export const FULL_MODE = 2;
+
+/** ບໍລິສັດໃຊ້ແບບທຳມະດາ (ບໍ່ມີອາກອນ) ບໍ — ເງິນເດືອນບໍ່ຫັກອາກອນລາຍໄດ້ ເມື່ອເປັນແບບນີ້ */
+export const isSimpleMode = async (t?: Transaction) =>
+  Number((await loadAccountSetting(t)).accounting_mode) === SIMPLE_MODE;
+
+/** ຟັງຊັນທີ່ກ່ຽວກັບອາກອນ/ມາດຕະຖານ — ແບບທຳມະດາປິດສະເໝີ ບໍ່ວ່າຈະຕັ້ງໄວ້ແນວໃດ */
+const COMPLIANCE_FLAGS = new Set<string>(["use_vat", "use_withholding", "use_fx_revaluation"]);
+
 /** ຟັງຊັນເປີດໃຊ້ຢູ່ບໍ (ໃຊ້ໃນ controller ອື່ນ) */
-export const featureOn = async (feature: (typeof FLAGS)[number], t?: Transaction) =>
-  Number((await loadAccountSetting(t))[feature]) === 1;
+export const featureOn = async (feature: (typeof FLAGS)[number], t?: Transaction) => {
+  const row = await loadAccountSetting(t);
+  if (COMPLIANCE_FLAGS.has(feature) && Number(row.accounting_mode) === SIMPLE_MODE) return false;
+  return Number(row[feature]) === 1;
+};
 
 /** GET /account-setting */
 export const getAccountSetting = async (_req: Request, res: Response) => {
@@ -40,6 +54,7 @@ export const updateAccountSetting = async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
     const patch: Record<string, unknown> = {};
+    if (body.accounting_mode !== undefined) patch.accounting_mode = Number(body.accounting_mode) === SIMPLE_MODE ? SIMPLE_MODE : FULL_MODE;
     if (body.number_format !== undefined) patch.number_format = Number(body.number_format) === 2 ? 2 : 1;
     for (const field of FLAGS) {
       if (body[field] !== undefined) patch[field] = Number(body[field]) === 1 || body[field] === true ? 1 : 0;

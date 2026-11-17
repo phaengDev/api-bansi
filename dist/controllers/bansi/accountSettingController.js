@@ -3,11 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateAccountSetting = exports.getAccountSetting = exports.featureOn = exports.loadAccountSetting = void 0;
+exports.updateAccountSetting = exports.getAccountSetting = exports.featureOn = exports.isSimpleMode = exports.FULL_MODE = exports.SIMPLE_MODE = exports.loadAccountSetting = void 0;
 const accountSetting_1 = __importDefault(require("../../models/accountSetting"));
 const bansiHelpers_1 = require("./bansiHelpers");
 /**
- * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ (tbl_account_setting, ແຖວດຽວ) — ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້,
+ * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ (tbl_account_setting, ແຖວດຽວ) — ຮູບແບບການໃຊ້ງານ (ທຳມະດາ / ຄົບຕາມມາດຕະຖານ), ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້,
  * ອັດຕາອາກອນກຳໄລ ແລະ ນະໂຍບາຍບັນຊີ. ວັນທີປິດງວດ (lock_date) ປ່ຽນຜ່ານ /period-close ເທົ່ານັ້ນ
  */
 const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation"];
@@ -23,8 +23,21 @@ const loadAccountSetting = async (t) => {
     return row ?? accountSetting_1.default.create({}, { transaction: t });
 };
 exports.loadAccountSetting = loadAccountSetting;
+/** ຮູບແບບການໃຊ້ງານ */
+exports.SIMPLE_MODE = 1;
+exports.FULL_MODE = 2;
+/** ບໍລິສັດໃຊ້ແບບທຳມະດາ (ບໍ່ມີອາກອນ) ບໍ — ເງິນເດືອນບໍ່ຫັກອາກອນລາຍໄດ້ ເມື່ອເປັນແບບນີ້ */
+const isSimpleMode = async (t) => Number((await (0, exports.loadAccountSetting)(t)).accounting_mode) === exports.SIMPLE_MODE;
+exports.isSimpleMode = isSimpleMode;
+/** ຟັງຊັນທີ່ກ່ຽວກັບອາກອນ/ມາດຕະຖານ — ແບບທຳມະດາປິດສະເໝີ ບໍ່ວ່າຈະຕັ້ງໄວ້ແນວໃດ */
+const COMPLIANCE_FLAGS = new Set(["use_vat", "use_withholding", "use_fx_revaluation"]);
 /** ຟັງຊັນເປີດໃຊ້ຢູ່ບໍ (ໃຊ້ໃນ controller ອື່ນ) */
-const featureOn = async (feature, t) => Number((await (0, exports.loadAccountSetting)(t))[feature]) === 1;
+const featureOn = async (feature, t) => {
+    const row = await (0, exports.loadAccountSetting)(t);
+    if (COMPLIANCE_FLAGS.has(feature) && Number(row.accounting_mode) === exports.SIMPLE_MODE)
+        return false;
+    return Number(row[feature]) === 1;
+};
 exports.featureOn = featureOn;
 /** GET /account-setting */
 const getAccountSetting = async (_req, res) => {
@@ -41,6 +54,8 @@ const updateAccountSetting = async (req, res) => {
     try {
         const body = req.body || {};
         const patch = {};
+        if (body.accounting_mode !== undefined)
+            patch.accounting_mode = Number(body.accounting_mode) === exports.SIMPLE_MODE ? exports.SIMPLE_MODE : exports.FULL_MODE;
         if (body.number_format !== undefined)
             patch.number_format = Number(body.number_format) === 2 ? 2 : 1;
         for (const field of FLAGS) {

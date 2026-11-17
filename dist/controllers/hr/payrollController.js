@@ -29,6 +29,7 @@ const attendanceController_1 = require("./attendanceController");
 const hrHelpers_1 = require("./hrHelpers");
 const notificationController_1 = require("./notificationController");
 const advanceController_1 = require("./advanceController");
+const accountSettingController_1 = require("../bansi/accountSettingController");
 /**
  * ເງິນເດືອນປະຈຳເດືອນ: ສ້າງໃບ (ຄິດຈາກເງິນເດືອນພື້ນຖານ + ການເຂົ້າວຽກ) → ແກ້ລາຍຄົນ (ເງິນເພີ່ມ / ຫັກ / ປກສ / ອາກອນ)
  * → ຈ່າຍ (ເງິນອອກຈາກບັນຊີເງິນຄັງສະກຸນກີບ + ລົງບັນຊີຄູ່ + ຕັດຍອດເງິນເບີກລ່ວງໜ້າ). ແກ້ໄຂໄດ້ສະເພາະໃບຮ່າງ; ຍົກເລີກການຈ່າຍ = ກັບເປັນຮ່າງ.
@@ -187,7 +188,9 @@ const draftOf = async (id, t) => {
 /** GET /payroll/setting — ຕັ້ງຄ່າປັດຈຸບັນ (ຍັງບໍ່ເຄີຍບັນທຶກ = ຄ່າເລີ່ມຕົ້ນ) + ຄ່າເລີ່ມຕົ້ນ (ປຸ່ມ "ໃຊ້ຄ່າເລີ່ມຕົ້ນ") */
 const getPayrollSetting = async (_req, res) => {
     try {
-        res.status(200).json({ data: await (0, payrollRules_1.loadPayrollSettings)(), defaults: payrollRules_1.DEFAULT_SETTINGS });
+        // ສົ່ງຄ່າທີ່ຕັ້ງໄວ້ແທ້ (ບໍ່ແມ່ນຄ່າທີ່ໃຊ້ຄິດ) ບໍ່ດັ່ງນັ້ນບັນທຶກຈາກໜ້າຕັ້ງຄ່າ ຈະທັບ tax_enabled ເປັນ 0;
+        // tax_locked = ບໍລິສັດແບບທຳມະດາ — ບໍ່ຫັກອາກອນລາຍໄດ້ (ໜ້າຕັ້ງຄ່າປິດສ່ວນອາກອນໄວ້)
+        res.status(200).json({ data: (0, payrollRules_1.presentSettings)(await (0, payrollRules_1.findPayrollSetting)()), defaults: payrollRules_1.DEFAULT_SETTINGS, tax_locked: await (0, accountSettingController_1.isSimpleMode)() });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error getting payroll setting");

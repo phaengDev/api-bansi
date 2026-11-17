@@ -4,6 +4,9 @@ import { autoSync } from "../utils/autoSync";
 
 /**
  * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ — ແຖວດຽວຕໍ່ບໍລິສັດ (ອ່ານ/ສ້າງຜ່ານ accountSettingController.loadAccountSetting, ບໍ່ອີງ _uuid):
+ * - accounting_mode: 1 = ແບບທຳມະດາ (ເກັບຂໍ້ມູນພາຍໃນບໍລິສັດ — ລະບົບບໍ່ຄິດ/ບໍ່ຕິດຕາມອາກອນ: ບໍ່ມີອາກອນມູນຄ່າເພີ່ມ,
+ *   ອາກອນຫັກ ນ ທີ່ຈ່າຍ, ອາກອນກຳໄລ, ອາກອນເງິນເດືອນ, ປັບອັດຕາແລກປ່ຽນ ແລະ ເອກະສານງົບການເງິນທາງການ),
+ *   2 = ຄົບຕາມມາດຕະຖານ (ກົດໝາຍບັນຊີ + ອາກອນ — ຟັງຊັນລຸ່ມນີ້ເປີດ/ປິດແຍກໄດ້). ແຖວເດີມ = 2 (ພຶດຕິກຳເກົ່າ)
  * - number_format: 1 = 1,250,000.50 (ທີ່ໃຊ້ທົ່ວໄປ), 2 = 1.250.000,50 (ກົດໝາຍບັນຊີ ມາດຕາ 7)
  * - ເລກປະຈຳຕົວຜູ້ເສຍອາກອນ ແລະ ຊື່ຜູ້ເຊັນງົບການເງິນ (ຫົວໜ້າບັນຊີ, ຜູ້ອຳນວຍການ — ມາດຕາ 20)
  * - ຟັງຊັນທີ່ບໍລິສັດໃຊ້ (use_*): ບໍລິສັດທີ່ບໍ່ໃຊ້ ປິດໄວ້ ເມນູ/ໜ້າທີ່ກ່ຽວຂ້ອງຈະບໍ່ຂຶ້ນ
@@ -13,6 +16,7 @@ import { autoSync } from "../utils/autoSync";
  */
 class AccountSetting extends Model {
   declare _uuid: number;
+  declare accounting_mode: number;
   declare number_format: number;
   declare tax_id: string | null;
   declare chief_accountant: string | null;
@@ -35,6 +39,7 @@ const flag = (on: number) => ({ type: DataTypes.TINYINT, allowNull: false, defau
 AccountSetting.init(
   {
     _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    accounting_mode: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 2 },
     number_format: flag(1),
     tax_id: DataTypes.STRING(50),
     chief_accountant: DataTypes.STRING(150),

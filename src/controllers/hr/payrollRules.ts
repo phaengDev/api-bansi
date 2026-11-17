@@ -2,6 +2,7 @@ import { Op, Transaction } from "sequelize";
 import PayrollSetting from "../../models/payrollSetting";
 import Overtime from "../../models/overtime";
 import SalaryAdvance from "../../models/salaryAdvance";
+import { isSimpleMode } from "../bansi/accountSettingController";
 
 /**
  * ຕັ້ງຄ່າ ແລະ ສູດຄິດເງິນເດືອນ — ຄ່າເລີ່ມຕົ້ນຕາມກົດໝາຍລາວ (ກວດຄືນເມື່ອກົດໝາຍປ່ຽນ, ແກ້ໄດ້ຢູ່ໜ້າຕັ້ງຄ່າເງິນເດືອນ):
@@ -183,7 +184,14 @@ export const presentSettings = (row: PayrollSetting | null): PayrollSettings => 
 };
 
 export const findPayrollSetting = (t?: Transaction) => PayrollSetting.findOne({ order: [["_uuid", "ASC"]], transaction: t });
-export const loadPayrollSettings = async (t?: Transaction) => presentSettings(await findPayrollSetting(t));
+/**
+ * ຕັ້ງຄ່າທີ່ໃຊ້ຄິດເງິນເດືອນແທ້ — ບໍລິສັດແບບທຳມະດາ (ບໍ່ມີອາກອນ) ບໍ່ຫັກອາກອນລາຍໄດ້ ບໍ່ວ່າຈະຕັ້ງໄວ້ແນວໃດ
+ * (ຄ່າທີ່ຕັ້ງໄວ້ຍັງເກັບຢູ່ — ປ່ຽນກັບເປັນແບບຄົບຕາມມາດຕະຖານ ກໍ່ໃຊ້ຄືເກົ່າ)
+ */
+export const loadPayrollSettings = async (t?: Transaction) => {
+  const settings = presentSettings(await findPayrollSetting(t));
+  return (await isSimpleMode(t)) ? { ...settings, tax_enabled: false } : settings;
+};
 
 /** ອາກອນແບບຂັ້ນໄດ — ແຕ່ລະອັດຕາຄິດສະເພາະສ່ວນທີ່ຢູ່ໃນຂັ້ນຂອງມັນ */
 export const progressiveTax = (taxable: number, brackets: TaxBracket[]) => {
