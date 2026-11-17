@@ -67,7 +67,8 @@ import {
   getJournalEntries, createJournalEntry, reverseJournalEntry, getGlBalances, getGlLedger,
 } from "../controllers/bansi/journalController";
 import {
-  getPartners, createPartner, updatePartner, getPartnerDocs, createPartnerDoc, cancelPartnerDoc,
+  getPartners, createPartner, updatePartner, getPartnerDocs, createPartnerDoc,
+  updatePartnerDoc, cancelPartnerDoc,
   getPartnerPayments, createPartnerPayment, cancelPartnerPayment,
 } from "../controllers/bansi/arapController";
 import {
@@ -355,16 +356,17 @@ router.post("/gl/balances", getGlBalances);
 router.post("/gl/ledger", getGlLedger);
 // ========= ລູກໜີ້ (kind 1) / ເຈົ້າໜີ້ (kind 2)
 router.get("/partner/fetch", getPartners);
-router.post("/partner/create", createPartner);
-router.put("/partner/:id", updatePartner);
-// ໃບແຈ້ງໜີ້ / ໃບບິນ — ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້
+router.post("/partner/create", requirePermission("creates"), createPartner);
+router.put("/partner/:id", requirePermission("updates"), updatePartner);
+// ໃບແຈ້ງໜີ້ / ໃບບິນ — ແກ້ໄຂ/ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້ (ສິດ ເພີ່ມ / ແກ້ໄຂ / ລຶບ ຂອງຜູ້ໃຊ້)
 router.post("/partner-doc/fetch", getPartnerDocs);
-router.post("/partner-doc/create", createPartnerDoc);
-router.put("/partner-doc/cancel/:id", cancelPartnerDoc);
+router.post("/partner-doc/create", requirePermission("creates"), createPartnerDoc);
+router.put("/partner-doc/update/:id", requirePermission("updates"), updatePartnerDoc);
+router.put("/partner-doc/cancel/:id", requirePermission("deletes"), cancelPartnerDoc);
 // ຮັບ / ຈ່າຍຊຳລະ (ຕັດໜີ້ຫຼາຍໃບໄດ້) — ເງິນເຂົ້າ/ອອກ ບັນຊີເງິນຄັງ
 router.post("/partner-payment/fetch", getPartnerPayments);
-router.post("/partner-payment/create", createPartnerPayment);
-router.put("/partner-payment/cancel/:id", cancelPartnerPayment);
+router.post("/partner-payment/create", requirePermission("creates"), createPartnerPayment);
+router.put("/partner-payment/cancel/:id", requirePermission("deletes"), cancelPartnerPayment);
 // ========= ງົບປະມານລາຍຈ່າຍ (ຕາມໝວດລາຍຈ່າຍ ຕໍ່ປີການເງິນ) — ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍ; /check ໃຫ້ຟອມລາຍຈ່າຍເຕືອນເກີນງົບ
 router.post("/budget/fetch", getBudgets);
 router.post("/budget/expenses", getBudgetExpenses);

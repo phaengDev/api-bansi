@@ -279,16 +279,17 @@ router.post("/gl/balances", journalController_1.getGlBalances);
 router.post("/gl/ledger", journalController_1.getGlLedger);
 // ========= ລູກໜີ້ (kind 1) / ເຈົ້າໜີ້ (kind 2)
 router.get("/partner/fetch", arapController_1.getPartners);
-router.post("/partner/create", arapController_1.createPartner);
-router.put("/partner/:id", arapController_1.updatePartner);
-// ໃບແຈ້ງໜີ້ / ໃບບິນ — ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້
+router.post("/partner/create", (0, permission_1.requirePermission)("creates"), arapController_1.createPartner);
+router.put("/partner/:id", (0, permission_1.requirePermission)("updates"), arapController_1.updatePartner);
+// ໃບແຈ້ງໜີ້ / ໃບບິນ — ແກ້ໄຂ/ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້ (ສິດ ເພີ່ມ / ແກ້ໄຂ / ລຶບ ຂອງຜູ້ໃຊ້)
 router.post("/partner-doc/fetch", arapController_1.getPartnerDocs);
-router.post("/partner-doc/create", arapController_1.createPartnerDoc);
-router.put("/partner-doc/cancel/:id", arapController_1.cancelPartnerDoc);
+router.post("/partner-doc/create", (0, permission_1.requirePermission)("creates"), arapController_1.createPartnerDoc);
+router.put("/partner-doc/update/:id", (0, permission_1.requirePermission)("updates"), arapController_1.updatePartnerDoc);
+router.put("/partner-doc/cancel/:id", (0, permission_1.requirePermission)("deletes"), arapController_1.cancelPartnerDoc);
 // ຮັບ / ຈ່າຍຊຳລະ (ຕັດໜີ້ຫຼາຍໃບໄດ້) — ເງິນເຂົ້າ/ອອກ ບັນຊີເງິນຄັງ
 router.post("/partner-payment/fetch", arapController_1.getPartnerPayments);
-router.post("/partner-payment/create", arapController_1.createPartnerPayment);
-router.put("/partner-payment/cancel/:id", arapController_1.cancelPartnerPayment);
+router.post("/partner-payment/create", (0, permission_1.requirePermission)("creates"), arapController_1.createPartnerPayment);
+router.put("/partner-payment/cancel/:id", (0, permission_1.requirePermission)("deletes"), arapController_1.cancelPartnerPayment);
 // ========= ງົບປະມານລາຍຈ່າຍ (ຕາມໝວດລາຍຈ່າຍ ຕໍ່ປີການເງິນ) — ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍ; /check ໃຫ້ຟອມລາຍຈ່າຍເຕືອນເກີນງົບ
 router.post("/budget/fetch", budgetController_1.getBudgets);
 router.post("/budget/expenses", budgetController_1.getBudgetExpenses);

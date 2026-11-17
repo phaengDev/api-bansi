@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cancelPartnerPayment = exports.createPartnerPayment = exports.getPartnerPayments = exports.cancelPartnerDoc = exports.createPartnerDoc = exports.getPartnerDocs = exports.updatePartner = exports.createPartner = exports.getPartners = exports.AP = exports.AR = void 0;
+exports.cancelPartnerPayment = exports.createPartnerPayment = exports.getPartnerPayments = exports.cancelPartnerDoc = exports.updatePartnerDoc = exports.createPartnerDoc = exports.getPartnerDocs = exports.updatePartner = exports.createPartner = exports.getPartners = exports.AP = exports.AR = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -63,7 +63,8 @@ const glCore_1 = require("./glCore");
  * - ຮັບ/ຈ່າຍຊຳລະ (tbl_partner_payment + allocation) — ເງິນເຂົ້າ/ອອກ ບັນຊີເງິນຄັງ ແລະ ລົງບັນຊີ:
  *     AR: ໜີ້ ເງິນສົດ/ທະນາຄານ / ມີ ລູກໜີ້ (ຕາມອັດຕາຂອງໃບ) ± ກຳໄລ/ຂາດທຶນ ອັດຕາແລກປ່ຽນ
  *     AP: ໜີ້ ເຈົ້າໜີ້ (ຕາມອັດຕາຂອງໃບ) / ມີ ເງິນສົດ/ທະນາຄານ ± ກຳໄລ/ຂາດທຶນ ອັດຕາແລກປ່ຽນ
- * ຍົກເລີກ = ກັບລາຍການໃບບັນທຶກ (ໃບທີ່ຕັດໜີ້ແລ້ວຕ້ອງຍົກເລີກການຊຳລະກ່ອນ). ຕ້ອງແລ່ນ sql/create_gl_ar_ap.sql
+ * ແກ້ໄຂ (ເລກທີຄືເດີມ) / ຍົກເລີກ = ກັບລາຍການໃບບັນທຶກ — ໃບທີ່ຕັດໜີ້ແລ້ວ ຕ້ອງຍົກເລີກການຊຳລະກ່ອນ. ບໍ່ມີການລຶບຖາວອນ:
+ * ເລກໃບເກັບເງິນຕ້ອງຕໍ່ເນື່ອງ ແລະ ໃບທີ່ຍົກເລີກຕ້ອງເກັບໄວ້. ສິດ ເພີ່ມ/ແກ້ໄຂ/ລຶບ ກວດທີ່ routes (requirePermission). ຕ້ອງແລ່ນ sql/create_gl_ar_ap.sql
  */
 exports.AR = 1;
 exports.AP = 2;
@@ -295,10 +296,111 @@ const getPartnerDocs = async (req, res) => {
 };
 exports.getPartnerDocs = getPartnerDocs;
 /**
- * POST /partner-doc/create
- * { kind, partner_id, doc_date?, due_date?, reference?, description?, currency_id?, exchange_rate?,
- *   tax_id? | (tax, calc_method)?, lines: [{ account_id, description?, amount }] }
+ * ອ່ານ + ກວດຂໍ້ມູນໃບຈາກ body — ໃຊ້ຮ່ວມກັນ ອອກໃບໃໝ່ ແລະ ແກ້ໄຂໃບ:
+ * { partner_id, doc_date?, due_date?, reference?, description?, currency_id?, exchange_rate?,
+ *   tax_id? | (tax, calc_method)?, lines: [{ account_id, description?, quantity?, unit?, unit_price? | amount }] }
  */
+const readDocInput = async (body, kind, t) => {
+    const cfg = KIND[kind];
+    const partner = await partner_1.default.findByPk(Number(body.partner_id), { transaction: t });
+    if (!partner || Number(partner.status) !== 1)
+        throw new glCore_1.GlError("ບໍ່ພົບຄູ່ຄ້າ ຫຼື ປິດໃຊ້ງານແລ້ວ");
+    if (!cfg.partnerTypes.includes(Number(partner.partner_type))) {
+        throw new glCore_1.GlError(kind === exports.AR ? "ຄູ່ຄ້ານີ້ບໍ່ແມ່ນລູກຄ້າ" : "ຄູ່ຄ້ານີ້ບໍ່ແມ່ນຜູ້ສະໜອງ");
+    }
+    const docDate = (0, journalHelpers_1.entryDateOf)(body.doc_date, "ວັນທີເອກະສານ");
+    if ("error" in docDate)
+        throw new glCore_1.GlError(docDate.error);
+    const due = (0, bansiHelpers_1.toDateOnly)(body.due_date) ?? (0, moment_1.default)(docDate.date).add(Number(partner.credit_days) || 0, "days").format("YYYY-MM-DD");
+    if (due < docDate.date)
+        throw new glCore_1.GlError("ວັນຄົບກຳນົດຕ້ອງບໍ່ກ່ອນວັນທີເອກະສານ");
+    const items = Array.isArray(body.lines) ? body.lines : [];
+    // ຈຳນວນ × ລາຄາຫົວໜ່ວຍ = ຍອດແຖວ (ສົ່ງແຕ່ amount = 1 × amount ຄືເກົ່າ)
+    const lines = items
+        .map((l) => {
+        const price = l?.unit_price === undefined || l?.unit_price === null || l?.unit_price === "" ? null : (0, glCore_1.round2)(Number(l.unit_price) || 0);
+        const quantity = Number(l?.quantity) > 0 ? Math.round(Number(l.quantity) * 10000) / 10000 : 1;
+        const amount = price === null ? (0, glCore_1.round2)(Number(l?.amount) || 0) : (0, glCore_1.round2)(quantity * price);
+        return {
+            account_id: Number(l?.account_id),
+            description: String(l?.description ?? "").trim() || null,
+            quantity: price === null ? 1 : quantity,
+            unit: String(l?.unit ?? "").trim().slice(0, 30) || null,
+            unit_price: price ?? amount,
+            amount,
+        };
+    })
+        .filter((l) => l.amount !== 0 || l.account_id);
+    if (!lines.length)
+        throw new glCore_1.GlError("ກະລຸນາປ້ອນຢ່າງໜ້ອຍ 1 ລາຍການ");
+    lines.forEach((l, i) => {
+        if (!l.account_id)
+            throw new glCore_1.GlError(`ແຖວ ${i + 1}: ກະລຸນາເລືອກບັນຊີ`);
+        if (!(l.amount > 0))
+            throw new glCore_1.GlError(`ແຖວ ${i + 1}: ຈຳນວນຕ້ອງຫຼາຍກວ່າ 0`);
+    });
+    const subtotal = (0, glCore_1.round2)(lines.reduce((n, l) => n + l.amount, 0));
+    const taxed = await (0, journalHelpers_1.computeTax)(body, subtotal, t);
+    if ("error" in taxed)
+        throw new glCore_1.GlError(taxed.error);
+    const currencyId = await currencyIdOf(body.currency_id, t);
+    const rate = Number(body.exchange_rate) > 0 ? Number(body.exchange_rate) : await (0, glCore_1.rateOf)(currencyId, docDate.date, t);
+    const control = (kind === exports.AR ? partner.receivable_account_id : partner.payable_account_id) || (await (0, glCore_1.roleAccountId)(cfg.role, t));
+    return {
+        partner,
+        lines,
+        fields: {
+            partner_id: partner._uuid,
+            doc_date: docDate.date,
+            due_date: due,
+            reference: String(body.reference ?? "").trim() || null,
+            description: String(body.description ?? "").trim() || null,
+            currency_id: currencyId,
+            exchange_rate: rate,
+            subtotal,
+            tax_id: Number(body.tax_id) > 0 ? Number(body.tax_id) : null,
+            tax: (0, glCore_1.round2)(taxed.tax),
+            total: (0, glCore_1.round2)(taxed.total),
+            control_account_id: control,
+        },
+    };
+};
+/**
+ * ບັນທຶກແຖວຂອງໃບ ແລະ ລົງບັນຊີ — postSource: ໃບໃໝ່ = ອອກໃບບັນທຶກໃໝ່; ແກ້ໄຂ = ກັບລາຍການໃບບັນທຶກເດີມ
+ * ແລ້ວອອກໃໝ່ ຖ້າຕົວເລກ/ວັນທີປ່ຽນ (ເຫັນຮ່ອງຮອຍການແກ້ໄຂ, ກວດງວດທີ່ປິດແລ້ວທັງວັນທີເກົ່າ ແລະ ໃໝ່)
+ */
+const saveDocLines = async (doc, kind, input, actorId, t) => {
+    const { partner, lines, fields } = input;
+    await partnerDoc_1.PartnerDocLine.destroy({ where: { doc_id: doc._uuid }, transaction: t });
+    await partnerDoc_1.PartnerDocLine.bulkCreate(lines.map((l, i) => ({ ...l, doc_id: doc._uuid, line_no: i + 1 })), { transaction: t });
+    // ຍອດກ່ອນອາກອນຂອງແຕ່ລະແຖວ (ອາກອນລວມໃນລາຄາ → ຫານຕາມສັດສ່ວນ, ເສດໃສ່ແຖວສຸດທ້າຍ)
+    const net = (0, glCore_1.round2)(fields.total - fields.tax);
+    let remaining = net;
+    const netLines = lines.map((l, i) => {
+        const value = i === lines.length - 1 ? remaining : (0, glCore_1.round2)((l.amount * net) / fields.subtotal);
+        remaining = (0, glCore_1.round2)(remaining - value);
+        return { ...l, net: value };
+    });
+    const common = { currencyId: fields.currency_id, rate: fields.exchange_rate };
+    const sideOf = (isControl) => (kind === exports.AR ? (isControl ? glCore_1.DEBIT : glCore_1.CREDIT) : (isControl ? glCore_1.CREDIT : glCore_1.DEBIT));
+    const draft = [
+        { ...common, accountId: fields.control_account_id, side: sideOf(true), amount: fields.total, description: partner.name },
+        ...netLines.map((l) => ({ ...common, accountId: l.account_id, side: sideOf(false), amount: l.net, description: l.description })),
+    ];
+    if (fields.tax) {
+        draft.push({ ...common, accountId: await (0, glCore_1.roleAccountId)(kind === exports.AR ? "VAT_OUTPUT" : "VAT_INPUT", t), side: sideOf(false), amount: fields.tax });
+    }
+    await (0, glCore_1.postSource)({
+        date: fields.doc_date,
+        sourceType: KIND[kind].docCode,
+        sourceId: doc._uuid,
+        reference: doc.doc_number,
+        description: `${partner.name}${fields.description ? ` — ${fields.description}` : ""}`,
+        lines: draft,
+        actorId,
+    }, t);
+};
+/** POST /partner-doc/create { kind, ...readDocInput } — ສິດ "ເພີ່ມ" */
 const createPartnerDoc = async (req, res) => {
     const t = await database_1.default.transaction();
     try {
@@ -311,97 +413,17 @@ const createPartnerDoc = async (req, res) => {
         if (!kind)
             throw new glCore_1.GlError("kind ຕ້ອງເປັນ 1 (ລູກໜີ້) ຫຼື 2 (ເຈົ້າໜີ້)");
         const cfg = KIND[kind];
-        const partner = await partner_1.default.findByPk(Number(body.partner_id), { transaction: t });
-        if (!partner || Number(partner.status) !== 1)
-            throw new glCore_1.GlError("ບໍ່ພົບຄູ່ຄ້າ ຫຼື ປິດໃຊ້ງານແລ້ວ");
-        if (!cfg.partnerTypes.includes(Number(partner.partner_type))) {
-            throw new glCore_1.GlError(kind === exports.AR ? "ຄູ່ຄ້ານີ້ບໍ່ແມ່ນລູກຄ້າ" : "ຄູ່ຄ້ານີ້ບໍ່ແມ່ນຜູ້ສະໜອງ");
-        }
-        const docDate = (0, journalHelpers_1.entryDateOf)(body.doc_date, "ວັນທີເອກະສານ");
-        if ("error" in docDate)
-            throw new glCore_1.GlError(docDate.error);
-        const due = (0, bansiHelpers_1.toDateOnly)(body.due_date) ?? (0, moment_1.default)(docDate.date).add(Number(partner.credit_days) || 0, "days").format("YYYY-MM-DD");
-        if (due < docDate.date)
-            throw new glCore_1.GlError("ວັນຄົບກຳນົດຕ້ອງບໍ່ກ່ອນວັນທີເອກະສານ");
-        const items = Array.isArray(body.lines) ? body.lines : [];
-        // ຈຳນວນ × ລາຄາຫົວໜ່ວຍ = ຍອດແຖວ (ສົ່ງແຕ່ amount = 1 × amount ຄືເກົ່າ)
-        const lines = items
-            .map((l) => {
-            const price = l?.unit_price === undefined || l?.unit_price === null || l?.unit_price === "" ? null : (0, glCore_1.round2)(Number(l.unit_price) || 0);
-            const quantity = Number(l?.quantity) > 0 ? Math.round(Number(l.quantity) * 10000) / 10000 : 1;
-            const amount = price === null ? (0, glCore_1.round2)(Number(l?.amount) || 0) : (0, glCore_1.round2)(quantity * price);
-            return {
-                account_id: Number(l?.account_id),
-                description: String(l?.description ?? "").trim() || null,
-                quantity: price === null ? 1 : quantity,
-                unit: String(l?.unit ?? "").trim().slice(0, 30) || null,
-                unit_price: price ?? amount,
-                amount,
-            };
-        })
-            .filter((l) => l.amount !== 0 || l.account_id);
-        if (!lines.length)
-            throw new glCore_1.GlError("ກະລຸນາປ້ອນຢ່າງໜ້ອຍ 1 ລາຍການ");
-        lines.forEach((l, i) => {
-            if (!l.account_id)
-                throw new glCore_1.GlError(`ແຖວ ${i + 1}: ກະລຸນາເລືອກບັນຊີ`);
-            if (!(l.amount > 0))
-                throw new glCore_1.GlError(`ແຖວ ${i + 1}: ຈຳນວນຕ້ອງຫຼາຍກວ່າ 0`);
-        });
-        const subtotal = (0, glCore_1.round2)(lines.reduce((n, l) => n + l.amount, 0));
-        const taxed = await (0, journalHelpers_1.computeTax)(body, subtotal, t);
-        if ("error" in taxed)
-            throw new glCore_1.GlError(taxed.error);
-        const tax = (0, glCore_1.round2)(taxed.tax);
-        const total = (0, glCore_1.round2)(taxed.total);
-        const currencyId = await currencyIdOf(body.currency_id, t);
-        const rate = Number(body.exchange_rate) > 0 ? Number(body.exchange_rate) : await (0, glCore_1.rateOf)(currencyId, docDate.date, t);
-        const control = (kind === exports.AR ? partner.receivable_account_id : partner.payable_account_id) || (await (0, glCore_1.roleAccountId)(cfg.role, t));
+        const input = await readDocInput(body, kind, t);
+        const actorId = Number((0, bansiHelpers_1.actorOf)(req)) || null;
         const doc = await partnerDoc_1.default.create({
+            ...input.fields,
             doc_kind: kind,
-            doc_number: await nextNumber(cfg.docCode, cfg.docPrefix, partnerDoc_1.default, "doc_number", docDate.date, t),
-            partner_id: partner._uuid,
-            doc_date: docDate.date,
-            due_date: due,
-            reference: String(body.reference ?? "").trim() || null,
-            description: String(body.description ?? "").trim() || null,
-            currency_id: currencyId,
-            exchange_rate: rate,
-            subtotal,
-            tax_id: Number(body.tax_id) > 0 ? Number(body.tax_id) : null,
-            tax,
-            total,
+            doc_number: await nextNumber(cfg.docCode, cfg.docPrefix, partnerDoc_1.default, "doc_number", input.fields.doc_date, t),
             paid: 0,
-            control_account_id: control,
             status: ACTIVE,
-            created_by: Number((0, bansiHelpers_1.actorOf)(req)) || null,
+            created_by: actorId,
         }, { transaction: t });
-        await partnerDoc_1.PartnerDocLine.bulkCreate(lines.map((l, i) => ({ ...l, doc_id: doc._uuid, line_no: i + 1 })), { transaction: t });
-        // ຍອດກ່ອນອາກອນຂອງແຕ່ລະແຖວ (ອາກອນລວມໃນລາຄາ → ຫານຕາມສັດສ່ວນ, ເສດໃສ່ແຖວສຸດທ້າຍ)
-        const net = (0, glCore_1.round2)(total - tax);
-        let remaining = net;
-        const netLines = lines.map((l, i) => {
-            const value = i === lines.length - 1 ? remaining : (0, glCore_1.round2)((l.amount * net) / subtotal);
-            remaining = (0, glCore_1.round2)(remaining - value);
-            return { ...l, net: value };
-        });
-        const common = { currencyId, rate };
-        const sideOf = (isControl) => (kind === exports.AR ? (isControl ? glCore_1.DEBIT : glCore_1.CREDIT) : (isControl ? glCore_1.CREDIT : glCore_1.DEBIT));
-        const draft = [
-            { ...common, accountId: control, side: sideOf(true), amount: total, description: partner.name },
-            ...netLines.map((l) => ({ ...common, accountId: l.account_id, side: sideOf(false), amount: l.net, description: l.description })),
-        ];
-        if (tax)
-            draft.push({ ...common, accountId: await (0, glCore_1.roleAccountId)(kind === exports.AR ? "VAT_OUTPUT" : "VAT_INPUT", t), side: sideOf(false), amount: tax });
-        await (0, glCore_1.postEntry)({
-            date: docDate.date,
-            sourceType: cfg.docCode,
-            sourceId: doc._uuid,
-            reference: doc.doc_number,
-            description: `${partner.name}${doc.description ? ` — ${doc.description}` : ""}`,
-            lines: draft,
-            actorId: Number((0, bansiHelpers_1.actorOf)(req)) || null,
-        }, t);
+        await saveDocLines(doc, kind, input, actorId, t);
         await t.commit();
         res.status(200).json({ message: "Successfully created document", data: doc });
     }
@@ -411,7 +433,38 @@ const createPartnerDoc = async (req, res) => {
     }
 };
 exports.createPartnerDoc = createPartnerDoc;
-/** PUT /partner-doc/cancel/:id — ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້ (ກັບລາຍການໃບບັນທຶກ) */
+/**
+ * PUT /partner-doc/update/:id { ...readDocInput } — ສິດ "ແກ້ໄຂ". ແກ້ໄດ້ສະເພາະໃບທີ່ຍັງໃຊ້ງານ ແລະ ຍັງບໍ່ໄດ້ຕັດໜີ້;
+ * ເລກທີໃບຄືເດີມ (ເລກໃບເກັບເງິນຕ້ອງຕໍ່ເນື່ອງ), ໃບບັນທຶກເດີມຖືກກັບລາຍການ ແລ້ວລົງໃໝ່
+ */
+const updatePartnerDoc = async (req, res) => {
+    const t = await database_1.default.transaction();
+    try {
+        if (!(await arapReady(t))) {
+            await t.rollback();
+            return notReady(res);
+        }
+        const doc = await partnerDoc_1.default.findByPk((0, bansiHelpers_1.decodeId)(req), { transaction: t, lock: t.LOCK.UPDATE });
+        if (!doc)
+            throw new glCore_1.GlError("ບໍ່ພົບເອກະສານ");
+        if (Number(doc.status) !== ACTIVE)
+            throw new glCore_1.GlError("ເອກະສານນີ້ຖືກຍົກເລີກແລ້ວ — ແກ້ໄຂບໍ່ໄດ້");
+        if (Number(doc.paid) > 0)
+            throw new glCore_1.GlError("ເອກະສານນີ້ຕັດໜີ້ແລ້ວ — ຍົກເລີກການຊຳລະກ່ອນ ຈຶ່ງແກ້ໄຂໄດ້");
+        const kind = Number(doc.doc_kind);
+        const input = await readDocInput(req.body || {}, kind, t);
+        await doc.update({ ...input.fields, updatedAt: new Date() }, { transaction: t });
+        await saveDocLines(doc, kind, input, Number((0, bansiHelpers_1.actorOf)(req)) || null, t);
+        await t.commit();
+        res.status(200).json({ message: "Successfully updated document", data: doc });
+    }
+    catch (error) {
+        await t.rollback();
+        fail(res, error, "Error updating document");
+    }
+};
+exports.updatePartnerDoc = updatePartnerDoc;
+/** PUT /partner-doc/cancel/:id — ສິດ "ລຶບ". ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້ (ກັບລາຍການໃບບັນທຶກ, ເລກທີໃບເກັບໄວ້) */
 const cancelPartnerDoc = async (req, res) => {
     const t = await database_1.default.transaction();
     try {
