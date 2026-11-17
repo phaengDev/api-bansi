@@ -9,8 +9,9 @@ import { sendError } from "./bansiHelpers";
  */
 
 const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation"] as const;
-const TEXTS: [field: "tax_id" | "chief_accountant" | "director", max: number][] = [
+const TEXTS: [field: "tax_id" | "chief_accountant" | "director" | "invoice_license", max: number][] = [
   ["tax_id", 50],
+  ["invoice_license", 100],
   ["chief_accountant", 150],
   ["director", 150],
 ];
@@ -70,6 +71,8 @@ export const updateAccountSetting = async (req: Request, res: Response) => {
       }
       patch.profit_tax_rate = Math.round(rate * 100) / 100;
     }
+    if (body.invoice_account_id !== undefined) patch.invoice_account_id = Number(body.invoice_account_id) || null;
+    if (body.invoice_copies !== undefined) patch.invoice_copies = Number(body.invoice_copies) === 1 ? 1 : 2;
     if (body.policies !== undefined) patch.policies = String(body.policies ?? "").trim().slice(0, MAX_POLICIES) || null;
     const row = await loadAccountSetting();
     await row.update({ ...patch, updatedAt: new Date() });

@@ -12,6 +12,8 @@ import { autoSync } from "../utils/autoSync";
  * - ຟັງຊັນທີ່ບໍລິສັດໃຊ້ (use_*): ບໍລິສັດທີ່ບໍ່ໃຊ້ ປິດໄວ້ ເມນູ/ໜ້າທີ່ກ່ຽວຂ້ອງຈະບໍ່ຂຶ້ນ
  * - lock_date: ປິດງວດຮອດວັນທີນີ້ (ທ້າຍເດືອນ) — ລົງ/ແກ້ລາຍການວັນທີ ≤ lock_date ບໍ່ໄດ້ (glCore.assertOpenPeriod)
  * - profit_tax_rate: ອັດຕາອາກອນກຳໄລ (%) ຂອງໜ້າ ຄິດອາກອນກຳໄລ
+ * - ໃບເກັບເງິນອາກອນ: invoice_license = ເລກທີໃບອະນຸຍາດນຳໃຊ້ໃບເກັບເງິນ (ພິມທ້າຍໃບ), invoice_account_id = ບັນຊີທະນາຄານ
+ *   ຂອງບໍລິສັດທີ່ພິມໃສ່ໃບ (ຜູ້ຊື້ໂອນເຂົ້າ), invoice_copies = ພິມ 1 ໃບ (ສຳລັບຜູ້ຊື້) ຫຼື 2 ໃບ (+ ສຳລັບຜູ້ຂາຍ)
  * - policies: ນະໂຍບາຍບັນຊີ ໃນບົດອະທິບາຍງົບການເງິນ (ຫວ່າງ = ໃຊ້ຂໍ້ຄວາມຕັ້ງຕົ້ນຂອງໜ້າເວັບ)
  */
 class AccountSetting extends Model {
@@ -30,6 +32,9 @@ class AccountSetting extends Model {
   declare locked_by: string | null;
   declare profit_tax_rate: string;
   declare policies: string | null;
+  declare invoice_license: string | null;
+  declare invoice_account_id: number | null;
+  declare invoice_copies: number;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -53,6 +58,9 @@ AccountSetting.init(
     locked_by: DataTypes.STRING(100),
     profit_tax_rate: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 20 },
     policies: DataTypes.TEXT,
+    invoice_license: DataTypes.STRING(100),
+    invoice_account_id: DataTypes.INTEGER,
+    invoice_copies: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 2 },
     createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     updatedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   },

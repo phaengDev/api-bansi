@@ -16,6 +16,8 @@ const autoSync_1 = require("../utils/autoSync");
  * - ຟັງຊັນທີ່ບໍລິສັດໃຊ້ (use_*): ບໍລິສັດທີ່ບໍ່ໃຊ້ ປິດໄວ້ ເມນູ/ໜ້າທີ່ກ່ຽວຂ້ອງຈະບໍ່ຂຶ້ນ
  * - lock_date: ປິດງວດຮອດວັນທີນີ້ (ທ້າຍເດືອນ) — ລົງ/ແກ້ລາຍການວັນທີ ≤ lock_date ບໍ່ໄດ້ (glCore.assertOpenPeriod)
  * - profit_tax_rate: ອັດຕາອາກອນກຳໄລ (%) ຂອງໜ້າ ຄິດອາກອນກຳໄລ
+ * - ໃບເກັບເງິນອາກອນ: invoice_license = ເລກທີໃບອະນຸຍາດນຳໃຊ້ໃບເກັບເງິນ (ພິມທ້າຍໃບ), invoice_account_id = ບັນຊີທະນາຄານ
+ *   ຂອງບໍລິສັດທີ່ພິມໃສ່ໃບ (ຜູ້ຊື້ໂອນເຂົ້າ), invoice_copies = ພິມ 1 ໃບ (ສຳລັບຜູ້ຊື້) ຫຼື 2 ໃບ (+ ສຳລັບຜູ້ຂາຍ)
  * - policies: ນະໂຍບາຍບັນຊີ ໃນບົດອະທິບາຍງົບການເງິນ (ຫວ່າງ = ໃຊ້ຂໍ້ຄວາມຕັ້ງຕົ້ນຂອງໜ້າເວັບ)
  */
 class AccountSetting extends sequelize_1.Model {
@@ -37,6 +39,9 @@ AccountSetting.init({
     locked_by: sequelize_1.DataTypes.STRING(100),
     profit_tax_rate: { type: sequelize_1.DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 20 },
     policies: sequelize_1.DataTypes.TEXT,
+    invoice_license: sequelize_1.DataTypes.STRING(100),
+    invoice_account_id: sequelize_1.DataTypes.INTEGER,
+    invoice_copies: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 2 },
     createdAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
     updatedAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
 }, { sequelize: database_1.default, modelName: "AccountSetting", tableName: "tbl_account_setting", timestamps: true });

@@ -14,6 +14,10 @@ export class PartnerDocLine extends Model {
   public line_no!: number;
   public account_id!: number;
   public description!: string | null;
+  /** ຈຳນວນ × ລາຄາຫົວໜ່ວຍ = amount (ໃບເກັບເງິນອາກອນມີຖັນ ຫົວໜ່ວຍ / ຈຳນວນ / ລາຄາຫົວໜ່ວຍ); ແຖວເກົ່າ = 1 × amount */
+  public quantity!: string;
+  public unit!: string | null;
+  public unit_price!: string | null;
   public amount!: string;
 }
 
@@ -37,6 +41,13 @@ PartnerDocLine.init(
       allowNull: false
     },
     description: DataTypes.STRING(255),
+    quantity: {
+      type: DataTypes.DECIMAL(18, 4),
+      allowNull: false,
+      defaultValue: 1
+    },
+    unit: DataTypes.STRING(30),
+    unit_price: DataTypes.DECIMAL(18, 2),
     amount: {
       type: DataTypes.DECIMAL(18, 2),
       allowNull: false

@@ -288,8 +288,21 @@ export const createPartnerDoc = async (req: Request, res: Response) => {
     if (due < docDate.date) throw new GlError("ວັນຄົບກຳນົດຕ້ອງບໍ່ກ່ອນວັນທີເອກະສານ");
 
     const items: any[] = Array.isArray(body.lines) ? body.lines : [];
+    // ຈຳນວນ × ລາຄາຫົວໜ່ວຍ = ຍອດແຖວ (ສົ່ງແຕ່ amount = 1 × amount ຄືເກົ່າ)
     const lines = items
-      .map((l) => ({ account_id: Number(l?.account_id), description: String(l?.description ?? "").trim() || null, amount: round2(Number(l?.amount) || 0) }))
+      .map((l) => {
+        const price = l?.unit_price === undefined || l?.unit_price === null || l?.unit_price === "" ? null : round2(Number(l.unit_price) || 0);
+        const quantity = Number(l?.quantity) > 0 ? Math.round(Number(l.quantity) * 10000) / 10000 : 1;
+        const amount = price === null ? round2(Number(l?.amount) || 0) : round2(quantity * price);
+        return {
+          account_id: Number(l?.account_id),
+          description: String(l?.description ?? "").trim() || null,
+          quantity: price === null ? 1 : quantity,
+          unit: String(l?.unit ?? "").trim().slice(0, 30) || null,
+          unit_price: price ?? amount,
+          amount,
+        };
+      })
       .filter((l) => l.amount !== 0 || l.account_id);
     if (!lines.length) throw new GlError("ກະລຸນາປ້ອນຢ່າງໜ້ອຍ 1 ລາຍການ");
     lines.forEach((l, i) => {

@@ -35,6 +35,13 @@ PartnerDocLine.init({
         allowNull: false
     },
     description: sequelize_1.DataTypes.STRING(255),
+    quantity: {
+        type: sequelize_1.DataTypes.DECIMAL(18, 4),
+        allowNull: false,
+        defaultValue: 1
+    },
+    unit: sequelize_1.DataTypes.STRING(30),
+    unit_price: sequelize_1.DataTypes.DECIMAL(18, 2),
     amount: {
         type: sequelize_1.DataTypes.DECIMAL(18, 2),
         allowNull: false
