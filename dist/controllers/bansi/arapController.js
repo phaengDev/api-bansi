@@ -237,7 +237,7 @@ const updatePartner = async (req, res) => {
 exports.updatePartner = updatePartner;
 // ======================= ໃບແຈ້ງໜີ້ / ໃບບິນ =======================
 const docInclude = [
-    { model: partner_1.default, as: "partner", attributes: ["_uuid", "partner_code", "name", "phone"] },
+    { model: partner_1.default, as: "partner", attributes: ["_uuid", "partner_code", "name", "phone", "address", "tax_number"] },
     {
         model: partnerDoc_1.PartnerDocLine,
         as: "lines",
