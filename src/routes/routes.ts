@@ -101,8 +101,7 @@ import {
 } from "../controllers/hr/attendanceController";
 import {
   getPayrollSetting, savePayrollSetting, getPayrolls, getPayroll, getMyPayslips, getMyPayrollPreview, createPayroll, recalcPayroll,
-  previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll, getPayrollExpenseDefault,
-} from "../controllers/hr/payrollController";
+  previewPayrollLine, updatePayrollLine, deletePayrollLine, deletePayroll, payPayroll, unpayPayroll, getPayrollExpenseDefault, getPayrollTaxReport } from "../controllers/hr/payrollController";
 import {
   getMyLeaves, createMyLeave, cancelMyLeave, getLeaves, getLeaveBalance, approveLeave, rejectLeave, revokeLeave, getLeaveQuota, setLeaveQuota,
   getMyLeaveFile, getMyLeaveFileLink, openLeaveFile, downloadLeaveFile,
@@ -592,6 +591,7 @@ router.get("/payroll/setting", getPayrollSetting);
 router.get("/payroll/expense-default", getPayrollExpenseDefault);
 router.put("/payroll/setting", requirePermission("updates"), savePayrollSetting);
 router.post("/payroll/fetch", getPayrolls);
+router.post("/payroll/tax-report", getPayrollTaxReport);
 router.post("/payroll/create", requirePermission("creates"), createPayroll);
 router.put("/payroll/recalc/:id", requirePermission("updates"), recalcPayroll);
 router.post("/payroll/line/preview/:id", previewPayrollLine);

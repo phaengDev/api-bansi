@@ -867,3 +867,42 @@ export const unpayPayroll = async (req: Request<{ id: string }>, res: Response) 
     sendError(res, error, "Error cancelling payroll payment");
   }
 };
+
+/**
+ * POST /payroll/tax-report { year } — ອາກອນລາຍໄດ້ເງິນເດືອນ ແລະ ປະກັນສັງຄົມ ລາຍເດືອນ ຕໍ່ພະນັກງານ (ສະເພາະເງິນເດືອນທີ່ຈ່າຍແລ້ວ
+ * = ຫັກແລ້ວແທ້) — ໃຊ້ແຈ້ງອາກອນເງິນເດືອນ ແລະ ປກສ ປະຈຳເດືອນ, ລວມປີຕໍ່ຄົນ
+ */
+export const getPayrollTaxReport = async (req: Request, res: Response) => {
+  try {
+    const year = Number(req.body?.year) || Number(moment().format("YYYY"));
+    if (year < 2000 || year > 2100) {
+      res.status(400).json({ message: "ປີບໍ່ຖືກຕ້ອງ" });
+      return;
+    }
+    const rows: any[] = await Payroll.findAll({
+      where: { status: PAID, period: { [Op.like]: `${year}-%` } },
+      attributes: ["_uuid", "period", "number", "pay_date"],
+      include: [{
+        model: PayrollLine, as: "lines",
+        attributes: ["employee_id", "emp_code", "employee_name", "department_name", "gross", "sso_base", "sso_employee", "sso_employer", "taxable", "tax"],
+      }],
+      order: [["period", "ASC"]],
+    });
+    const n = (v: unknown) => Math.round((Number(v) || 0) * 100) / 100;
+    res.status(200).json({
+      year,
+      data: rows.map((p) => ({
+        period: p.period,
+        number: p.number,
+        pay_date: p.pay_date,
+        lines: (p.lines ?? []).map((l: any) => ({
+          employee_id: Number(l.employee_id), emp_code: l.emp_code, employee_name: l.employee_name, department_name: l.department_name,
+          gross: n(l.gross), sso_base: n(l.sso_base), sso_employee: n(l.sso_employee), sso_employer: n(l.sso_employer),
+          taxable: n(l.taxable), tax: n(l.tax),
+        })).sort((a: any, b: any) => String(a.emp_code).localeCompare(String(b.emp_code))),
+      })),
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting payroll tax report");
+  }
+};

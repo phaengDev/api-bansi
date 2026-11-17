@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unpayPayroll = exports.payPayroll = exports.getPayrollExpenseDefault = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftPayrolls = exports.syncDraftPayrollForDates = exports.syncDraftPayroll = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
+exports.getPayrollTaxReport = exports.unpayPayroll = exports.payPayroll = exports.getPayrollExpenseDefault = exports.deletePayroll = exports.deletePayrollLine = exports.updatePayrollLine = exports.previewPayrollLine = exports.syncDraftPayrolls = exports.syncDraftPayrollForDates = exports.syncDraftPayroll = exports.recalcPayroll = exports.createPayroll = exports.getPayroll = exports.getMyPayrollPreview = exports.getMyPayslips = exports.getPayrolls = exports.savePayrollSetting = exports.getPayrollSetting = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const payroll_1 = __importDefault(require("../../models/payroll"));
@@ -884,3 +884,43 @@ const unpayPayroll = async (req, res) => {
     }
 };
 exports.unpayPayroll = unpayPayroll;
+/**
+ * POST /payroll/tax-report { year } — ອາກອນລາຍໄດ້ເງິນເດືອນ ແລະ ປະກັນສັງຄົມ ລາຍເດືອນ ຕໍ່ພະນັກງານ (ສະເພາະເງິນເດືອນທີ່ຈ່າຍແລ້ວ
+ * = ຫັກແລ້ວແທ້) — ໃຊ້ແຈ້ງອາກອນເງິນເດືອນ ແລະ ປກສ ປະຈຳເດືອນ, ລວມປີຕໍ່ຄົນ
+ */
+const getPayrollTaxReport = async (req, res) => {
+    try {
+        const year = Number(req.body?.year) || Number((0, moment_1.default)().format("YYYY"));
+        if (year < 2000 || year > 2100) {
+            res.status(400).json({ message: "ປີບໍ່ຖືກຕ້ອງ" });
+            return;
+        }
+        const rows = await payroll_1.default.findAll({
+            where: { status: PAID, period: { [sequelize_1.Op.like]: `${year}-%` } },
+            attributes: ["_uuid", "period", "number", "pay_date"],
+            include: [{
+                    model: payrollLine_1.default, as: "lines",
+                    attributes: ["employee_id", "emp_code", "employee_name", "department_name", "gross", "sso_base", "sso_employee", "sso_employer", "taxable", "tax"],
+                }],
+            order: [["period", "ASC"]],
+        });
+        const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
+        res.status(200).json({
+            year,
+            data: rows.map((p) => ({
+                period: p.period,
+                number: p.number,
+                pay_date: p.pay_date,
+                lines: (p.lines ?? []).map((l) => ({
+                    employee_id: Number(l.employee_id), emp_code: l.emp_code, employee_name: l.employee_name, department_name: l.department_name,
+                    gross: n(l.gross), sso_base: n(l.sso_base), sso_employee: n(l.sso_employee), sso_employer: n(l.sso_employer),
+                    taxable: n(l.taxable), tax: n(l.tax),
+                })).sort((a, b) => String(a.emp_code).localeCompare(String(b.emp_code))),
+            })),
+        });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting payroll tax report");
+    }
+};
+exports.getPayrollTaxReport = getPayrollTaxReport;

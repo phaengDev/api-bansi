@@ -514,6 +514,7 @@ router.get("/payroll/setting", payrollController_1.getPayrollSetting);
 router.get("/payroll/expense-default", payrollController_1.getPayrollExpenseDefault);
 router.put("/payroll/setting", (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);
 router.post("/payroll/fetch", payrollController_1.getPayrolls);
+router.post("/payroll/tax-report", payrollController_1.getPayrollTaxReport);
 router.post("/payroll/create", (0, permission_1.requirePermission)("creates"), payrollController_1.createPayroll);
 router.put("/payroll/recalc/:id", (0, permission_1.requirePermission)("updates"), payrollController_1.recalcPayroll);
 router.post("/payroll/line/preview/:id", payrollController_1.previewPayrollLine);
