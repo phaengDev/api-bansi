@@ -17,6 +17,8 @@ export const KIND_HELD = 2;
 
 /** ທີ່ມາຂອງການເຄື່ອນໄຫວ — ເພີ່ມເມື່ອມີໂມດູນໃໝ່ */
 export type MovementSource =
+  | "TAX_PAYMENT"
+  | "TAX_PAYMENT_CANCEL"
   | "OPENING"
   | "INCOME"
   | "INCOME_CANCEL"

@@ -28,6 +28,7 @@ const docNumberingController_1 = require("../controllers/bansi/docNumberingContr
 const taxController_1 = require("../controllers/bansi/taxController");
 const accountSettingController_1 = require("../controllers/bansi/accountSettingController");
 const taxReportController_1 = require("../controllers/bansi/taxReportController");
+const taxPaymentController_1 = require("../controllers/bansi/taxPaymentController");
 const fxRevalController_1 = require("../controllers/bansi/fxRevalController");
 const closingController_1 = require("../controllers/bansi/closingController");
 const fixedAssetController_1 = require("../controllers/bansi/fixedAssetController");
@@ -205,6 +206,11 @@ router.post("/tax/profit-tax/post", (0, permission_1.requirePermission)("creates
 router.post("/wht/fetch", taxReportController_1.getWithholdings);
 router.post("/wht/create", (0, permission_1.requirePermission)("creates"), taxReportController_1.createWithholding);
 router.put("/wht/cancel/:id", (0, permission_1.requirePermission)("deletes"), taxReportController_1.cancelWithholding);
+// ນຳສົ່ງອາກອນໃຫ້ລັດ (ບັນຊີແບບຄົບຕາມມາດຕະຖານ)
+router.post("/tax-payment/outstanding", taxPaymentController_1.getTaxOutstanding);
+router.post("/tax-payment/fetch", taxPaymentController_1.getTaxPayments);
+router.post("/tax-payment/create", (0, permission_1.requirePermission)("creates"), taxPaymentController_1.createTaxPayment);
+router.put("/tax-payment/cancel/:id", (0, permission_1.requirePermission)("deletes"), taxPaymentController_1.cancelTaxPayment);
 // ປັບມູນຄ່າເງິນຕາຕ່າງປະເທດທ້າຍເດືອນ
 router.post("/fx-reval/preview", fxRevalController_1.previewFxReval);
 router.post("/fx-reval/post", (0, permission_1.requirePermission)("creates"), fxRevalController_1.postFxReval);

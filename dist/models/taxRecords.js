@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WithholdingTax = exports.ProfitTax = void 0;
+exports.TaxPayment = exports.WithholdingTax = exports.ProfitTax = void 0;
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
+const treasuryAcount_1 = __importDefault(require("./treasuryAcount"));
 const money = () => ({ type: sequelize_1.DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 });
 const stamps = () => ({
     createdAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
@@ -97,5 +98,32 @@ WithholdingTax.init({
     tableName: "tbl_withholding_tax",
     timestamps: true
 });
+/**
+ * ນຳສົ່ງອາກອນໃຫ້ລັດ — ລ້າງຍອດອາກອນຄ້າງຈ່າຍ (ຮອດວັນທີ period_end) ດ້ວຍເງິນຈາກບັນຊີເງິນຄັງສະກຸນກີບ.
+ * tax_kind: 1 ອາກອນມູນຄ່າເພີ່ມ (ໜີ້ ຂາອອກ / ມີ ຂາເຂົ້າ + ເງິນ — vat_output/vat_input = ຍອດທີ່ຫັກກັນ),
+ * 2 ອາກອນລາຍໄດ້ເງິນເດືອນ, 3 ປະກັນສັງຄົມ, 4 ອາກອນຫັກ ນ ທີ່ຈ່າຍ, 5 ອາກອນກຳໄລ (ໜີ້ ຄ້າງຈ່າຍ / ມີ ເງິນ).
+ * status 1 ໃຊ້, 2 ຍົກເລີກ. ລົງບັນຊີ TAX_PAYMENT (source_id = _uuid), ເງິນອອກ = tbl_account_movement TAX_PAYMENT
+ */
+class TaxPayment extends sequelize_1.Model {
+}
+exports.TaxPayment = TaxPayment;
+TaxPayment.init({
+    _uuid: { type: sequelize_1.DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    number: sequelize_1.DataTypes.STRING(30),
+    tax_kind: { type: sequelize_1.DataTypes.TINYINT, allowNull: false },
+    period_end: { type: sequelize_1.DataTypes.DATEONLY, allowNull: false },
+    pay_date: { type: sequelize_1.DataTypes.DATEONLY, allowNull: false },
+    treasury_account_id: { type: sequelize_1.DataTypes.INTEGER, allowNull: false },
+    amount: money(),
+    vat_output: money(),
+    vat_input: money(),
+    reference: sequelize_1.DataTypes.STRING(100),
+    note: sequelize_1.DataTypes.STRING(255),
+    status: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    created_by: sequelize_1.DataTypes.INTEGER,
+    ...stamps(),
+}, { sequelize: database_1.default, modelName: "TaxPayment", tableName: "tbl_tax_payment", timestamps: true });
 (0, autoSync_1.autoSync)(ProfitTax);
 (0, autoSync_1.autoSync)(WithholdingTax);
+(0, autoSync_1.autoSync)(TaxPayment);
+TaxPayment.belongsTo(treasuryAcount_1.default, { foreignKey: "treasury_account_id", as: "account", constraints: false });

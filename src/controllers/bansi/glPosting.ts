@@ -33,7 +33,7 @@ import {
 const ACTIVE = 1;
 
 /** ບັນຊີເງິນຄັງ → { ບັນຊີໃນຜັງ, ສະກຸນ, ອັດຕາ } ຕາມວັນທີ */
-const treasurySide = async (treasuryId: number, date: string, t: Transaction) => {
+export const treasurySide = async (treasuryId: number, date: string, t: Transaction) => {
   const account: any = await TreasuryAccount.findByPk(treasuryId, {
     include: [{ model: TypeTreasury, as: "treasury", attributes: ["_uuid", "currencyId"] }],
     transaction: t,

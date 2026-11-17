@@ -50,6 +50,7 @@ import { getAccountSetting, updateAccountSetting } from "../controllers/bansi/ac
 import {
   cancelWithholding, createWithholding, getProfitTax, getVatReport, getWithholdings, postProfitTax,
 } from "../controllers/bansi/taxReportController";
+import { cancelTaxPayment, createTaxPayment, getTaxOutstanding, getTaxPayments } from "../controllers/bansi/taxPaymentController";
 import { postFxReval, previewFxReval, undoFxReval } from "../controllers/bansi/fxRevalController";
 import {
   closePeriod, deleteBankRec, getBankRecAccounts, getBankRecHistory, getPeriodCloseStatus, openBankRec, reopenPeriod, saveBankRec,
@@ -282,6 +283,11 @@ router.post("/tax/profit-tax/post", requirePermission("creates", "updates"), pos
 router.post("/wht/fetch", getWithholdings);
 router.post("/wht/create", requirePermission("creates"), createWithholding);
 router.put("/wht/cancel/:id", requirePermission("deletes"), cancelWithholding);
+// ນຳສົ່ງອາກອນໃຫ້ລັດ (ບັນຊີແບບຄົບຕາມມາດຕະຖານ)
+router.post("/tax-payment/outstanding", getTaxOutstanding);
+router.post("/tax-payment/fetch", getTaxPayments);
+router.post("/tax-payment/create", requirePermission("creates"), createTaxPayment);
+router.put("/tax-payment/cancel/:id", requirePermission("deletes"), cancelTaxPayment);
 // ປັບມູນຄ່າເງິນຕາຕ່າງປະເທດທ້າຍເດືອນ
 router.post("/fx-reval/preview", previewFxReval);
 router.post("/fx-reval/post", requirePermission("creates"), postFxReval);

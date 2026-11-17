@@ -1,6 +1,7 @@
 import { DataTypes, Model } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
+import TreasuryAccount from "./treasuryAcount";
 
 const money = () => ({ type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 });
 const stamps = () => ({
@@ -126,5 +127,52 @@ WithholdingTax.init(
   }
 );
 
+/**
+ * ນຳສົ່ງອາກອນໃຫ້ລັດ — ລ້າງຍອດອາກອນຄ້າງຈ່າຍ (ຮອດວັນທີ period_end) ດ້ວຍເງິນຈາກບັນຊີເງິນຄັງສະກຸນກີບ.
+ * tax_kind: 1 ອາກອນມູນຄ່າເພີ່ມ (ໜີ້ ຂາອອກ / ມີ ຂາເຂົ້າ + ເງິນ — vat_output/vat_input = ຍອດທີ່ຫັກກັນ),
+ * 2 ອາກອນລາຍໄດ້ເງິນເດືອນ, 3 ປະກັນສັງຄົມ, 4 ອາກອນຫັກ ນ ທີ່ຈ່າຍ, 5 ອາກອນກຳໄລ (ໜີ້ ຄ້າງຈ່າຍ / ມີ ເງິນ).
+ * status 1 ໃຊ້, 2 ຍົກເລີກ. ລົງບັນຊີ TAX_PAYMENT (source_id = _uuid), ເງິນອອກ = tbl_account_movement TAX_PAYMENT
+ */
+export class TaxPayment extends Model {
+  declare _uuid: number;
+  declare number: string | null;
+  declare tax_kind: number;
+  declare period_end: string;
+  declare pay_date: string;
+  declare treasury_account_id: number;
+  declare amount: string;
+  declare vat_output: string;
+  declare vat_input: string;
+  declare reference: string | null;
+  declare note: string | null;
+  declare status: number;
+  declare created_by: number | null;
+  declare createdAt: Date;
+  declare updatedAt: Date;
+}
+
+TaxPayment.init(
+  {
+    _uuid: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    number: DataTypes.STRING(30),
+    tax_kind: { type: DataTypes.TINYINT, allowNull: false },
+    period_end: { type: DataTypes.DATEONLY, allowNull: false },
+    pay_date: { type: DataTypes.DATEONLY, allowNull: false },
+    treasury_account_id: { type: DataTypes.INTEGER, allowNull: false },
+    amount: money(),
+    vat_output: money(),
+    vat_input: money(),
+    reference: DataTypes.STRING(100),
+    note: DataTypes.STRING(255),
+    status: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    created_by: DataTypes.INTEGER,
+    ...stamps(),
+  },
+  { sequelize, modelName: "TaxPayment", tableName: "tbl_tax_payment", timestamps: true }
+);
+
 autoSync(ProfitTax);
 autoSync(WithholdingTax);
+autoSync(TaxPayment);
+
+TaxPayment.belongsTo(TreasuryAccount, { foreignKey: "treasury_account_id", as: "account", constraints: false });
