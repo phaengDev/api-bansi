@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAttendanceVoice = exports.durationText = void 0;
+exports.getAttendanceVoice = exports.synthesize = exports.VoiceError = exports.voiceOf = exports.durationText = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -41,6 +41,7 @@ const durationText = (minutes) => {
 };
 exports.durationText = durationText;
 const voiceOf = (gender) => Number(gender) === 2 ? process.env.GEMINI_VOICE_FEMALE || "Kore" : process.env.GEMINI_VOICE_MALE || "Charon";
+exports.voiceOf = voiceOf;
 /** ຫົວ WAV ໃຫ້ PCM ດິບ */
 const wavOf = (pcm) => {
     const header = Buffer.alloc(44);
@@ -65,6 +66,7 @@ class VoiceError extends Error {
         this.code = code;
     }
 }
+exports.VoiceError = VoiceError;
 const synthesize = async (text, voice, key) => {
     let answer;
     try {
@@ -102,6 +104,7 @@ const synthesize = async (text, voice, key) => {
     const bytes = Buffer.from(audio.data, "base64");
     return bytes.subarray(0, 4).toString() === "RIFF" ? bytes : wavOf(bytes);
 };
+exports.synthesize = synthesize;
 /** ຄຳຂໍທີ່ກຳລັງສ້າງປະໂຫຍກດຽວກັນ — ລໍຖ້າອັນດຽວກັນ ບໍ່ເອີ້ນ Gemini ຊ້ຳ */
 const pending = new Map();
 /** ສຽງຂອງປະໂຫຍກ — ມີໃນ cache = ອ່ານໄຟລ໌, ບໍ່ມີ = ສ້າງແລ້ວບັນທຶກ */
@@ -117,7 +120,7 @@ const speechOf = (text, voice, key) => {
             return await fs_1.default.promises.readFile(file);
         }
         catch {
-            const wav = await synthesize(text, voice, key);
+            const wav = await (0, exports.synthesize)(text, voice, key);
             await fs_1.default.promises.mkdir(CACHE_DIR, { recursive: true });
             // ຂຽນໄຟລ໌ຊົ່ວຄາວກ່ອນ ແລ້ວປ່ຽນຊື່ — ບໍ່ມີໄຟລ໌ຂຽນບໍ່ຄົບຄ້າງໄວ້
             const temp = `${file}.${process.pid}.tmp`;
@@ -148,7 +151,7 @@ const getAttendanceVoice = async (req, res) => {
             res.status(400).json({ message: "ຂໍ້ມູນສຽງບໍ່ຖືກຕ້ອງ" });
             return;
         }
-        const wav = await speechOf(`${LEADS[kind]} ${(0, exports.durationText)(minutes)}`, voiceOf(self.employee.gender), key);
+        const wav = await speechOf(`${LEADS[kind]} ${(0, exports.durationText)(minutes)}`, (0, exports.voiceOf)(self.employee.gender), key);
         res.setHeader("Cache-Control", "private, max-age=604800");
         res.type("audio/wav").send(wav);
     }

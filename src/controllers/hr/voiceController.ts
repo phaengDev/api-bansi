@@ -41,7 +41,7 @@ export const durationText = (minutes: number) => {
   return [hours ? `${laoNumber(hours)} ຊົ່ວໂມງ` : "", rest ? `${laoNumber(rest)} ນາທີ` : ""].filter(Boolean).join(" ");
 };
 
-const voiceOf = (gender: unknown) =>
+export const voiceOf = (gender: unknown) =>
   Number(gender) === 2 ? process.env.GEMINI_VOICE_FEMALE || "Kore" : process.env.GEMINI_VOICE_MALE || "Charon";
 
 /** ຫົວ WAV ໃຫ້ PCM ດິບ */
@@ -63,13 +63,13 @@ const wavOf = (pcm: Buffer) => {
 };
 
 /** error ຂອງ Gemini → ລະຫັດ + ຂໍ້ຄວາມທີ່ສະແດງໃນແອັບ */
-class VoiceError extends Error {
+export class VoiceError extends Error {
   constructor(public code: number, message: string) {
     super(message);
   }
 }
 
-const synthesize = async (text: string, voice: string, key: string): Promise<Buffer> => {
+export const synthesize = async (text: string, voice: string, key: string): Promise<Buffer> => {
   let answer: globalThis.Response;
   try {
     answer = await fetch(API, {
