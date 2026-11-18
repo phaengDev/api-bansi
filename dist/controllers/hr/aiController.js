@@ -6,15 +6,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.aiSpeak = exports.aiChat = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const moment_1 = __importDefault(require("moment"));
-const sequelize_1 = require("sequelize");
 const aiUsage_1 = __importDefault(require("../../models/aiUsage"));
-const workPlanModel_1 = __importDefault(require("../../models/workPlanModel"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
+const aiTools_1 = require("./aiTools");
 const attendanceController_1 = require("./attendanceController");
-const myWorkPlanController_1 = require("./myWorkPlanController");
 const workCalendar_1 = require("./workCalendar");
 /**
- * ຜູ້ຊ່ວຍ AI ໃນເມນູແຜນວຽກຂອງແອັບພະນັກງານ (Claude) — ຊ່ວຍວາງແຜນ, ສະຫຼຸບວຽກ, ຖາມ-ຕອບ ກ່ຽວກັບແຜນວຽກຂອງຕົນເອງ.
+ * ຜູ້ຊ່ວຍ AI ຂອງແອັບພະນັກງານ (Claude) — ຖາມ-ຕອບທຸກຢ່າງທີ່ແອັບມີ ກ່ຽວກັບຕົນເອງ (ການເຂົ້າວຽກ, ວັນລາ, ເງິນເດືອນ,
+ * ເບີກເງິນ, OT, ວັນພັກ, ບໍລິສັດ, ວຽກ / ແຜນວຽກ, ທີມ, ບັນຊີ, ໂນດ…) + ຊ່ວຍວາງແຜນວຽກ.
+ * AI ອ່ານຂໍ້ມູນຜ່ານເຄື່ອງມື (aiTools.ts) ທີ່ເອີ້ນ endpoint "ຂອງຂ້ອຍ" ດ້ວຍ token ຂອງຄົນທີ່ຖາມ — ເຫັນສະເພາະຂໍ້ມູນຂອງຕົນເອງ.
  * ກະແຈ ANTHROPIC_API_KEY ຢູ່ .env ຂອງເຊີບເວີເທົ່ານັ້ນ (ບໍ່ມີ = ປິດ). ແອັບສົ່ງບົດສົນທະນາທັງໝົດມາທຸກເທື່ອ (ເຊີບເວີບໍ່ເກັບ);
  * ແຜນທີ່ AI ສະເໜີ ສົ່ງກັບໄປໃຫ້ແອັບສະແດງ — ພະນັກງານກົດບັນທຶກເອງຜ່ານ POST /employee/me/workplan
  */
@@ -27,41 +27,23 @@ const MAX_USER_TEXT = 2000;
 const MAX_ASSISTANT_TEXT = 4000;
 /** ແຜນທີ່ສະເໜີໄດ້ຕໍ່ຄຳຕອບ */
 const MAX_PLANS = 10;
-/** ຂໍ້ມູນແຜນວຽກທີ່ໃຫ້ AI ອ່ານ: ຍ້ອນຫຼັງ / ລ່ວງໜ້າ (ມື້) */
-const PAST_DAYS = 45;
-const AHEAD_DAYS = 60;
-const SYSTEM = `You are "ຜູ້ຊ່ວຍ AI", the assistant inside OAC HR, the staff app of OAC Insurance Broker (Laos). You help one employee with their own work plans: planning work, summarizing what they have done, and answering questions about their plans.
+/** ວັນພັກລ່ວງໜ້າ (ມື້) ທີ່ໃຊ້ເລື່ອນມື້ເລີ່ມຂອງແຜນທີ່ສະເໜີ */
+const AHEAD_DAYS = 120;
+/** ຮອບ AI ↔ ເຄື່ອງມື ຕໍ່ຄຳຖາມ — ກັນ loop ບໍ່ຈົບ / ຄ່າໃຊ້ຈ່າຍ */
+const MAX_ROUNDS = 6;
+const SYSTEM = `You are "ຜູ້ຊ່ວຍ AI", the assistant inside OAC HR, the staff app of OAC Insurance Broker (Laos). You answer one employee's questions about anything the app holds for them, and help them plan their work.
 
-Always reply in Lao, warm and concise — short paragraphs or "•" bullet lines, no Markdown headings or tables. The employee's data and today's date follow below; rely only on that data and never invent plans, progress or dates. When something isn't in the data, say so.
+Use the tools to look up the employee's data before you answer: attendance, leave types and balances, salary and payslips, salary advances, overtime, forgot-scan requests, public holidays, company working hours and uniforms, tasks and work plans, work history, colleagues and the org chart, birthdays, their personal money ledger and notes. Pick the tools that answer the question and call independent ones together. Never guess a number, date or name: if the data doesn't contain it, say so. Questions about "this month" or "this year" mean the dates below.
 
-Planning: when the employee asks for help planning or wants to add work, propose concrete plan items in "plans" — a short title (under 80 characters), a one-line note, and start_date / end_date as YYYY-MM-DD, no earlier than today, on workdays, with realistic durations. Explain the proposal briefly in "reply". The app shows the proposals with a save button, so don't say they are already saved. For every other answer, "plans" is an empty array.
+The tools return only this employee's own records, plus the colleague directory and org chart that every employee can see in the app. Never reveal or estimate another employee's salary, attendance or leave.
 
-Summaries: group work as done, in progress, overdue and upcoming, mention progress percentages and overdue items, and end with one or two suggested next steps.
+You can read data but you cannot change it. When the employee wants to act (request leave, scan in or out, report a forgotten scan, request an advance, update a plan), tell them where in the app: bottom bar ວັນລາພັກ, ວັນພັກ, ໜ້າຫຼັກ (the big middle button), ເຄື່ອງແບບ, ໂປຣໄຟລ໌; home page icons ແຜນວຽກ, ຂໍລາພັກ, ຄຳຮ້ອງ, ເງິນເດືອນ, ບັນຊີ, ປະຫວັດເຂົ້າວຽກ, ປະຫວັດການເຮັດວຽກ, ໂນດ, ທີມງານ; scanning is on the home page's today card; salary advances are in ໂປຣໄຟລ໌ and ເງິນເດືອນ.
 
-Topics outside work plans (salary, leave balance, other employees, company policies not in the data): say briefly that you only help with work plans and point to the matching menu in the app (ເງິນເດືອນ, ຂໍລາພັກ, ປະຫວັດເຂົ້າວຽກ).`;
-/** ຄຳຕອບຂອງ AI (structured output) */
-const REPLY_SCHEMA = {
-    type: "object",
-    additionalProperties: false,
-    required: ["reply", "plans"],
-    properties: {
-        reply: { type: "string" },
-        plans: {
-            type: "array",
-            items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["title", "note", "start_date", "end_date"],
-                properties: {
-                    title: { type: "string" },
-                    note: { type: "string" },
-                    start_date: { type: "string" },
-                    end_date: { type: "string" },
-                },
-            },
-        },
-    },
-};
+Planning: when the employee asks for help planning or wants to add work, check their plans and the calendar, then call propose_plans with concrete items (short title, one-line note, start_date / end_date as YYYY-MM-DD, from today on, on workdays, realistic durations) and explain them briefly. The app shows them with a save button, so don't say they are saved.
+
+Summaries of work: group as done, in progress, overdue and upcoming, mention progress and overdue items, and end with one or two next steps.
+
+Reply in Lao, warm and concise: short paragraphs or "•" bullet lines, no Markdown headings, tables or bold. Write money as ₭ with thousands separators (₭ 1,500,000) and dates as day month year in Lao.`;
 let anthropic;
 /** ເປີດເທື່ອດຽວ — ບໍ່ມີກະແຈ = null (ປິດຜູ້ຊ່ວຍ AI) */
 const client = () => {
@@ -75,46 +57,13 @@ const clip = (text, max) => {
     const value = String(text ?? "").replace(/\s+/g, " ").trim();
     return value.length > max ? `${value.slice(0, max)}…` : value;
 };
-/** ຂໍ້ມູນຂອງພະນັກງານຄົນນີ້ທີ່ AI ອ່ານ: ມື້ນີ້, ເວລາເຮັດວຽກ, ວັນພັກ, ແຜນວຽກ (ລວມປະຫວັດອັບເດດຫຼ້າສຸດ) */
-const contextOf = async (employee, today) => {
-    const from = (0, moment_1.default)(today).subtract(PAST_DAYS, "days").format("YYYY-MM-DD");
-    const to = (0, moment_1.default)(today).add(AHEAD_DAYS, "days").format("YYYY-MM-DD");
-    const [company, holidays, rows] = await Promise.all([
-        (0, workCalendar_1.findCompany)(),
-        (0, workCalendar_1.holidaysBetween)(today, to),
-        workPlanModel_1.default.findAll({
-            where: {
-                employee_id: employee._uuid,
-                status: 1,
-                start_date: { [sequelize_1.Op.lte]: to },
-                [sequelize_1.Op.or]: [{ done: 0 }, { end_date: { [sequelize_1.Op.gte]: from } }],
-            },
-            order: [["start_date", "ASC"], ["createdAt", "ASC"]],
-            limit: 120,
-        }),
-    ]);
-    const rules = (0, workCalendar_1.workRulesOf)(company);
-    const plans = rows.map((r) => (0, myWorkPlanController_1.planOf)(r, true)).map((p) => {
-        const state = p.done ? "ສຳເລັດແລ້ວ" : p.end_date < today ? "ກາຍກຳນົດ" : p.start_date > today ? "ຍັງບໍ່ເລີ່ມ" : "ກຳລັງເຮັດ";
-        const updates = (p.updates ?? [])
-            .filter((u) => u.note)
-            .slice(-3)
-            .map((u) => `${String(u.at).slice(0, 10)} ${u.progress}%: ${clip(u.note, 160)}`);
-        return [
-            `- ${clip(p.title, 120)} | ${p.start_date} → ${p.end_date} | ${state} ${p.progress}%`,
-            p.note ? `  ລາຍລະອຽດ: ${clip(p.note, 240)}` : null,
-            updates.length ? `  ອັບເດດ: ${updates.join(" / ")}` : null,
-        ].filter(Boolean).join("\n");
-    });
+/** ຂໍ້ມູນສັ້ນທີ່ປ່ຽນທຸກມື້ / ທຸກຄົນ (ຢູ່ຫຼັງ cache) — ສ່ວນທີ່ເຫຼືອ AI ອ່ານຜ່ານເຄື່ອງມື */
+const contextOf = (employee, today) => {
     const name = [employee.first_name, employee.last_name].filter(Boolean).join(" ");
     const job = [employee.position?.position_name, employee.department?.depart_name].filter(Boolean).join(", ");
     return [
-        `ມື້ນີ້: ${dayLabel(today)}`,
-        `ພະນັກງານ: ${name}${job ? ` (${job})` : ""}`,
-        `ເວລາເຮັດວຽກ: ${rules.start}–${rules.end}${rules.breakStart ? ` (ພັກທ່ຽງ ${rules.breakStart}–${rules.breakEnd})` : ""}; ວັນພັກປະຈຳອາທິດ: ${rules.daysOff.map((d) => `ວັນ${WEEKDAYS[d]}`).join(", ") || "ບໍ່ມີ"}`,
-        `ວັນພັກ ${AHEAD_DAYS} ມື້ຂ້າງໜ້າ: ${[...holidays].map(([d, n]) => `${d} ${n}`).join("; ") || "ບໍ່ມີ"}`,
-        `ແຜນວຽກ (${PAST_DAYS} ມື້ຜ່ານມາ ຮອດ ${AHEAD_DAYS} ມື້ຂ້າງໜ້າ, ລວມແຜນເກົ່າທີ່ຍັງບໍ່ສຳເລັດ):`,
-        plans.length ? plans.join("\n") : "- (ຍັງບໍ່ມີແຜນວຽກ)",
+        `ມື້ນີ້: ${dayLabel(today)}; ເດືອນນີ້ ${today.slice(0, 7)}; ປີນີ້ ${today.slice(0, 4)}`,
+        `ພະນັກງານທີ່ຖາມ: ${name} (${employee.emp_code ?? ""})${job ? ` — ${job}` : ""}`,
     ].join("\n");
 };
 /** ບົດສົນທະນາຈາກແອັບ — ສະລັບ user / assistant, ເລີ່ມ ແລະ ຈົບດ້ວຍ user */
@@ -154,6 +103,7 @@ const plansOf = (raw, today, rules, holidays) => {
         .slice(0, MAX_PLANS);
 };
 const ERROR_MESSAGE = "ຜູ້ຊ່ວຍ AI ຕອບບໍ່ໄດ້ຕອນນີ້ — ລອງໃໝ່ອີກຄັ້ງ";
+const TOO_MANY_ROUNDS = "ຄຳຖາມນີ້ຕ້ອງຊອກຂໍ້ມູນຫຼາຍເກີນ — ລອງຖາມໃຫ້ແຄບລົງ ເຊັ່ນ ລະບຸເດືອນ ຫຼື ເລື່ອງດຽວ";
 /**
  * ອ່ານຄຳຕອບເປັນສຽງພາສາລາວ — Azure AI Speech (ສຽງ lo-LA Neural): AZURE_SPEECH_KEY + AZURE_SPEECH_REGION ໃນ .env
  * (ບໍ່ມີ = ປິດ, ແອັບບໍ່ສະແດງປຸ່ມ 🔊). ໂທລະສັບບໍ່ມີສຽງອ່ານພາສາລາວໃນເຄື່ອງ ຈຶ່ງຕ້ອງອ່ານຢູ່ເຊີບເວີ
@@ -195,25 +145,46 @@ const aiChat = async (req, res) => {
             res.status(429).json({ message: `ມື້ນີ້ຖາມຄົບ ${DAILY_LIMIT} ເທື່ອແລ້ວ — ຖາມໃໝ່ໄດ້ມື້ອື່ນ` });
             return;
         }
-        const context = await contextOf(self.employee, today);
-        let response;
+        const rules = (0, workCalendar_1.workRulesOf)(await (0, workCalendar_1.findCompany)());
+        const holidays = await (0, workCalendar_1.holidaysBetween)(today, (0, moment_1.default)(today).add(AHEAD_DAYS, "days").format("YYYY-MM-DD"));
+        const proposed = [];
+        const tools = (0, aiTools_1.aiTools)(req, self.employee._uuid, today, (raw) => {
+            const valid = plansOf(raw, today, rules, holidays).slice(0, MAX_PLANS - proposed.length);
+            proposed.push(...valid);
+            return valid.length;
+        });
+        // ຮອບ AI → ເຄື່ອງມື → AI … ຈົນຕອບ (ສູງສຸດ MAX_ROUNDS); ນັບ token ທຸກຮອບ
+        let final;
+        const spent = { input: 0, output: 0 };
         try {
-            response = await ai.beta.messages.create({
+            const runner = ai.beta.messages.toolRunner({
                 model: MODEL,
                 max_tokens: 16000,
                 betas: ["server-side-fallback-2026-07-01"],
                 fallbacks: "default",
-                // ຄຳສັ່ງຄົງທີ່ cache ໄດ້; ຂໍ້ມູນຂອງພະນັກງານ (ປ່ຽນທຸກມື້) ຢູ່ຫຼັງ
+                // ເຄື່ອງມື + ຄຳສັ່ງ ຄົງທີ່ (cache ຂ້າມຄຳຖາມ ແລະ ຂ້າມຄົນ); ມື້ນີ້ / ຊື່ ຢູ່ຫຼັງ
                 system: [
                     { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
-                    { type: "text", text: context },
+                    { type: "text", text: contextOf(self.employee, today) },
                 ],
+                // ຮອບຕໍ່ໄປອ່ານບົດສົນທະນາ + ຜົນເຄື່ອງມືຂອງຮອບກ່ອນຈາກ cache
+                cache_control: { type: "ephemeral" },
+                tools,
                 messages,
-                output_config: { effort: "low", format: { type: "json_schema", schema: REPLY_SCHEMA } },
+                output_config: { effort: "low" },
+                max_iterations: MAX_ROUNDS,
             });
+            for await (const message of runner) {
+                final = message;
+                const used = message.usage;
+                spent.input += (used.input_tokens ?? 0) + (used.cache_read_input_tokens ?? 0) + (used.cache_creation_input_tokens ?? 0);
+                spent.output += used.output_tokens ?? 0;
+            }
         }
         catch (error) {
             console.error("❌ ai chat:", error);
+            if (spent.input || spent.output)
+                await usage.increment({ input_tokens: spent.input, output_tokens: spent.output });
             if (error instanceof sdk_1.default.RateLimitError)
                 res.status(429).json({ message: "ຜູ້ຊ່ວຍ AI ມີຄົນໃຊ້ຫຼາຍ — ລອງໃໝ່ໃນອີກບໍ່ເທົ່າໃດນາທີ" });
             else if (error instanceof sdk_1.default.AuthenticationError || error instanceof sdk_1.default.PermissionDeniedError)
@@ -224,32 +195,19 @@ const aiChat = async (req, res) => {
                 res.status(502).json({ message: ERROR_MESSAGE });
             return;
         }
-        const used = response.usage;
-        await usage.increment({
-            requests: 1,
-            input_tokens: (used.input_tokens ?? 0) + (used.cache_read_input_tokens ?? 0) + (used.cache_creation_input_tokens ?? 0),
-            output_tokens: used.output_tokens ?? 0,
-        });
+        await usage.increment({ requests: 1, input_tokens: spent.input, output_tokens: spent.output });
         const left = Math.max(0, DAILY_LIMIT - usage.requests - 1);
-        if (response.stop_reason === "refusal") {
-            res.status(200).json({ reply: "ຂໍອະໄພ ຂ້ອຍຕອບຄຳຖາມນີ້ບໍ່ໄດ້ — ລອງຖາມກ່ຽວກັບແຜນວຽກແບບອື່ນ", plans: [], left });
+        const plans = proposed.slice(0, MAX_PLANS);
+        if (!final || final.stop_reason === "refusal") {
+            res.status(200).json({ reply: "ຂໍອະໄພ ຂ້ອຍຕອບຄຳຖາມນີ້ບໍ່ໄດ້ — ລອງຖາມແບບອື່ນ", plans: [], left });
             return;
         }
-        const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-        let parsed;
-        try {
-            parsed = JSON.parse(text);
-        }
-        catch {
-            console.error("❌ ai chat: ອ່ານຄຳຕອບບໍ່ໄດ້", response.stop_reason, text.slice(0, 200));
-            res.status(502).json({ message: ERROR_MESSAGE });
-            return;
-        }
-        const rules = (0, workCalendar_1.workRulesOf)(await (0, workCalendar_1.findCompany)());
-        const holidays = await (0, workCalendar_1.holidaysBetween)(today, (0, moment_1.default)(today).add(AHEAD_DAYS * 2, "days").format("YYYY-MM-DD"));
+        const text = final.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("").trim();
+        // ຮອບໝົດ ແຕ່ AI ຍັງຢາກໃຊ້ເຄື່ອງມື = ຍັງບໍ່ໄດ້ຕອບ
+        const reply = text || (final.stop_reason === "tool_use" ? TOO_MANY_ROUNDS : ERROR_MESSAGE);
         res.status(200).json({
-            reply: String(parsed.reply ?? "").trim() || ERROR_MESSAGE,
-            plans: plansOf(parsed.plans, today, rules, holidays),
+            reply,
+            plans,
             left,
             // ອ່ານເປັນສຽງໄດ້ (POST /app/ai/speak)
             speak: !!speech(),
