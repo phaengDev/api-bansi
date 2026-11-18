@@ -95,6 +95,7 @@ router.get("/app/release", appReleaseController_1.getLatestAppRelease);
 // ຜູ້ຊ່ວຍ AI ໃນເມນູແຜນວຽກ (Claude) — ວາງແຜນ, ສະຫຼຸບ, ຖາມ-ຕອບ ກ່ຽວກັບແຜນວຽກຂອງຕົນເອງ
 router.post("/app/ai/chat", aiController_1.aiChat);
 router.post("/app/ai/speak", aiController_1.aiSpeak);
+router.post("/app/ai/transcribe", aiController_1.voiceQuestionUpload, aiController_1.aiTranscribe);
 // ສຽງເວົ້າ "ເຂົ້າວຽກຊ້າ / ອອກກ່ອນເວລາ … ນາທີ" (Gemini TTS, ສຽງຕາມເພດ, ເກັບ cache)
 router.get("/app/voice/attendance", voiceController_1.getAttendanceVoice);
 // ================= ເມນູໜ້າ desktop ບັນຊີ (types 2) + ສະຖານະລັອກ — main = ສະເພາະເມນູທີ່ຜູ້ໃຊ້ໄດ້ສິດ (tbl_users.menu_access),

@@ -84,7 +84,7 @@ import {
 } from "../controllers/hr/employeeController";
 import { getCompany, saveCompany, getScanQr, saveScanQr, resolveMapLink, saveUniformPhoto, removeUniformPhoto } from "../controllers/hr/companyController";
 import { appLogin, changeAppPassword, requestAppOtp, verifyAppOtp } from "../controllers/hr/appAuthController";
-import { aiChat, aiSpeak } from "../controllers/hr/aiController";
+import { aiChat, aiSpeak, aiTranscribe, voiceQuestionUpload } from "../controllers/hr/aiController";
 import { getAttendanceVoice } from "../controllers/hr/voiceController";
 import { apkUpload, createAppRelease, deleteAppRelease, getAppReleases, getLatestAppRelease, requireReleaseKey } from "../controllers/hr/appReleaseController";
 import { addMyWorkPlanProgress, createMyWorkPlan, deleteMyWorkPlan, getMyWorkPlan, getMyWorkPlans, updateMyWorkPlan } from "../controllers/hr/myWorkPlanController";
@@ -166,6 +166,7 @@ router.get("/app/release", getLatestAppRelease);
 // ຜູ້ຊ່ວຍ AI ໃນເມນູແຜນວຽກ (Claude) — ວາງແຜນ, ສະຫຼຸບ, ຖາມ-ຕອບ ກ່ຽວກັບແຜນວຽກຂອງຕົນເອງ
 router.post("/app/ai/chat", aiChat);
 router.post("/app/ai/speak", aiSpeak);
+router.post("/app/ai/transcribe", voiceQuestionUpload, aiTranscribe);
 // ສຽງເວົ້າ "ເຂົ້າວຽກຊ້າ / ອອກກ່ອນເວລາ … ນາທີ" (Gemini TTS, ສຽງຕາມເພດ, ເກັບ cache)
 router.get("/app/voice/attendance", getAttendanceVoice);
 

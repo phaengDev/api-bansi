@@ -3,9 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiSpeak = exports.aiChat = void 0;
+exports.aiTranscribe = exports.voiceQuestionUpload = exports.aiSpeak = exports.aiChat = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const moment_1 = __importDefault(require("moment"));
+const multer_1 = __importDefault(require("multer"));
 const aiUsage_1 = __importDefault(require("../../models/aiUsage"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const aiTools_1 = require("./aiTools");
@@ -269,3 +270,96 @@ const aiSpeak = async (req, res) => {
     }
 };
 exports.aiSpeak = aiSpeak;
+// ================= ຖາມດ້ວຍສຽງ (ປຸ່ມ 🎤 ໃນຊ່ອງພິມ)
+/** ສຽງຄຳຖາມ — ຢູ່ໃນໜ່ວຍຄວາມຈຳເທົ່ານັ້ນ (ບໍ່ບັນທຶກລົງດິສ); WAV 16 kHz ຂອງແອັບ ~60 ວິ ≈ 2MB */
+exports.voiceQuestionUpload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } }).single("audio");
+/** Gemini ທີ່ຟັງພາສາລາວໄດ້ — ລອງຕາມລຳດັບ (ຄົນໃຊ້ຫຼາຍ 503 / ໂຄຕ້າ 429 = ລອງອັນຕໍ່ໄປ); ປ່ຽນໄດ້ດ້ວຍ GEMINI_STT_MODELS */
+const STT_MODELS = (process.env.GEMINI_STT_MODELS || "gemini-3.5-flash-lite,gemini-flash-lite-latest,gemini-3.8-flash")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+/** ບໍ່ບອກໃຫ້ຊັດ = Gemini ຂຽນສຽງລາວເປັນອັກສອນໄທ */
+const STT_PROMPT = "ຖອດຄວາມສຽງນີ້ເປັນຕົວໜັງສື. The speaker speaks Lao (ພາສາລາວ). Write exactly what is said using the LAO alphabet " +
+    "(Unicode block U+0E80–U+0EFF, e.g. ກ ຂ ຄ ງ ຈ ສ ຊ ຍ ດ ຕ ຖ ທ ນ ບ ປ ຜ ຝ ພ ຟ ມ ຢ ຣ ລ ວ ຫ ອ ຮ), like normal Lao writing without spaces between words. " +
+    "English words or numbers may stay as spoken. Never use Thai letters (U+0E00–U+0E7F). " +
+    "Output only the spoken words, no quotes or notes. If there is no speech, output nothing.";
+/** ອັກສອນໄທທີ່ຫຼຸດມາ → ລາວ (ສ່ວນຫຼາຍຕຳແໜ່ງຂະໜານກັນ +0x80; ຕົວທີ່ລາວບໍ່ມີ = ຕົວທີ່ອອກສຽງຄືກັນ) */
+const THAI_ONLY = {
+    "ฃ": "ຂ", "ฅ": "ຄ", "ฆ": "ຄ", "ซ": "ຊ", "ฌ": "ຊ", "ฉ": "ສ", "ญ": "ຍ", "ฎ": "ດ", "ฏ": "ຕ", "ฐ": "ຖ", "ฑ": "ທ",
+    "ฒ": "ທ", "ณ": "ນ", "ธ": "ທ", "ภ": "ພ", "ศ": "ສ", "ษ": "ສ", "ฬ": "ລ", "ฤ": "ລຶ", "ฦ": "ລື", "ฯ": "ຯ",
+};
+const LAO_ASSIGNED = /[\u0E81\u0E82\u0E84\u0E86-\u0E8A\u0E8C-\u0EA3\u0EA5\u0EA7-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECE\u0ED0-\u0ED9]/;
+const thaiToLao = (text) => text.replace(/[\u0E00-\u0E7F]/g, (c) => {
+    if (THAI_ONLY[c])
+        return THAI_ONLY[c];
+    const lao = String.fromCharCode(c.charCodeAt(0) + 0x80);
+    return LAO_ASSIGNED.test(lao) ? lao : c;
+});
+/** ຂໍ້ຄວາມທີ່ຟັງໄດ້ → ອັກສອນລາວ, ບໍ່ມີຍະຫວ່າງລະຫວ່າງຄຳລາວ (Gemini ມັກແຍກທຸກຄຳ ຫຼື ໃສ່ zero-width space) */
+const tidyTranscript = (text) => thaiToLao(text)
+    .replace(/["“”\u200B\u200C\uFEFF]/g, "")
+    .replace(/([\u0E80-\u0EFF])[ \t]+(?=[\u0E80-\u0EFF])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+/**
+ * POST /app/ai/transcribe (multipart: audio) — ສຽງຄຳຖາມພາສາລາວ → { text } ແລ້ວແອັບສົ່ງຕໍ່ໃຫ້ /app/ai/chat ເລີຍ.
+ * ໃຊ້ GEMINI_API_KEY ດຽວກັບສຽງເວົ້າ (voiceController); ບໍ່ມີ = ປິດ (503)
+ */
+const aiTranscribe = async (req, res) => {
+    try {
+        const key = process.env.GEMINI_API_KEY?.trim();
+        if (!key) {
+            res.status(503).json({ message: "ການຖາມດ້ວຍສຽງຍັງບໍ່ໄດ້ເປີດໃຊ້ — ພິມແທນໄດ້" });
+            return;
+        }
+        const self = await (0, attendanceController_1.selfEmployee)(req);
+        if ("code" in self) {
+            res.status(self.code).json({ message: self.message });
+            return;
+        }
+        const file = req.file;
+        if (!file?.buffer?.length) {
+            res.status(400).json({ message: "ບໍ່ໄດ້ຍິນສຽງ — ລອງໃໝ່" });
+            return;
+        }
+        const mime = file.mimetype?.startsWith("audio/") ? file.mimetype : "audio/wav";
+        const audio = file.buffer.toString("base64");
+        let failed = 502;
+        for (const model of STT_MODELS) {
+            const answer = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+                method: "POST",
+                headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data: audio } }, { text: STT_PROMPT }] }],
+                    generationConfig: { temperature: 0 },
+                }),
+                signal: AbortSignal.timeout(30 * 1000),
+            }).catch(() => null);
+            if (!answer) {
+                failed = 504;
+                continue;
+            }
+            // ຄົນໃຊ້ຫຼາຍ / ໂຄຕ້າ / ລຸ້ນຖືກເອົາອອກ = ລອງລຸ້ນຕໍ່ໄປ
+            if ([404, 429, 500, 503].includes(answer.status)) {
+                failed = answer.status === 429 ? 429 : 502;
+                continue;
+            }
+            if (!answer.ok) {
+                console.error("❌ ai transcribe:", model, answer.status, (await answer.text()).slice(0, 300));
+                break;
+            }
+            const data = await answer.json();
+            const text = (data?.candidates?.[0]?.content?.parts ?? [])
+                .filter((p) => !p?.thought)
+                .map((p) => String(p?.text ?? ""))
+                .join("");
+            res.status(200).json({ text: tidyTranscript(text).slice(0, MAX_USER_TEXT) });
+            return;
+        }
+        res.status(failed === 429 ? 429 : 502).json({ message: "ຟັງສຽງບໍ່ໄດ້ຕອນນີ້ — ລອງໃໝ່ ຫຼື ພິມແທນ" });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error in AI transcribe");
+    }
+};
+exports.aiTranscribe = aiTranscribe;
