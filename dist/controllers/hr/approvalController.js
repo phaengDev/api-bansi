@@ -22,6 +22,7 @@ const leaveController_1 = require("./leaveController");
 const correctionController_1 = require("./correctionController");
 const advanceController_1 = require("./advanceController");
 const approvers_1 = require("./approvers");
+const workCalendar_1 = require("./workCalendar");
 /**
  * ອະນຸມັດຄຳຂໍຜ່ານ app — ສະເພາະພະນັກງານທີ່ຜູກກັບບັນຊີຜູ້ໃຊ້ ແລະ HR ຕິກສິດແຕ່ລະປະເພດໃນຟອມຜູ້ໃຊ້ (ເວັບ).
  * ເຫັນຄຳຂໍຂອງທຸກຄົນ (ຄືໃນເວັບ) ຍົກເວັ້ນຂອງຕົນເອງ — ອະນຸມັດຄຳຂໍຂອງຕົນເອງບໍ່ໄດ້.
@@ -30,6 +31,8 @@ const approvers_1 = require("./approvers");
  * - GET /approve/me — ສິດ + ຈຳນວນທີ່ລໍຖ້າ (app ສະແດງເມນູສະເພາະຄົນທີ່ມີສິດ)
  * - GET /approve/me/:kind — ລໍຖ້າອະນຸມັດ (ເກົ່າສຸດກ່ອນ) + ທີ່ຕັດສິນແລ້ວໃນ 30 ມື້
  * - PUT /approve/me/:kind/:id/approve { note? }, PUT /approve/me/:kind/:id/reject { note? }
+ * ລາພັກລູກທີມ (kind "team"): ຫົວໜ້າທີມອະນຸມັດຂັ້ນທຳອິດ — ບໍ່ຕ້ອງມີສິດຈາກ HR, ເຫັນສະເພາະຄຳຂໍທີ່ລໍຕົນ (lead_id).
+ * ລາພັກ (kind "leave", HR) ບໍ່ສະແດງຄຳຂໍທີ່ຍັງລໍຫົວໜ້າທີມ
  */
 const PENDING = 1;
 const HISTORY_DAYS = 30;
@@ -43,7 +46,10 @@ const personInclude = {
         { model: position_1.default, as: "position", attributes: ["position_name"] },
     ],
 };
-const KINDS = ["leave", "correction", "advance"];
+const KINDS = ["leave", "correction", "advance", "team"];
+const HR_KINDS = ["leave", "correction", "advance"];
+/** ລາພັກທີ່ HR ຕັດສິນໄດ້ = ບໍ່ໄດ້ລໍຫົວໜ້າທີມ */
+const notWaitingLead = { [sequelize_1.Op.or]: [{ lead_status: null }, { lead_status: { [sequelize_1.Op.ne]: leaveController_1.LEAD_WAITING } }] };
 /** ສະຖານະແບບດຽວກັນທຸກປະເພດ (ເບີກເງິນ: ອະນຸມັດ / ຈ່າຍແລ້ວ / ຫັກຄົບ = approved) */
 const stateOf = (kind, status) => {
     if (status === PENDING)
@@ -67,10 +73,14 @@ const approverOf = async (req) => {
         where: { employee_id: self.employee._uuid, status: 1 },
         attributes: ["user_uuid", "approve_leave", "approve_correction", "approve_advance"],
     });
-    const rights = Object.fromEntries(KINDS.map((k) => [k, !!user && Number(user[approvers_1.APPROVAL_FLAGS[k]]) === 1]));
-    return { me: Number(self.employee._uuid), user, rights };
+    const me = Number(self.employee._uuid);
+    const rights = Object.fromEntries(HR_KINDS.map((k) => [k, !!user && Number(user[approvers_1.APPROVAL_FLAGS[k]]) === 1]));
+    // ຫົວໜ້າທີມ: ມີລູກທີມ ຫຼື ມີຄຳຂໍທີ່ເຄີຍລໍຕົນ (ປ່ຽນໂຄງຮ່າງພາຍຫຼັງກໍ່ຍັງເຫັນ)
+    rights.team = (await employee_1.default.count({ where: { reports_to_id: me, work_status: workCalendar_1.WORKING } })) > 0
+        || (await leaveRequest_1.default.count({ where: { lead_id: me } })) > 0;
+    return { me, user, rights };
 };
-const modelOf = (kind) => (kind === "leave" ? leaveRequest_1.default : kind === "correction" ? attendanceRequest_1.default : salaryAdvance_1.default);
+const modelOf = (kind) => (kind === "leave" || kind === "team" ? leaveRequest_1.default : kind === "correction" ? attendanceRequest_1.default : salaryAdvance_1.default);
 /** ຊື່ຜູ້ອະນຸມັດ (ຊື່ພະນັກງານທີ່ຜູກ ຫຼື ຊື່ບັນຊີ) */
 const reviewerNames = async (ids) => {
     const unique = [...new Set(ids.filter((id) => id > 0))];
@@ -89,11 +99,12 @@ const itemsOf = async (kind, rows) => {
     return Promise.all(rows.map(async (row) => {
         const r = row.get({ plain: true });
         const e = r.employee ?? {};
-        const pending = Number(r.status) === PENDING;
+        // ຂັ້ນຫົວໜ້າທີມ: "ລໍຖ້າ" = ລໍຕົນ; ອະນຸມັດແລ້ວ = ສົ່ງຕໍ່ HR
+        const pending = kind === "team" ? Number(r.status) === PENDING && Number(r.lead_status) === leaveController_1.LEAD_WAITING : Number(r.status) === PENDING;
         const lines = [];
         const warn = [];
         let title = "";
-        if (kind === "leave") {
+        if (kind === "leave" || kind === "team") {
             title = r.type?.name ?? "ລາພັກ";
             lines.push(`${day(r.start_date)} – ${day(r.end_date)} · ${r.days} ມື້`);
             if (pending && r.leave_type_id) {
@@ -105,8 +116,19 @@ const itemsOf = async (kind, rows) => {
                         warn.push(`ເກີນສິດ ${Number(r.days) - balance.remaining} ມື້ — ອະນຸມັດແລ້ວຈະເປັນ ${balance.paid ? "ໄດ້ເງິນເດືອນຕາມປະເພດ" : "ບໍ່ໄດ້ເງິນເດືອນ"}`);
                 }
             }
-            if (!pending)
-                lines.push(Number(r.leave_type) === 2 ? "ໄດ້ເງິນເດືອນ" : "ບໍ່ໄດ້ເງິນເດືອນ");
+            if (kind === "team") {
+                if (Number(r.lead_status) === leaveController_1.LEAD_APPROVED) {
+                    lines.push(Number(r.status) === PENDING ? "ສົ່ງຕໍ່ HR ແລ້ວ — ລໍ HR ອະນຸມັດ" : Number(r.status) === 2 ? "HR ອະນຸມັດແລ້ວ" : Number(r.status) === 3 ? "HR ບໍ່ອະນຸມັດ" : "ພະນັກງານຍົກເລີກ");
+                }
+            }
+            else {
+                if (Number(r.lead_status) === leaveController_1.LEAD_APPROVED)
+                    lines.push(`✓ ຫົວໜ້າທີມ${r.lead ? ` (${(0, approvers_1.fullName)(r.lead)})` : ""} ອະນຸມັດແລ້ວ${r.lead_note ? `: ${r.lead_note}` : ""}`);
+                if (Number(r.lead_status) === leaveController_1.LEAD_REJECTED)
+                    lines.push(`ຫົວໜ້າທີມ${r.lead ? ` (${(0, approvers_1.fullName)(r.lead)})` : ""} ບໍ່ອະນຸມັດ`);
+                if (!pending)
+                    lines.push(Number(r.leave_type) === 2 ? "ໄດ້ເງິນເດືອນ" : "ບໍ່ໄດ້ເງິນເດືອນ");
+            }
         }
         else if (kind === "correction") {
             title = `ລືມສະແກນ ${day(r.work_date)}`;
@@ -129,10 +151,14 @@ const itemsOf = async (kind, rows) => {
                 lines.push(ADVANCE_STATES[Number(r.status)]);
             }
         }
+        // ລາພັກລູກທີມ: ສະຖານະ / ໝາຍເຫດ / ເວລາ = ຂອງການຕັດສິນຂັ້ນຫົວໜ້າ
+        const team = kind === "team";
         return {
             _uuid: r._uuid,
             kind,
-            state: stateOf(kind, Number(r.status)),
+            state: team
+                ? (pending ? "pending" : Number(r.lead_status) === leaveController_1.LEAD_APPROVED ? "approved" : Number(r.lead_status) === leaveController_1.LEAD_REJECTED ? "rejected" : stateOf("leave", Number(r.status)))
+                : stateOf(kind, Number(r.status)),
             title,
             lines,
             warn,
@@ -140,9 +166,9 @@ const itemsOf = async (kind, rows) => {
             // ໃບລາທີ່ແນບ (ລາພັກ) — app ເປີດຜ່ານ GET /leave/me/file/:id (ຜູ້ມີສິດອະນຸມັດລາພັກເປີດໄດ້)
             files: (r.files ?? []).map((f) => ({ _uuid: f._uuid, original_name: f.original_name, mime_type: f.mime_type, file_size: f.file_size })),
             created_at: r.createdAt,
-            reviewed_at: r.reviewedAt ?? null,
-            review_note: r.review_note ?? null,
-            reviewer: reviewers.get(Number(r.reviewedbyid)) ?? null,
+            reviewed_at: team ? r.lead_at ?? null : r.reviewedAt ?? null,
+            review_note: team ? r.lead_note ?? null : r.review_note ?? null,
+            reviewer: team ? (r.lead ? (0, approvers_1.fullName)(r.lead) : null) : reviewers.get(Number(r.reviewedbyid)) ?? null,
             person: {
                 _uuid: e._uuid,
                 emp_code: e.emp_code,
@@ -164,7 +190,11 @@ const getMyApprovals = async (req, res) => {
         }
         const pending = Object.fromEntries(await Promise.all(KINDS.map(async (kind) => [
             kind,
-            who.rights[kind] ? await modelOf(kind).count({ where: { status: PENDING, employee_id: { [sequelize_1.Op.ne]: who.me } } }) : 0,
+            !who.rights[kind]
+                ? 0
+                : kind === "team"
+                    ? await leaveRequest_1.default.count({ where: { lead_id: who.me, status: PENDING, lead_status: leaveController_1.LEAD_WAITING } })
+                    : await modelOf(kind).count({ where: { status: PENDING, employee_id: { [sequelize_1.Op.ne]: who.me }, ...(kind === "leave" ? notWaitingLead : {}) } }),
         ])));
         res.status(200).json({ rights: who.rights, pending });
     }
@@ -191,14 +221,23 @@ const getMyApprovalList = async (req, res) => {
             return;
         }
         const model = modelOf(kind);
-        const include = [personInclude, ...(kind === "leave" ? [{ model: leaveType_1.default, as: "type", attributes: ["name"] }, leaveController_1.leaveFileInclude] : [])];
+        const leaveLike = kind === "leave" || kind === "team";
+        const include = [personInclude, ...(leaveLike ? [{ model: leaveType_1.default, as: "type", attributes: ["name"] }, leaveController_1.leaveFileInclude, leaveController_1.leadInclude] : [])];
         const notMine = { employee_id: { [sequelize_1.Op.ne]: who.me } };
+        const since = (0, moment_1.default)().subtract(HISTORY_DAYS, "days").toDate();
+        // ລາພັກລູກທີມ: ລໍຕົນ / ທີ່ຕົນຕັດສິນແລ້ວໃນ 30 ມື້; ລາພັກ (HR): ບໍ່ລວມທີ່ລໍຫົວໜ້າທີມ
+        const pendingWhere = kind === "team"
+            ? { lead_id: who.me, status: PENDING, lead_status: leaveController_1.LEAD_WAITING }
+            : { ...notMine, status: PENDING, ...(kind === "leave" ? notWaitingLead : {}) };
+        const recentWhere = kind === "team"
+            ? { lead_id: who.me, lead_status: { [sequelize_1.Op.in]: [leaveController_1.LEAD_APPROVED, leaveController_1.LEAD_REJECTED] }, lead_at: { [sequelize_1.Op.gte]: since } }
+            : { ...notMine, status: { [sequelize_1.Op.ne]: PENDING }, updatedAt: { [sequelize_1.Op.gte]: since } };
         const [pending, recent] = await Promise.all([
-            model.findAll({ where: { ...notMine, status: PENDING }, include, order: [["createdAt", "ASC"], ["_uuid", "ASC"]] }),
+            model.findAll({ where: pendingWhere, include, order: [["createdAt", "ASC"], ["_uuid", "ASC"]] }),
             model.findAll({
-                where: { ...notMine, status: { [sequelize_1.Op.ne]: PENDING }, updatedAt: { [sequelize_1.Op.gte]: (0, moment_1.default)().subtract(HISTORY_DAYS, "days").toDate() } },
+                where: recentWhere,
                 include,
-                order: [["updatedAt", "DESC"], ["_uuid", "DESC"]],
+                order: [[kind === "team" ? "lead_at" : "updatedAt", "DESC"], ["_uuid", "DESC"]],
                 limit: HISTORY_LIMIT,
             }),
         ]);
@@ -226,6 +265,12 @@ const decideMyApproval = async (req, res) => {
         const who = await approverOf(req);
         if ("code" in who) {
             res.status(who.code).json({ message: who.message });
+            return;
+        }
+        // ຫົວໜ້າທີມ: ກວດວ່າຄຳຂໍລໍຕົນຢູ່ (ໃນ decideLeaveAsLead) — ບໍ່ຕ້ອງມີບັນຊີຜູ້ໃຊ້
+        if (kind === "team") {
+            const note = String(req.body?.note ?? "").trim().slice(0, 255) || null;
+            await (0, leaveController_1.decideLeaveAsLead)(Number((0, bansiHelpers_1.decodeId)(req)) || 0, who.me, action === "approve", note, res);
             return;
         }
         if (!who.rights[kind] || !who.user) {

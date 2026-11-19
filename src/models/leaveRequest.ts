@@ -11,6 +11,10 @@ import LeaveType from "./leaveType";
  * (ຕາມ paid ຂອງປະເພດ).
  * status: 1 ລໍຖ້າ, 2 ອະນຸມັດ (ບັນທຶກລົງ tbl_attendance ທຸກມື້ເຮັດວຽກໃນຊ່ວງແລ້ວ), 3 ປະຕິເສດ, 4 ພະນັກງານຍົກເລີກ.
  * days = ມື້ເຮັດວຽກໃນຊ່ວງ (ຕອນຂໍ) / ມື້ທີ່ບັນທຶກລາພັກແທ້ (ຕອນອະນຸມັດ — ມື້ທີ່ມາວຽກແລ້ວບໍ່ນັບ)
+ *
+ * ອະນຸມັດ 2 ຂັ້ນ (ລູກທີມ): ຜູ້ຂໍມີຫົວໜ້າສາຍງານ (reports_to_id) ແລະ ບໍ່ມີລູກທີມເອງ = ຫົວໜ້າທີມອະນຸມັດກ່ອນ ແລ້ວຈຶ່ງ HR.
+ * lead_id = ຫົວໜ້າທີມ ຕອນຂໍ (null = ບໍ່ມີຂັ້ນຫົວໜ້າ → HR ເລີຍ, ລວມທັງຄຳຂໍເກົ່າກ່ອນມີຂັ້ນນີ້);
+ * lead_status: 1 ລໍຫົວໜ້າ (HR ອະນຸມັດ / ປະຕິເສດບໍ່ໄດ້), 2 ຫົວໜ້າອະນຸມັດແລ້ວ (ລໍ HR), 3 ຫົວໜ້າປະຕິເສດ (status = 3 ເລີຍ)
  */
 class LeaveRequest extends Model {
   public _uuid!: number;
@@ -25,6 +29,10 @@ class LeaveRequest extends Model {
   public review_note!: string | null;
   public reviewedbyid!: number | null;
   public reviewedAt!: Date | null;
+  public lead_id!: number | null;
+  public lead_status!: number | null;
+  public lead_note!: string | null;
+  public lead_at!: Date | null;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -71,6 +79,10 @@ LeaveRequest.init(
     review_note: DataTypes.STRING(255),
     reviewedbyid: DataTypes.INTEGER,
     reviewedAt: DataTypes.DATE,
+    lead_id: DataTypes.INTEGER,
+    lead_status: DataTypes.TINYINT,
+    lead_note: DataTypes.STRING(255),
+    lead_at: DataTypes.DATE,
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -90,6 +102,7 @@ LeaveRequest.init(
 
 LeaveRequest.belongsTo(Employee, { foreignKey: "employee_id", as: "employee", constraints: false });
 LeaveRequest.belongsTo(LeaveType, { foreignKey: "leave_type_id", as: "type", constraints: false });
+LeaveRequest.belongsTo(Employee, { foreignKey: "lead_id", as: "lead", constraints: false });
 
 autoSync(LeaveRequest);
 export default LeaveRequest;

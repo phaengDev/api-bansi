@@ -6,7 +6,8 @@ import PayrollLine from "../../models/payrollLine";
 import Payroll from "../../models/payroll";
 import { decodeId, sendError } from "../bansi/bansiHelpers";
 import { advanceBalanceOf, advancePendingCounts } from "./advanceController";
-import { balancesOf } from "./leaveController";
+import { Op } from "sequelize";
+import { LEAD_WAITING, balancesOf } from "./leaveController";
 import { nowLao } from "./workCalendar";
 
 /** ພາບລວມທີ່ດຶງຂໍ້ມູນຂ້າມໂມດູນ HR — ຄຳຮ້ອງທີ່ລໍຖ້າ HR ແລະ ສະຫຼຸບຂອງພະນັກງານ 1 ຄົນ */
@@ -18,7 +19,8 @@ const PAYROLL_PAID = 2;
 export const getHrPending = async (_req: Request, res: Response) => {
   try {
     const [leave, correction, advance] = await Promise.all([
-      LeaveRequest.count({ where: { status: PENDING } }),
+      // ລໍຫົວໜ້າທີມຢູ່ = HR ຍັງເຮັດຫຍັງບໍ່ໄດ້ — ບໍ່ນັບ
+      LeaveRequest.count({ where: { status: PENDING, [Op.or]: [{ lead_status: null }, { lead_status: { [Op.ne]: LEAD_WAITING } }] } }),
       AttendanceRequest.count({ where: { status: PENDING } }),
       advancePendingCounts(),
     ]);

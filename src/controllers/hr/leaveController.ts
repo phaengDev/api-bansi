@@ -23,7 +23,7 @@ import { selfEmployee } from "./attendanceController";
 import { notify } from "./notificationController";
 import { syncDraftPayrollForDates } from "./payrollController";
 import {
-  BY_HR, PAID_LEAVE, PRESENT, UNPAID_LEAVE, employedOn, findCompany, holidaysBetween, isWorkday, nowLao, workRulesOf,
+  BY_HR, PAID_LEAVE, PRESENT, UNPAID_LEAVE, WORKING, employedOn, findCompany, holidaysBetween, isWorkday, nowLao, workRulesOf,
 } from "./workCalendar";
 
 /**
@@ -36,6 +36,9 @@ import {
  * HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (paid).
  * ສິດຕໍ່ປີ: HR ຕັ້ງສະເພາະຄົນໄດ້ (GET / PUT /leave/quota/:id → tbl_leave_quota), ບໍ່ຕັ້ງ = ຂອງປະເພດ;
  * ປີທີ່ເລີ່ມວຽກ ໄດ້ຕາມເດືອນທີ່ເຮັດວຽກ (limitsOf)
+ * ອະນຸມັດ 2 ຂັ້ນ: ລູກທີມ (ມີຫົວໜ້າສາຍງານໃນໂຄງຮ່າງ ແລະ ບໍ່ມີລູກທີມເອງ) → ຫົວໜ້າທີມອະນຸມັດກ່ອນ (app: ໜ້າອະນຸມັດ "ລາພັກລູກທີມ")
+ * → HR ອະນຸມັດສຸດທ້າຍ. ລໍຫົວໜ້າຢູ່ = HR ອະນຸມັດ / ປະຕິເສດບໍ່ໄດ້; ຫົວໜ້າປະຕິເສດ = ຈົບ (status 3).
+ * ຫົວໜ້າທີມ ແລະ ຄົນທີ່ບໍ່ມີຫົວໜ້າສາຍງານ = HR ເລີຍ
  * ໃບລາ (tbl_leave_file): ແນບຕອນ POST /leave/me (multipart field "files", ≤ 5) — ເປີດໄດ້ສະເພາະເຈົ້າຂອງ + ຜູ້ມີສິດອະນຸມັດລາພັກ
  * (GET /leave/me/file/:id, …/link → /leave/file/open/:token) ແລະ HR ໃນເວັບ (GET /leave/file/download/:id)
  */
@@ -44,6 +47,10 @@ const PENDING = 1;
 const APPROVED = 2;
 const REJECTED = 3;
 const CANCELLED = 4;
+/** ຂັ້ນຫົວໜ້າທີມ (lead_status) */
+export const LEAD_WAITING = 1;
+export const LEAD_APPROVED = 2;
+export const LEAD_REJECTED = 3;
 const STATUSES = [PENDING, APPROVED, REJECTED, CANCELLED];
 /** status ຂອງ tbl_attendance ທີ່ຈະບັນທຶກ (leave_type) — app ລຸ້ນເກົ່າສົ່ງຄ່ານີ້ແທນ leave_type_id */
 const LEAVE_TYPES = [PAID_LEAVE, UNPAID_LEAVE];
@@ -64,6 +71,8 @@ const employeeInclude = {
 };
 
 const typeInclude = { model: LeaveType, as: "type", attributes: ["_uuid", "name", "paid", "max_per_year", "max_per_request"] };
+/** ຫົວໜ້າທີມທີ່ຕ້ອງອະນຸມັດກ່ອນ (ຊື່ສຳລັບ app / ເວັບ) */
+export const leadInclude = { model: Employee, as: "lead", attributes: ["_uuid", "first_name", "last_name"] };
 
 const LEAVE_MIME: Record<string, string> = {
   ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".pdf": "application/pdf",
@@ -79,11 +88,32 @@ export const leaveFileInclude: any = {
 };
 
 const present = (row: LeaveRequest) => {
-  const { employee, ...r }: any = row.get({ plain: true });
-  return { ...r, files: r.files ?? [], employee: employee ? { ...employee, profile_url: profileUrl(employee.profile) } : null };
+  const { employee, lead, ...r }: any = row.get({ plain: true });
+  return {
+    ...r,
+    files: r.files ?? [],
+    lead_name: lead ? fullName(lead) : null,
+    employee: employee ? { ...employee, profile_url: profileUrl(employee.profile) } : null,
+  };
 };
 
-const findWithEmployee = (id: number) => LeaveRequest.findByPk(id, { include: [employeeInclude, typeInclude, leaveFileInclude] });
+const findWithEmployee = (id: number) => LeaveRequest.findByPk(id, { include: [employeeInclude, typeInclude, leaveFileInclude, leadInclude] });
+
+/**
+ * ຫົວໜ້າທີມທີ່ຕ້ອງອະນຸມັດຄຳຂໍລາຂອງ [employee] ກ່ອນ HR: ຫົວໜ້າສາຍງານ (ຍັງເຮັດວຽກຢູ່) — ສະເພາະລູກທີມ.
+ * ຜູ້ຂໍມີລູກທີມເອງ (ເປັນຫົວໜ້າທີມ) ຫຼື ບໍ່ມີຫົວໜ້າສາຍງານ = null (HR ເລີຍ)
+ */
+const teamLeadOf = async (employee: Employee) => {
+  const bossId = Number(employee.reports_to_id) || 0;
+  if (!bossId || bossId === Number(employee._uuid)) return null;
+  const team = await Employee.count({ where: { reports_to_id: employee._uuid, work_status: WORKING } });
+  if (team > 0) return null;
+  return Employee.findOne({ where: { _uuid: bossId, work_status: WORKING }, attributes: ["_uuid", "first_name", "last_name"] });
+};
+
+/** ຂັ້ນຂອງຄຳຂໍທີ່ລໍຖ້າ (ຂໍ້ຄວາມສັ້ນ) — ລໍຫົວໜ້າ / ລໍ HR */
+const waitingText = (row: LeaveRequest, leadName: string | null) =>
+  Number(row.lead_status) === LEAD_WAITING ? `ລໍຫົວໜ້າທີມ${leadName ? ` (${leadName})` : ""} ອະນຸມັດກ່ອນ` : "ລໍຖ້າ HR ອະນຸມັດ";
 
 const dayText = (date: string) => moment(date, "YYYY-MM-DD").format("DD/MM/YYYY");
 const text = (value: unknown) => String(value ?? "").trim().slice(0, 255) || null;
@@ -412,7 +442,7 @@ export const getMyLeaves = async (req: Request, res: Response) => {
     const [rows, types] = await Promise.all([
       LeaveRequest.findAll({
         where: { employee_id: self.employee._uuid, ...overlapsYear(year) },
-        include: [typeInclude, leaveFileInclude],
+        include: [typeInclude, leaveFileInclude, leadInclude],
         order: [["start_date", "DESC"], ["_uuid", "DESC"]],
       }),
       balancesOf(self.employee._uuid, year),
@@ -476,6 +506,8 @@ export const createMyLeave = async (req: Request, res: Response) => {
     if (overlap) return fail(overlapMessage(overlap));
     // ເກີນຂີດຈຳກັດຂອງປະເພດ = ຍັງຂໍໄດ້ (ແຈ້ງພະນັກງານ) — HR ຕັດສິນຕອນອະນຸມັດວ່າ ໄດ້ / ບໍ່ໄດ້ເງິນເດືອນ
     const overQuota = await quotaError(employee._uuid, resolved.type, workdays);
+    // ລູກທີມ = ຫົວໜ້າທີມອະນຸມັດກ່ອນ
+    const lead = await teamLeadOf(employee);
 
     const row = await LeaveRequest.sequelize!.transaction(async (t) => {
       const created = await LeaveRequest.create({
@@ -487,6 +519,8 @@ export const createMyLeave = async (req: Request, res: Response) => {
         days: workdays.length,
         reason,
         status: PENDING,
+        lead_id: lead?._uuid ?? null,
+        lead_status: lead ? LEAD_WAITING : null,
       }, { transaction: t });
       if (uploads.length) {
         await LeaveFile.bulkCreate(uploads.map((f) => ({
@@ -501,17 +535,32 @@ export const createMyLeave = async (req: Request, res: Response) => {
       }
       return created;
     });
-    const saved = await LeaveRequest.findByPk(row._uuid, { include: [typeInclude, leaveFileInclude] });
-    await notifyApprovers("leave", employee._uuid, row._uuid, `🗓️ ${fullName(employee)} ຂໍລາພັກ`, [
+    const saved = await LeaveRequest.findByPk(row._uuid, { include: [typeInclude, leaveFileInclude, leadInclude] });
+    const details = [
       [resolved.type?.name, `${dayText(range.start)} – ${dayText(range.end)} · ${workdays.length} ມື້`].filter(Boolean).join(" · "),
       overQuota ? "⚠️ ເກີນສິດລາຂອງປະເພດນີ້" : null,
       uploads.length ? `📎 ແນບໃບລາ ${uploads.length} ໄຟລ໌` : null,
       reason,
-    ].filter(Boolean).join("\n"));
+    ].filter(Boolean).join("\n");
+    if (lead) {
+      // ແຈ້ງຫົວໜ້າທີມ (HR ຈະໄດ້ຮັບແຈ້ງເຕືອນຫຼັງຫົວໜ້າອະນຸມັດ) — ກົດ = ໜ້າອະນຸມັດ "ລາພັກລູກທີມ"
+      await notify([{
+        employee_id: lead._uuid,
+        type: "approval",
+        title: `🗓️ ${fullName(employee)} (ລູກທີມ) ຂໍລາພັກ`,
+        body: details.slice(0, 500),
+        ref: `approve:team:${row._uuid}`,
+        createdbyid: null,
+        push: true,
+      }]).catch((error) => console.error("notify lead", error));
+    } else {
+      await notifyApprovers("leave", employee._uuid, row._uuid, `🗓️ ${fullName(employee)} ຂໍລາພັກ`, details);
+    }
+    const waiting = lead ? `ລໍຫົວໜ້າທີມ (${fullName(lead)}) ອະນຸມັດ ແລ້ວຈຶ່ງໄປ HR` : "ລໍຖ້າ HR ອະນຸມັດ";
     res.status(200).json({
       message: overQuota
-        ? `ສົ່ງຄຳຂໍລາພັກແລ້ວ — ${resolved.type?.name ?? "ປະເພດນີ້"} ລາຄົບສິດແລ້ວ, HR ຈະພິຈາລະນາວ່າໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ`
-        : "ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ລໍຖ້າ HR ອະນຸມັດ",
+        ? `ສົ່ງຄຳຂໍລາພັກແລ້ວ — ${resolved.type?.name ?? "ປະເພດນີ້"} ລາຄົບສິດແລ້ວ, HR ຈະພິຈາລະນາວ່າໄດ້ ຫຼື ບໍ່ໄດ້ເງິນເດືອນ (${waiting})`
+        : `ສົ່ງຄຳຂໍລາພັກສຳເລັດ — ${waiting}`,
       over_quota: !!overQuota,
       data: present(saved ?? row),
     });
@@ -568,10 +617,12 @@ const openableFile = async (req: Request<{ id: string }>): Promise<LeaveFile | {
   const self = await selfEmployee(req);
   if ("code" in self) return { code: self.code, message: self.message };
   const file = await LeaveFile.findByPk(Number(decodeId(req)) || 0, {
-    include: [{ model: LeaveRequest, as: "leave", attributes: ["employee_id"] }],
+    include: [{ model: LeaveRequest, as: "leave", attributes: ["employee_id", "lead_id"] }],
   });
   if (!file) return null;
   if (Number((file as any).leave?.employee_id) === Number(self.employee._uuid)) return file;
+  // ຫົວໜ້າທີມຂອງຄຳຂໍນີ້ ເປີດໄດ້ (ຂັ້ນອະນຸມັດທຳອິດ)
+  if (Number((file as any).leave?.lead_id) === Number(self.employee._uuid)) return file;
   const approver = await Users.findOne({ where: { employee_id: self.employee._uuid, status: 1, approve_leave: 1 }, attributes: ["user_uuid"] });
   return approver ? file : null;
 };
@@ -645,7 +696,7 @@ export const getLeaves = async (req: Request, res: Response) => {
     const [rows, counts] = await Promise.all([
       LeaveRequest.findAll({
         where: { ...overlapsYear(year), ...(STATUSES.includes(status) ? { status } : {}) },
-        include: [employeeInclude, typeInclude, leaveFileInclude],
+        include: [employeeInclude, typeInclude, leaveFileInclude, leadInclude],
         order: [["status", "ASC"], ["start_date", "DESC"], ["_uuid", "DESC"]],
       }),
       LeaveRequest.findAll({
@@ -701,6 +752,7 @@ export const approveLeave = async (req: Request<{ id: string }>, res: Response) 
     const row = await LeaveRequest.findByPk(decodeId(req), { transaction: t, lock: t.LOCK.UPDATE });
     if (!row) return fail(404, "ບໍ່ພົບຄຳຂໍລາພັກ");
     if (Number(row.status) !== PENDING) return fail(400, "ຄຳຂໍນີ້ບໍ່ໄດ້ລໍຖ້າອະນຸມັດແລ້ວ");
+    if (Number(row.lead_status) === LEAD_WAITING) return fail(400, await leadWaitMessage(row));
     const body = req.body || {};
     // ປະເພດໃໝ່ທີ່ HR ເລືອກ (ຕ້ອງໃຊ້ງານຢູ່) ຫຼື ປະເພດເດີມຂອງຄຳຂໍ (ປິດໃຊ້ງານພາຍຫຼັງກໍ່ຍັງອະນຸມັດໄດ້); ຄຳຂໍເກົ່າບໍ່ມີປະເພດ = null
     const changed = body.leave_type_id !== undefined && body.leave_type_id !== null && body.leave_type_id !== "";
@@ -817,6 +869,10 @@ export const rejectLeave = async (req: Request<{ id: string }>, res: Response) =
       res.status(400).json({ message: "ຄຳຂໍນີ້ບໍ່ໄດ້ລໍຖ້າອະນຸມັດແລ້ວ" });
       return;
     }
+    if (Number(row.lead_status) === LEAD_WAITING) {
+      res.status(400).json({ message: await leadWaitMessage(row) });
+      return;
+    }
     await row.update({
       status: REJECTED,
       review_note: text(req.body?.note),
@@ -829,5 +885,56 @@ export const rejectLeave = async (req: Request<{ id: string }>, res: Response) =
     res.status(200).json({ message: "ປະຕິເສດຄຳຂໍລາພັກແລ້ວ", data: saved && present(saved) });
   } catch (error) {
     sendError(res, error, "Error rejecting leave request");
+  }
+};
+
+/** HR ກົດອະນຸມັດ / ປະຕິເສດ ຕອນຍັງລໍຫົວໜ້າທີມ */
+const leadWaitMessage = async (row: LeaveRequest) => {
+  const lead = row.lead_id ? await Employee.findByPk(row.lead_id, { attributes: ["first_name", "last_name"] }) : null;
+  return `${waitingText(row, lead ? fullName(lead) : null)} — HR ຕັດສິນໄດ້ຫຼັງຫົວໜ້າທີມອະນຸມັດ`;
+};
+
+/**
+ * ຫົວໜ້າທີມຕັດສິນຄຳຂໍລາຂອງລູກທີມ (PUT /approve/me/team/:id/approve | reject ຜ່ານ approvalController):
+ * ອະນຸມັດ = ສົ່ງຕໍ່ HR (ແຈ້ງຜູ້ມີສິດອະນຸມັດລາພັກ + ຜູ້ຂໍ); ປະຕິເສດ = ຈົບ (ແຈ້ງຜູ້ຂໍ)
+ */
+export const decideLeaveAsLead = async (id: number, leadId: number, approve: boolean, note: string | null, res: Response) => {
+  const row = await LeaveRequest.findByPk(id, { include: [employeeInclude, typeInclude] });
+  if (!row) {
+    res.status(404).json({ message: "ບໍ່ພົບຄຳຂໍລາພັກ" });
+    return;
+  }
+  if (Number(row.lead_id) !== leadId) {
+    res.status(403).json({ message: "ຄຳຂໍນີ້ບໍ່ແມ່ນຂອງລູກທີມທ່ານ" });
+    return;
+  }
+  if (Number(row.status) !== PENDING || Number(row.lead_status) !== LEAD_WAITING) {
+    res.status(400).json({ message: "ຄຳຂໍນີ້ຕັດສິນແລ້ວ" });
+    return;
+  }
+  const now = new Date();
+  const dates = `${dayText(row.start_date)} – ${dayText(row.end_date)}`;
+  const e: any = (row as any).employee;
+  if (approve) {
+    await row.update({ lead_status: LEAD_APPROVED, lead_note: note, lead_at: now, updatedAt: now });
+    await notifyApprovers("leave", Number(row.employee_id), row._uuid, `🗓️ ${fullName(e)} ຂໍລາພັກ — ຫົວໜ້າທີມອະນຸມັດແລ້ວ`, [
+      [(row as any).type?.name, `${dates} · ${row.days} ມື້`].filter(Boolean).join(" · "),
+      row.reason,
+      note ? `ຫົວໜ້າ: ${note}` : null,
+    ].filter(Boolean).join("\n"));
+    await notifyLeave(row, "ຫົວໜ້າທີມອະນຸມັດແລ້ວ — ລໍ HR ອະນຸມັດ", [dates, note], null);
+    res.status(200).json({ message: "ອະນຸມັດແລ້ວ — ສົ່ງຕໍ່ໃຫ້ HR ອະນຸມັດສຸດທ້າຍ" });
+  } else {
+    await row.update({
+      lead_status: LEAD_REJECTED,
+      lead_note: note,
+      lead_at: now,
+      status: REJECTED,
+      review_note: note,
+      reviewedAt: now,
+      updatedAt: now,
+    });
+    await notifyLeave(row, "ຫົວໜ້າທີມບໍ່ອະນຸມັດຄຳຂໍລາພັກ", [dates, note], null);
+    res.status(200).json({ message: "ປະຕິເສດຄຳຂໍລາພັກແລ້ວ" });
   }
 };
