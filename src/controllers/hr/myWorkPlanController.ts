@@ -12,7 +12,7 @@ import { WORKING, employedOn, nowLao, todayLao } from "./workCalendar";
 
 /**
  * ແຜນວຽກສ່ວນຕົວຂອງພະນັກງານ (app ມືຖື — token ຂອງພະນັກງານ). ໃຊ້ຕາຕະລາງດຽວກັບປະຕິທິນແຜນວຽກຂອງເວັບ (tbl_work_plan):
- * ແຜນຂອງພະນັກງານ = employee_id ເປັນຂອງຕົນເອງ ແລະ userid = 0 (ບໍ່ປົນກັບແຜນຂອງຜູ້ໃຊ້ລະບົບ — workPlanController ເອົາສະເພາະ employee_id null).
+ * ແຜນຂອງພະນັກງານ = employee_id ເປັນຂອງຕົນເອງ ແລະ userid = 0 (ຖັນເກົ່າຂອງປະຕິທິນແຜນວຽກທີ່ຖືກເອົາອອກແລ້ວ).
  * - GET /employee/me/workplan?scope=active|upcoming|history&offset= — active ຮອດມື້ເລີ່ມແລ້ວ ຍັງບໍ່ປິດ (ສະແດງທຸກມື້ຈົນກວ່າຈະປິດ),
  *   upcoming ຍັງບໍ່ຮອດມື້ເລີ່ມ, history ປິດແລ້ວ (ເທື່ອລະ 30, ໃໝ່ສຸດກ່ອນ) + counts ຂອງແຕ່ລະແຖບ
  * - GET /employee/me/workplan?scope=range&from=&to= — ທຸກແຜນ (ສຳເລັດ ແລະ ຍັງບໍ່ສຳເລັດ) ທີ່ຊ້ອນທັບຊ່ວງວັນທີ (ບໍ່ເກີນ 1 ປີ)

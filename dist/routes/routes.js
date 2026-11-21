@@ -8,7 +8,6 @@ const userController_1 = require("../controllers/userController");
 const currencyController_1 = require("../controllers/currencyController");
 const bankController_1 = require("../controllers/bankController");
 const menuController_1 = require("../controllers/menuController");
-const workPlanController_1 = require("../controllers/workPlanController");
 // ======== bansi (ບັນຊີ)
 const typeAcountController_1 = require("../controllers/bansi/typeAcountController");
 const typeTreasuryController_1 = require("../controllers/bansi/typeTreasuryController");
@@ -118,14 +117,6 @@ router.put("/bank/:id", (0, uploadFile_1.createUpload)('logo').fields([{ name: "
 router.delete("/bank/:id", bankController_1.deleteBank);
 router.get("/bank/fetch", bankController_1.fetchBank);
 router.get("/bank", bankController_1.getBankOption);
-// ========= Work Plan (ປະຕິທິນແຜນວຽກ — ເມນູ /calendar ຂອງໜ້າ desktop ບັນຊີ)
-router.post("/workplan/create", workPlanController_1.createWorkPlan);
-router.post("/workplan/fetch", workPlanController_1.fetchWorkPlan);
-router.get("/workplan/date/:id", workPlanController_1.getWorkPlanByDate);
-router.get("/workplan/:id", workPlanController_1.getWorkPlanById);
-router.put("/workplan/done/:id", workPlanController_1.doneWorkPlan);
-router.put("/workplan/:id", workPlanController_1.updateWorkPlan);
-router.delete("/workplan/:id", workPlanController_1.deleteWorkPlan);
 // ========= ໝວດບັນຊີ (bansi type account) routes
 router.get("/type-account/fetch", typeAcountController_1.getTypeAcount);
 router.get("/type-account/option", typeAcountController_1.getTypeAcountOption);

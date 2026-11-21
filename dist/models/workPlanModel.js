@@ -7,7 +7,6 @@ exports.WorkPlan = void 0;
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../config/database"));
 const autoSync_1 = require("../utils/autoSync");
-const userModel_1 = __importDefault(require("./userModel"));
 // ✅ Define model
 class WorkPlan extends sequelize_1.Model {
 }
@@ -92,9 +91,6 @@ WorkPlan.init({
     tableName: "tbl_work_plan",
     timestamps: false,
 });
-// ✅ Associations (import side effect — ຕ້ອງ import ໄຟລ໌ນີ້ກ່ອນຈຶ່ງໃຊ້ include ໄດ້)
-WorkPlan.belongsTo(userModel_1.default, { foreignKey: "userid", targetKey: "user_uuid", as: "user" });
-userModel_1.default.hasMany(WorkPlan, { foreignKey: "userid", sourceKey: "user_uuid", as: "workPlans" });
 // ສ້າງ/ປັບຕາຕະລາງເອງຕອນເປີດ server (App.ts → runAutoSync)
 (0, autoSync_1.autoSync)(WorkPlan);
 exports.default = WorkPlan;

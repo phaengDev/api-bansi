@@ -1,13 +1,12 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../config/database";
 import { autoSync } from "../utils/autoSync";
-import Users from "./userModel";
 
-// ✅ Define attributes — ຕາຕະລາງເກັບແຜນວຽກ (ປະຕິທິນແຜນວຽກ)
+// ✅ Define attributes — ຕາຕະລາງເກັບແຜນວຽກຂອງພະນັກງານ (app ມືຖື + ໜ້າ "ຂອງຂ້ອຍ" ເທິງເວັບ; ຜ່ານ /employee/me/workplan)
 interface WorkPlanAttributes {
     _uuid: number;
-    userid: number;                 // ເຈົ້າຂອງແຜນວຽກ (tbl_users.user_uuid) — ແຜນຂອງພະນັກງານ = 0
-    employee_id: number | null;     // ແຜນວຽກຂອງພະນັກງານ (app ມືຖື, tbl_employee._uuid) — ແຜນຂອງຜູ້ໃຊ້ລະບົບ = null
+    userid: number;                 // ຖັນເກົ່າຂອງປະຕິທິນແຜນວຽກ (ຖືກເອົາອອກ 2026-11-21) — ແຜນຂອງພະນັກງານ = 0 ສະເໝີ
+    employee_id: number | null;     // ເຈົ້າຂອງແຜນ (tbl_employee._uuid)
     title: string;                  // ຫົວຂໍ້ແຜນວຽກ
     note: string;                   // ລາຍລະອຽດເພີ່ມເຕີມ
     start_date: string;             // ວັນທີເລີ່ມ (YYYY-MM-DD)
@@ -131,10 +130,6 @@ WorkPlan.init(
         timestamps: false,
     }
 );
-
-// ✅ Associations (import side effect — ຕ້ອງ import ໄຟລ໌ນີ້ກ່ອນຈຶ່ງໃຊ້ include ໄດ້)
-WorkPlan.belongsTo(Users, { foreignKey: "userid", targetKey: "user_uuid", as: "user" });
-Users.hasMany(WorkPlan, { foreignKey: "userid", sourceKey: "user_uuid", as: "workPlans" });
 
 // ສ້າງ/ປັບຕາຕະລາງເອງຕອນເປີດ server (App.ts → runAutoSync)
 autoSync(WorkPlan);

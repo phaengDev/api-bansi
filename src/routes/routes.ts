@@ -6,15 +6,6 @@ import { getUsers, createUser, getUserById, updateUser, deleteUser, updatePasswo
 import { getcurrency, updateCurrency, updateCurrencyMt } from "../controllers/currencyController";
 import { createBank, updateBank, deleteBank, fetchBank, getBankOption } from "../controllers/bankController";
 import { getAllMainMenus, getMainMenus } from "../controllers/menuController";
-import {
-    createWorkPlan,
-    updateWorkPlan,
-    doneWorkPlan,
-    deleteWorkPlan,
-    fetchWorkPlan,
-    getWorkPlanById,
-    getWorkPlanByDate,
-} from "../controllers/workPlanController";
 // ======== bansi (ບັນຊີ)
 import { createTypeAcount, updateTypeAcount, getTypeAcount, getTypeAcountOption } from "../controllers/bansi/typeAcountController";
 import { createTypeTreasury, updateTypeTreasury, deleteTypeTreasury, getTypeTreasury,getTypeTreasurOption, getTreasurbytype } from "../controllers/bansi/typeTreasuryController";
@@ -193,15 +184,6 @@ router.put("/bank/:id", createUpload('logo').fields([{ name: "logo", maxCount: 1
 router.delete("/bank/:id", deleteBank);
 router.get("/bank/fetch", fetchBank);
 router.get("/bank", getBankOption);
-
-// ========= Work Plan (ປະຕິທິນແຜນວຽກ — ເມນູ /calendar ຂອງໜ້າ desktop ບັນຊີ)
-router.post("/workplan/create", createWorkPlan);
-router.post("/workplan/fetch", fetchWorkPlan);
-router.get("/workplan/date/:id", getWorkPlanByDate);
-router.get("/workplan/:id", getWorkPlanById);
-router.put("/workplan/done/:id", doneWorkPlan);
-router.put("/workplan/:id", updateWorkPlan);
-router.delete("/workplan/:id", deleteWorkPlan);
 
 // ========= ໝວດບັນຊີ (bansi type account) routes
 router.get("/type-account/fetch", getTypeAcount);
