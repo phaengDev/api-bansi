@@ -299,6 +299,8 @@ export const getMyAttendance = async (req: Request, res: Response) => {
         record: presentAttendance(rows.get(date)),
       })),
       summary: stats,
+      // ນາທີຜ່ອນຜັນ — ມາຊ້າ/ອອກກ່ອນບໍ່ເກີນນີ້ບໍ່ນັບ (ໜ້າເວັບພື້ນທີ່ຂອງຂ້ອຍ)
+      grace: settings.late_grace_minutes,
     });
   } catch (error) {
     sendError(res, error, "Error getting my attendance");
