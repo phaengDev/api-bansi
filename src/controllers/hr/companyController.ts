@@ -4,12 +4,14 @@ import Company from "../../models/company";
 import District from "../../models/district";
 import { deleteFile } from "../../utils/uploadFile";
 import { actorOf, sendError } from "../bansi/bansiHelpers";
+import { loadAccountSetting } from "../bansi/accountSettingController";
 import { COMPANY_FOLDER, companyLogoUrl, districtInclude } from "./hrHelpers";
 import { syncDraftPayrolls } from "./payrollController";
 
 /**
- * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
- * ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກປະຈຳອາທິດ ແລະ ເຄື່ອງແບບປະຈຳວັນ
+ * ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ຊື່ ລາວ/ອັງກິດ, ໂລໂກ້, ເບີໂທ 1/2, ເລກອາກອນ, ທີ່ຢູ່, ພິກັດ + ໄລຍະສະແກນເຂົ້າ-ອອກວຽກ,
+ * ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກປະຈຳອາທິດ ແລະ ເຄື່ອງແບບປະຈຳວັນ.
+ * ເລກອາກອນ (tax_id) ເກັບຢູ່ tbl_account_setting ບ່ອນດຽວ (ໃບເກັບເງິນອາກອນ ແລະ ງົບການເງິນອ່ານຈາກນັ້ນ) — /company ອ່ານ-ຂຽນແທນ
  */
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -42,10 +44,16 @@ const present = (row: Company | null) => {
 
 const findCompany = () => Company.findOne({ include: [districtInclude], order: [["_uuid", "ASC"]] });
 
+/** ຂໍ້ມູນບໍລິສັດ + ເລກອາກອນ (ຈາກຕັ້ງຄ່າບັນຊີ) — null = ຍັງບໍ່ໄດ້ຕັ້ງ */
+const companyData = async () => {
+  const data = present(await findCompany());
+  return data && { ...data, tax_id: (await loadAccountSetting()).tax_id ?? null };
+};
+
 /** GET /company — null = ຍັງບໍ່ໄດ້ຕັ້ງ */
 export const getCompany = async (_req: Request, res: Response) => {
   try {
-    res.status(200).json({ data: present(await findCompany()) });
+    res.status(200).json({ data: await companyData() });
   } catch (error) {
     sendError(res, error, "Error getting company");
   }
@@ -157,10 +165,13 @@ export const saveCompany = async (req: Request, res: Response) => {
     if (row) await row.update({ ...input, updatedbyid: actor, updatedAt: new Date() });
     else await Company.create({ ...input, updatedbyid: actor });
 
+    // ເລກອາກອນ — ບໍ່ສົ່ງມາ (ລຸ້ນເກົ່າ / ບັນທຶກທີ່ຕັ້ງຈາກແຜນທີ່) = ບໍ່ແຕະ
+    if (req.body?.tax_id !== undefined) await (await loadAccountSetting()).update({ tax_id: text(req.body.tax_id, 50) });
+
     if (oldLogo) deleteFile(COMPANY_FOLDER, oldLogo);
     // ເວລາເຮັດວຽກ / ວັນພັກປະຈຳອາທິດ ປ່ຽນ = ມື້ເຮັດວຽກຂອງໃບເງິນເດືອນຮ່າງປ່ຽນ
     await syncDraftPayrolls();
-    res.status(200).json({ message: "Successfully saved company", data: present(await findCompany()) });
+    res.status(200).json({ message: "Successfully saved company", data: await companyData() });
   } catch (error) {
     discardImage(req);
     sendError(res, error, "Error saving company");
@@ -194,7 +205,7 @@ export const saveUniformPhoto = async (req: Request<{ type: string }>, res: Resp
     const old = row[field];
     await row.update({ [field]: uploaded, updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
     if (old) deleteFile(COMPANY_FOLDER, old);
-    res.status(200).json({ message: "Successfully saved uniform photo", data: present(await findCompany()) });
+    res.status(200).json({ message: "Successfully saved uniform photo", data: await companyData() });
   } catch (error) {
     discardImage(req);
     sendError(res, error, "Error saving uniform photo");
@@ -216,7 +227,7 @@ export const removeUniformPhoto = async (req: Request<{ type: string }>, res: Re
       await row.update({ [field]: null, updatedbyid: Number(actorOf(req)) || null, updatedAt: new Date() });
       deleteFile(COMPANY_FOLDER, old);
     }
-    res.status(200).json({ message: "Successfully removed uniform photo", data: present(await findCompany()) });
+    res.status(200).json({ message: "Successfully removed uniform photo", data: await companyData() });
   } catch (error) {
     sendError(res, error, "Error removing uniform photo");
   }
