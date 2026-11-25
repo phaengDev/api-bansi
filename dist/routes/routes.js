@@ -4,6 +4,11 @@ const express_1 = require("express");
 const uploadFile_1 = require("../utils/uploadFile");
 const auth_1 = require("../middleware/auth");
 const permission_1 = require("../middleware/permission");
+const salaryAccess_1 = require("../middleware/salaryAccess");
+// ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
+const hideEmployeeSalary = (0, salaryAccess_1.hideSalaryFields)("basic_salary");
+const hideSummaryMoney = (0, salaryAccess_1.hideSalaryFields)("advance_balance", "last_payroll");
+const hideOvertimeEstimate = (0, salaryAccess_1.hideSalaryFields)("estimate");
 const userController_1 = require("../controllers/userController");
 const currencyController_1 = require("../controllers/currencyController");
 const bankController_1 = require("../controllers/bankController");
@@ -318,13 +323,13 @@ router.delete("/skill-type/:id", (0, permission_1.requirePermission)("deletes"),
 router.post("/skill/create", (0, permission_1.requirePermission)("creates"), skillController_1.saveSkill);
 router.put("/skill/:id", (0, permission_1.requirePermission)("updates"), skillController_1.saveSkill);
 router.delete("/skill/:id", (0, permission_1.requirePermission)("deletes"), skillController_1.deleteSkill);
-router.put("/employee/skills/:id", (0, permission_1.requirePermission)("updates"), skillController_1.setEmployeeSkills);
-router.post("/employee/resume/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, resumeController_1.createResume);
-router.put("/employee/resume-line/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, resumeController_1.updateResume);
-router.delete("/employee/resume-line/:id", (0, permission_1.requirePermission)("updates"), resumeController_1.deleteResume);
+router.put("/employee/skills/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, skillController_1.setEmployeeSkills);
+router.post("/employee/resume/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, hideEmployeeSalary, resumeController_1.createResume);
+router.put("/employee/resume-line/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, hideEmployeeSalary, resumeController_1.updateResume);
+router.delete("/employee/resume-line/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, resumeController_1.deleteResume);
 router.get("/employee/resume-line/file/:id", resumeController_1.downloadResumeFile);
-router.get("/employee/fetch", employeeController_1.getEmployees);
-router.get("/employee/option", employeeController_1.getEmployeeOption);
+router.get("/employee/fetch", hideEmployeeSalary, employeeController_1.getEmployees);
+router.get("/employee/option", hideEmployeeSalary, employeeController_1.getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", employeeController_1.getMyEmployee);
 router.put("/employee/me/profile", hrHelpers_1.profileUpload, employeeController_1.updateMyProfilePhoto);
@@ -361,17 +366,17 @@ router.get("/money/me/entries/:id/photo", myMoneyController_1.getMyMoneyEntryPho
 router.put("/money/me/entries/:id", hrHelpers_1.receiptUpload, myMoneyController_1.updateMyMoneyEntry);
 router.delete("/money/me/entries/:id", myMoneyController_1.deleteMyMoneyEntry);
 router.get("/money/me/summary", myMoneyController_1.getMyMoneySummary);
-router.get("/employee/summary/:id", hrSummaryController_1.getEmployeeSummary);
-router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, employeeController_1.createEmployee);
+router.get("/employee/summary/:id", hideSummaryMoney, hrSummaryController_1.getEmployeeSummary);
+router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, hideEmployeeSalary, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
-router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, employeeController_1.uploadEmployeeDocuments);
-router.put("/employee/document/:id", (0, permission_1.requirePermission)("updates"), employeeController_1.updateEmployeeDocument);
+router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, hideEmployeeSalary, employeeController_1.uploadEmployeeDocuments);
+router.put("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, employeeController_1.updateEmployeeDocument);
 router.get("/employee/document/download/:id", employeeController_1.downloadEmployeeDocument);
-router.delete("/employee/document/:id", (0, permission_1.requirePermission)("updates"), employeeController_1.deleteEmployeeDocument);
+router.delete("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, employeeController_1.deleteEmployeeDocument);
 // ຕັ້ງລະຫັດຜ່ານ app ຂອງພະນັກງານຄືນເປັນຄ່າເລີ່ມຕົ້ນ (ກ່ອນ /employee/:id)
-router.put("/employee/app-password/:id", (0, permission_1.requirePermission)("updates"), employeeController_1.resetAppPassword);
-router.put("/employee/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.profileUpload, employeeController_1.updateEmployee);
-router.delete("/employee/:id", (0, permission_1.requirePermission)("deletes"), employeeController_1.deleteEmployee);
+router.put("/employee/app-password/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, employeeController_1.resetAppPassword);
+router.put("/employee/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.profileUpload, hideEmployeeSalary, employeeController_1.updateEmployee);
+router.delete("/employee/:id", (0, permission_1.requirePermission)("deletes"), hideEmployeeSalary, employeeController_1.deleteEmployee);
 // ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
 router.get("/company", companyController_1.getCompany);
 router.put("/company", (0, permission_1.requirePermission)("updates"), hrHelpers_1.companyLogoUpload, companyController_1.saveCompany);
@@ -406,7 +411,7 @@ router.delete("/holiday/:id", (0, permission_1.requirePermission)("deletes"), at
 // ການເຮັດວຽກລ່ວງເວລາ (OT) — HR ບັນທຶກ; ເງິນເດືອນລວມໃຫ້ອັດຕະໂນມັດ
 // OT ຂອງຕົນເອງ (app ມືຖື)
 router.get("/overtime/me", overtimeController_1.getMyOvertime);
-router.post("/overtime/fetch", (0, permission_1.requirePermission)("updates"), overtimeController_1.getOvertimes);
+router.post("/overtime/fetch", (0, permission_1.requirePermission)("updates"), hideOvertimeEstimate, overtimeController_1.getOvertimes);
 router.post("/overtime/create", (0, permission_1.requirePermission)("creates"), overtimeController_1.createOvertime);
 router.put("/overtime/:id", (0, permission_1.requirePermission)("updates"), overtimeController_1.updateOvertime);
 router.delete("/overtime/:id", (0, permission_1.requirePermission)("deletes"), overtimeController_1.deleteOvertime);
@@ -461,17 +466,17 @@ router.put("/advance/me/cancel/:id", advanceController_1.cancelMyAdvance);
 router.get("/approve/me", approvalController_1.getMyApprovals);
 router.get("/approve/me/:kind", approvalController_1.getMyApprovalList);
 router.put("/approve/me/:kind/:id/:action", approvalController_1.decideMyApproval);
-router.post("/advance/fetch", (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvances);
-router.post("/advance/create", (0, permission_1.requirePermission)("creates"), advanceController_1.createAdvance);
-router.put("/advance/approve/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.approveAdvance);
-router.put("/advance/reject/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.rejectAdvance);
-router.put("/advance/cancel/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.cancelAdvance);
-router.put("/advance/pay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.payAdvance);
-router.put("/advance/unpay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.unpayAdvance);
-router.put("/advance/schedule/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.updateAdvanceSchedule);
-router.post("/advance/repay/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.repayAdvance);
-router.delete("/advance/repayment/:id", (0, permission_1.requirePermission)("deletes"), advanceController_1.deleteAdvanceRepayment);
-router.get("/advance/:id", (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvance);
+router.post("/advance/fetch", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvances);
+router.post("/advance/create", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("creates"), advanceController_1.createAdvance);
+router.put("/advance/approve/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.approveAdvance);
+router.put("/advance/reject/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.rejectAdvance);
+router.put("/advance/cancel/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.cancelAdvance);
+router.put("/advance/pay/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.payAdvance);
+router.put("/advance/unpay/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.unpayAdvance);
+router.put("/advance/schedule/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.updateAdvanceSchedule);
+router.post("/advance/repay/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.repayAdvance);
+router.delete("/advance/repayment/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("deletes"), advanceController_1.deleteAdvanceRepayment);
+router.get("/advance/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), advanceController_1.getAdvance);
 // ================= ມອບໝາຍວຽກ — HR ມອບໝາຍໃນເວັບ (ແຈ້ງເຕືອນເດັ້ງຂຶ້ນຈໍ), ພະນັກງານອັບເດດໃນ app
 router.get("/task/me", taskController_1.getMyTasks);
 router.put("/task/me/item/:id", taskController_1.updateMyTaskItem);
@@ -503,22 +508,22 @@ router.get("/task/:id", taskController_1.getTask);
 router.put("/task/:id", (0, permission_1.requirePermission)("updates"), taskController_1.updateTask);
 // ຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop)
 router.get("/hr/pending", (0, permission_1.requirePermission)("updates"), hrSummaryController_1.getHrPending);
-router.get("/payroll/setting", payrollController_1.getPayrollSetting);
-router.get("/payroll/expense-default", payrollController_1.getPayrollExpenseDefault);
-router.put("/payroll/setting", (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);
-router.post("/payroll/fetch", payrollController_1.getPayrolls);
-router.post("/payroll/tax-report", payrollController_1.getPayrollTaxReport);
-router.post("/payroll/create", (0, permission_1.requirePermission)("creates"), payrollController_1.createPayroll);
-router.put("/payroll/recalc/:id", (0, permission_1.requirePermission)("updates"), payrollController_1.recalcPayroll);
-router.post("/payroll/line/preview/:id", payrollController_1.previewPayrollLine);
-router.put("/payroll/line/:id", (0, permission_1.requirePermission)("updates"), payrollController_1.updatePayrollLine);
-router.delete("/payroll/line/:id", (0, permission_1.requirePermission)("deletes"), payrollController_1.deletePayrollLine);
-router.put("/payroll/pay/:id", (0, permission_1.requirePermission)("updates"), payrollController_1.payPayroll);
-router.put("/payroll/unpay/:id", (0, permission_1.requirePermission)("updates"), payrollController_1.unpayPayroll);
+router.get("/payroll/setting", salaryAccess_1.requireSalaryAccess, payrollController_1.getPayrollSetting);
+router.get("/payroll/expense-default", salaryAccess_1.requireSalaryAccess, payrollController_1.getPayrollExpenseDefault);
+router.put("/payroll/setting", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), payrollController_1.savePayrollSetting);
+router.post("/payroll/fetch", salaryAccess_1.requireSalaryAccess, payrollController_1.getPayrolls);
+router.post("/payroll/tax-report", salaryAccess_1.requireSalaryAccess, payrollController_1.getPayrollTaxReport);
+router.post("/payroll/create", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("creates"), payrollController_1.createPayroll);
+router.put("/payroll/recalc/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), payrollController_1.recalcPayroll);
+router.post("/payroll/line/preview/:id", salaryAccess_1.requireSalaryAccess, payrollController_1.previewPayrollLine);
+router.put("/payroll/line/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), payrollController_1.updatePayrollLine);
+router.delete("/payroll/line/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("deletes"), payrollController_1.deletePayrollLine);
+router.put("/payroll/pay/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), payrollController_1.payPayroll);
+router.put("/payroll/unpay/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("updates"), payrollController_1.unpayPayroll);
 // ສະລິບເງິນເດືອນຂອງຕົນເອງ (app ມືຖື) — ກ່ອນ /payroll/:id
 router.get("/payroll/me", payrollController_1.getMyPayslips);
 // ກວດເງິນເດືອນຫຼວງໜ້າ (ເດືອນທີ່ຍັງບໍ່ຈ່າຍ) — ຄິດຈາກການເຂົ້າວຽກເຖິງມື້ນີ້ + ເງິນເພີ່ມ/ຫັກໃນໃບຮ່າງ
 router.get("/payroll/me/preview", payrollController_1.getMyPayrollPreview);
-router.get("/payroll/:id", payrollController_1.getPayroll);
-router.delete("/payroll/:id", (0, permission_1.requirePermission)("deletes"), payrollController_1.deletePayroll);
+router.get("/payroll/:id", salaryAccess_1.requireSalaryAccess, payrollController_1.getPayroll);
+router.delete("/payroll/:id", salaryAccess_1.requireSalaryAccess, (0, permission_1.requirePermission)("deletes"), payrollController_1.deletePayroll);
 exports.default = router;
