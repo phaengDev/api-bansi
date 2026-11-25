@@ -8,6 +8,7 @@ const salaryAccess_1 = require("../middleware/salaryAccess");
 const auditRoutes_1 = require("../middleware/auditRoutes");
 const recurringExpenseController_1 = require("../controllers/bansi/recurringExpenseController");
 const menuAccess_1 = require("../middleware/menuAccess");
+const loanController_1 = require("../controllers/bansi/loanController");
 const auditController_1 = require("../controllers/auditController");
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
 const hideEmployeeSalary = (0, salaryAccess_1.hideSalaryFields)("basic_salary");
@@ -232,6 +233,19 @@ router.post("/bank-rec/open", closingController_1.openBankRec);
 router.post("/bank-rec/save", (0, permission_1.requirePermission)("creates", "updates"), closingController_1.saveBankRec);
 router.delete("/bank-rec/:id", (0, permission_1.requirePermission)("deletes"), closingController_1.deleteBankRec);
 // ຊັບສົມບັດຄົງທີ່ — ທະບຽນ, ຄ່າຫຼຸ້ຍຫ້ຽນລາຍເດືອນ, ຈຳໜ່າຍ, ຕາຕະລາງ
+// ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
+router.get("/loan/fetch", loanController_1.getLoans);
+router.get("/loan/accrual-runs", loanController_1.getAccrualRuns);
+router.post("/loan/preview", loanController_1.previewLoan);
+router.post("/loan/accrual-preview", loanController_1.previewAccrual);
+router.post("/loan/accrue", (0, permission_1.requirePermission)("creates"), loanController_1.runAccrual);
+router.delete("/loan/accrue/:month", (0, permission_1.requirePermission)("deletes"), loanController_1.undoAccrual);
+router.post("/loan/create", (0, permission_1.requirePermission)("creates"), loanController_1.createLoan);
+router.post("/loan/pay/:id", (0, permission_1.requirePermission)("creates"), loanController_1.payLoan);
+router.put("/loan/payment/cancel/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.loanPaymentCancel, loanController_1.cancelLoanPayment);
+router.get("/loan/:id", loanController_1.getLoan);
+router.put("/loan/:id", (0, permission_1.requirePermission)("updates"), auditRoutes_1.AUDIT.loanUpdate, loanController_1.updateLoan);
+router.delete("/loan/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.loanDelete, loanController_1.deleteLoan);
 router.get("/fixed-asset/fetch", fixedAssetController_1.getFixedAssets);
 router.get("/fixed-asset/runs", fixedAssetController_1.getDepreciationRuns);
 router.post("/fixed-asset/schedule", fixedAssetController_1.getAssetSchedule);

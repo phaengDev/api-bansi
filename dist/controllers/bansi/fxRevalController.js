@@ -63,6 +63,25 @@ const compute = async (month, t) => {
             treasury_id: Number(r.tid), foreign: (0, glCore_1.round2)(Number(r.foreign_total)), book: (0, glCore_1.round2)(Number(r.book)),
         });
     }
+    // ເງິນກູ້ສະກຸນຕ່າງປະເທດ: ຄືບັນຊີເງິນຄັງ — ຍອດສະກຸນ = Σ amount_currency ຂອງບັນຊີເງິນກູ້, ກີບ = Σ ໜີ້ − ມີ (ໜີ້ສິນເປັນລົບ).
+    // diff ບວກ = ຍອດໜີ້ເພີ່ມ (ຊັບສິນເພີ່ມ / ໜີ້ສິນຫຼຸດ) = ກຳໄລ ຄືກັນທັງສອງທາງ
+    const loans = await database_1.default.query(`SELECT l.account_id, l.currency_id, a.account_code AS code, a.name_la AS name,
+            SUM(l.amount_currency) AS foreign_total, SUM(l.debit - l.credit) AS book
+     FROM tbl_journal_line l
+     JOIN tbl_journal_entry e ON e._uuid = l.entry_id
+     JOIN tbl_chart_account a ON a._uuid = l.account_id
+     WHERE l.treasury_account_id IS NULL AND l.currency_id IS NOT NULL AND e.entry_date <= :end
+       AND l.account_id IN (SELECT DISTINCT loan_account_id FROM tbl_loan WHERE currency_id IS NOT NULL)
+     GROUP BY l.account_id, l.currency_id, a.account_code, a.name_la`, { type: sequelize_1.QueryTypes.SELECT, replacements: { end }, transaction: t }).catch(() => []);
+    for (const r of loans) {
+        const currency = foreignName(r.currency_id);
+        if (!currency)
+            continue;
+        await add({
+            kind: "loan", label: `ເງິນກູ້ ${[r.code, r.name].filter(Boolean).join(" ")}`, currency, currency_id: Number(r.currency_id),
+            account_id: Number(r.account_id), treasury_id: null, foreign: (0, glCore_1.round2)(Number(r.foreign_total)), book: (0, glCore_1.round2)(Number(r.book)),
+        });
+    }
     // ລູກໜີ້/ເຈົ້າໜີ້: ຍອດຄ້າງ ນ ທ້າຍເດືອນ × ອັດຕາຂອງໃບ + ການປັບຄັ້ງກ່ອນ (ແຖວກີບຢ່າງດຽວຂອງບັນຊີຄຸມ ສະກຸນນັ້ນ)
     const docs = await database_1.default.query(`SELECT d.doc_kind, d.control_account_id, d.currency_id,
             SUM(d.total - COALESCE(p.paid, 0)) AS outstanding,

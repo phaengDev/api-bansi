@@ -268,6 +268,8 @@ const ACCOUNT_MENUS = [
     // ມາດຕະຖານບັນຊີລາວ (2026-11-13) — ຊັບສົມບັດຄົງທີ່ (ປິດໄດ້ຢູ່ ຕັ້ງຄ່າບັນຊີ → ຕັ້ງຄ່າທົ່ວໄປ) ແລະ ວຽກທ້າຍເດືອນ/ທ້າຍປີ
     { name_la: "ຊັບສົມບັດຄົງທີ່", name_en: "Fixed Assets", name_cn: "固定资产", icons: "fa-solid fa-building", path: "/account/fixed-assets" },
     { name_la: "ປິດງວດບັນຊີ", name_en: "Period Closing", name_cn: "期末结账", icons: "fa-solid fa-clipboard-check", path: "/account/closing" },
+    // ເງິນກູ້ (2026-11-25) — ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້, ຕາຕະລາງຜ່ອນ, ດອກເບ້ຍຄ້າງ
+    { name_la: "ເງິນກູ້", name_en: "Loans", name_cn: "借贷款", icons: "fa-solid fa-sack-dollar", path: "/account/loans" },
 ];
 const seedDefaults = async () => {
     await ensureIndexes();

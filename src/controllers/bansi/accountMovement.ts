@@ -35,7 +35,11 @@ export type MovementSource =
   | "ADVANCE"
   | "ADVANCE_CANCEL"
   | "ADVANCE_REPAY"
-  | "ADVANCE_REPAY_CANCEL";
+  | "ADVANCE_REPAY_CANCEL"
+  | "LOAN_START"
+  | "LOAN_START_CANCEL"
+  | "LOAN_PAYMENT"
+  | "LOAN_PAYMENT_CANCEL";
 
 type MoveOptions = {
   direction: typeof MOVE_IN | typeof MOVE_OUT;

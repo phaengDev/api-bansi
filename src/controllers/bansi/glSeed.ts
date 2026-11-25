@@ -103,6 +103,14 @@ const ROLE_CODES: Record<string, string> = {
   INCOME_TAX_EXPENSE: "5300",
   PROFIT_TAX_PAYABLE: "2146",
   WHT_PAYABLE: "2147",
+  LOAN_PAYABLE: "2210",
+  LOAN_RECEIVABLE: "1180",
+  INTEREST_EXPENSE: "5220",
+  INTEREST_INCOME: "4210",
+  INTEREST_PAYABLE: "2165",
+  INTEREST_RECEIVABLE: "1185",
+  LOAN_FEE_EXPENSE: "5210",
+  LOAN_FEE_INCOME: "4290",
 };
 
 /**
@@ -115,6 +123,10 @@ const LATER_ACCOUNTS: [string, string, string, string, string, number, string, n
   ["2146", "ອາກອນກຳໄລຄ້າງຈ່າຍ", "Profit tax payable", "应交利润税", "2100", 2, "CURRENT_LIABILITY", 2],
   ["2147", "ອາກອນຫັກ ນ ທີ່ຈ່າຍ ຄ້າງນຳສົ່ງ", "Withholding tax payable", "应交代扣税", "2100", 2, "CURRENT_LIABILITY", 2],
   ["5240", "ຂາດທຶນຈາກການຈຳໜ່າຍຊັບສົມບັດ", "Loss on disposal of fixed assets", "固定资产处置损失", "5200", 5, "OTHER_EXPENSE", 1],
+  // ເງິນກູ້ (2026-11-25): ເງິນໃຫ້ກູ້, ດອກເບ້ຍຄ້າງຮັບ / ຄ້າງຈ່າຍ
+  ["1180", "ເງິນໃຫ້ກູ້ຢືມ", "Loans receivable", "应收贷款", "1100", 1, "CURRENT_ASSET", 1],
+  ["1185", "ດອກເບ້ຍຄ້າງຮັບ", "Interest receivable", "应收利息", "1100", 1, "CURRENT_ASSET", 1],
+  ["2165", "ດອກເບ້ຍຄ້າງຈ່າຍ", "Interest payable", "应付利息", "2100", 2, "CURRENT_LIABILITY", 2],
 ];
 
 const ensureLaterAccounts = async () => {

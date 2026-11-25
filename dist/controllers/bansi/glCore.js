@@ -62,6 +62,15 @@ exports.ROLES = {
     INCOME_TAX_EXPENSE: { groups: [5], label: "ລາຍຈ່າຍອາກອນກຳໄລ" },
     PROFIT_TAX_PAYABLE: { groups: [2], label: "ອາກອນກຳໄລຄ້າງຈ່າຍ" },
     WHT_PAYABLE: { groups: [2], label: "ອາກອນຫັກ ນ ທີ່ຈ່າຍ ຄ້າງນຳສົ່ງ" },
+    // ເງິນກູ້ (loanController) — ເງິນກູ້ແຕ່ລະສັນຍາເລືອກບັນຊີເງິນກູ້ / ດອກເບ້ຍເອງໄດ້, ບໍ່ເລືອກ = ບັນຊີເຫຼົ່ານີ້
+    LOAN_PAYABLE: { groups: [2], label: "ເງິນກູ້ຢືມ" },
+    LOAN_RECEIVABLE: { groups: [1], label: "ເງິນໃຫ້ກູ້ຢືມ" },
+    INTEREST_EXPENSE: { groups: [5], label: "ດອກເບ້ຍຈ່າຍ" },
+    INTEREST_INCOME: { groups: [4], label: "ດອກເບ້ຍຮັບ" },
+    INTEREST_PAYABLE: { groups: [2], label: "ດອກເບ້ຍຄ້າງຈ່າຍ" },
+    INTEREST_RECEIVABLE: { groups: [1], label: "ດອກເບ້ຍຄ້າງຮັບ" },
+    LOAN_FEE_EXPENSE: { groups: [5], label: "ຄ່າທຳນຽມ / ຄ່າປັບ ເງິນກູ້ຢືມ" },
+    LOAN_FEE_INCOME: { groups: [4], label: "ຄ່າທຳນຽມ / ຄ່າປັບ ເງິນໃຫ້ກູ້" },
 };
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */
 class GlError extends Error {

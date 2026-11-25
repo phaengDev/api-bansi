@@ -19,6 +19,7 @@ import Users from "../models/userModel";
 import MainMenu from "../models/mainMenuModel";
 import CompanyDocument from "../models/companyDocument";
 import ExpenseRecurring from "../models/expenseRecurring";
+import Loan, { LoanPayment } from "../models/loan";
 
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
@@ -50,6 +51,12 @@ const fiscal = { entity: "fiscal_year", load: byPk(FiscalYear), label: (r: any) 
 const menuId = (req: Request) => Number(req.body?.menu_id) || null;
 
 export const AUDIT = {
+  loanUpdate: audit({ entity: "loan", action: "update", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
+    fields: ["counterparty", "contract_no", "principal", "annual_rate", "method", "term", "start_date", "first_due_date", "loan_account_id", "interest_account_id"] }),
+  loanDelete: audit({ entity: "loan", action: "delete", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
+    fields: ["counterparty", "principal", "annual_rate", "term", "start_date"] }),
+  loanPaymentCancel: audit({ entity: "loan_payment", action: "cancel", load: byPk(LoanPayment), label: (r: any) => r.number,
+    fields: ["status", "principal", "interest", "fee"] }),
   incomeUpdate: audit({ ...income, action: "update", fields: INCOME_FIELDS }),
   incomeCancel: audit({ ...income, action: "cancel", fields: ["status", "balance_income"] }),
   expenseUpdate: audit({ ...expense, action: "update", fields: EXPENSE_FIELDS }),

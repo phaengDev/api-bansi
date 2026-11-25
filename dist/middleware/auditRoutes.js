@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -23,6 +56,7 @@ const userModel_1 = __importDefault(require("../models/userModel"));
 const mainMenuModel_1 = __importDefault(require("../models/mainMenuModel"));
 const companyDocument_1 = __importDefault(require("../models/companyDocument"));
 const expenseRecurring_1 = __importDefault(require("../models/expenseRecurring"));
+const loan_1 = __importStar(require("../models/loan"));
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
  * ຊ່ອງໃນ `fields` ເທົ່ານັ້ນທີ່ເກັບ (ເກົ່າ → ໃໝ່) — ບໍ່ເກັບລະຫັດຜ່ານ ແລະ ໄຟລ໌
@@ -48,6 +82,12 @@ const user = { entity: "user", load: byPk(userModel_1.default), label: (r) => r.
 const fiscal = { entity: "fiscal_year", load: byPk(fiscalYear_1.default), label: (r) => r.fiscal_code };
 const menuId = (req) => Number(req.body?.menu_id) || null;
 exports.AUDIT = {
+    loanUpdate: (0, audit_1.audit)({ entity: "loan", action: "update", load: byPk(loan_1.default), label: (r) => text(r.loan_code, r.counterparty),
+        fields: ["counterparty", "contract_no", "principal", "annual_rate", "method", "term", "start_date", "first_due_date", "loan_account_id", "interest_account_id"] }),
+    loanDelete: (0, audit_1.audit)({ entity: "loan", action: "delete", load: byPk(loan_1.default), label: (r) => text(r.loan_code, r.counterparty),
+        fields: ["counterparty", "principal", "annual_rate", "term", "start_date"] }),
+    loanPaymentCancel: (0, audit_1.audit)({ entity: "loan_payment", action: "cancel", load: byPk(loan_1.LoanPayment), label: (r) => r.number,
+        fields: ["status", "principal", "interest", "fee"] }),
     incomeUpdate: (0, audit_1.audit)({ ...income, action: "update", fields: INCOME_FIELDS }),
     incomeCancel: (0, audit_1.audit)({ ...income, action: "cancel", fields: ["status", "balance_income"] }),
     expenseUpdate: (0, audit_1.audit)({ ...expense, action: "update", fields: EXPENSE_FIELDS }),

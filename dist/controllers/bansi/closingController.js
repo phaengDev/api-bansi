@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteBankRec = exports.saveBankRec = exports.openBankRec = exports.getBankRecHistory = exports.getBankRecAccounts = exports.reopenPeriod = exports.closePeriod = exports.getPeriodCloseStatus = void 0;
+const loanController_1 = require("./loanController");
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -85,6 +86,10 @@ const checksOf = async (month, setting, banks, foreign) => {
     }
     if (Number(setting.use_fx_revaluation) === 1 && foreign.length)
         checks.push({ key: "fx", ok: await posted("FX_REVAL") });
+    // ດອກເບ້ຍຄ້າງຂອງເງິນກູ້: ຖາມສະເພາະເມື່ອມີດອກເບ້ຍທີ່ເກີດແລ້ວແຕ່ຍັງບໍ່ຈ່າຍ (ຫຼື ລົງແລ້ວ)
+    const accrued = await posted("LOAN_ACCRUAL");
+    if (accrued || (await (0, loanController_1.hasAccrualToPost)(month)))
+        checks.push({ key: "loan_accrual", ok: accrued });
     return checks;
 };
 /**

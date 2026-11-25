@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { hasAccrualToPost } from "./loanController";
 import { Op, QueryTypes } from "sequelize";
 import moment from "moment";
 import sequelize from "../../config/database";
@@ -106,6 +107,9 @@ const checksOf = async (month: string, setting: any, banks: Treasury[], foreign:
     checks.push({ key: "bank", ok: !pending.length, detail: pending.join(", ") || undefined });
   }
   if (Number(setting.use_fx_revaluation) === 1 && foreign.length) checks.push({ key: "fx", ok: await posted("FX_REVAL") });
+  // ດອກເບ້ຍຄ້າງຂອງເງິນກູ້: ຖາມສະເພາະເມື່ອມີດອກເບ້ຍທີ່ເກີດແລ້ວແຕ່ຍັງບໍ່ຈ່າຍ (ຫຼື ລົງແລ້ວ)
+  const accrued = await posted("LOAN_ACCRUAL");
+  if (accrued || (await hasAccrualToPost(month))) checks.push({ key: "loan_accrual", ok: accrued });
   return checks;
 };
 

@@ -6,6 +6,9 @@ import { hideSalaryFields, requireSalaryAccess } from "../middleware/salaryAcces
 import { AUDIT } from "../middleware/auditRoutes";
 import { createRecurringFromExpense, deleteRecurringExpense, getRecurringExpenses, updateRecurringExpense } from "../controllers/bansi/recurringExpenseController";
 import { requireMenu } from "../middleware/menuAccess";
+import {
+  cancelLoanPayment, createLoan, deleteLoan, getAccrualRuns, getLoan, getLoans, payLoan, previewAccrual, previewLoan, runAccrual, undoAccrual, updateLoan,
+} from "../controllers/bansi/loanController";
 import { getAuditLogs } from "../controllers/auditController";
 
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
@@ -302,6 +305,20 @@ router.post("/bank-rec/open", openBankRec);
 router.post("/bank-rec/save", requirePermission("creates", "updates"), saveBankRec);
 router.delete("/bank-rec/:id", requirePermission("deletes"), deleteBankRec);
 // ຊັບສົມບັດຄົງທີ່ — ທະບຽນ, ຄ່າຫຼຸ້ຍຫ້ຽນລາຍເດືອນ, ຈຳໜ່າຍ, ຕາຕະລາງ
+// ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
+router.get("/loan/fetch", getLoans);
+router.get("/loan/accrual-runs", getAccrualRuns);
+router.post("/loan/preview", previewLoan);
+router.post("/loan/accrual-preview", previewAccrual);
+router.post("/loan/accrue", requirePermission("creates"), runAccrual);
+router.delete("/loan/accrue/:month", requirePermission("deletes"), undoAccrual);
+router.post("/loan/create", requirePermission("creates"), createLoan);
+router.post("/loan/pay/:id", requirePermission("creates"), payLoan);
+router.put("/loan/payment/cancel/:id", requirePermission("deletes"), AUDIT.loanPaymentCancel, cancelLoanPayment);
+router.get("/loan/:id", getLoan);
+router.put("/loan/:id", requirePermission("updates"), AUDIT.loanUpdate, updateLoan);
+router.delete("/loan/:id", requirePermission("deletes"), AUDIT.loanDelete, deleteLoan);
+
 router.get("/fixed-asset/fetch", getFixedAssets);
 router.get("/fixed-asset/runs", getDepreciationRuns);
 router.post("/fixed-asset/schedule", getAssetSchedule);
