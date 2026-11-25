@@ -165,6 +165,10 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_transfer_money", "idx_tbl_transfer_money_out", ["account_outid"], false],
   ["tbl_transfer_money", "idx_tbl_transfer_money_in", ["account_inid"], false],
   ["tbl_transfer_money", "idx_tbl_transfer_money_created", ["createdAt"], false],
+  // ປະຫວັດການແກ້ໄຂ — ອ່ານຕາມເດືອນ, ຕາມລາຍການ, ຕາມຜູ້ໃຊ້
+  ["tbl_audit_log", "idx_tbl_audit_log_at", ["at"], false],
+  ["tbl_audit_log", "idx_tbl_audit_log_entity", ["entity", "entity_id"], false],
+  ["tbl_audit_log", "idx_tbl_audit_log_user", ["user_id", "at"], false],
   // sql/create_tbl_work_plan.sql
   ["tbl_work_plan", "idx_tbl_work_plan_userid", ["userid"], false],
   ["tbl_work_plan", "idx_tbl_work_plan_range", ["start_date", "end_date"], false],

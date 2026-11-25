@@ -1,48 +1,17 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.hideSalaryFields = exports.requireSalaryAccess = exports.canSeeSalary = exports.PAYROLL_MENU_PATH = void 0;
-const mainMenuModel_1 = __importDefault(require("../models/mainMenuModel"));
-const userModel_1 = __importDefault(require("../models/userModel"));
-const menuController_1 = require("../controllers/menuController");
-const auth_1 = require("./auth");
+const menuAccess_1 = require("./menuAccess");
 /**
  * ໃຜເຫັນເງິນເດືອນໄດ້ — ຜູ້ໃຊ້ລະບົບທີ່ມີສິດເຂົ້າເມນູ "ເງິນເດືອນ" (tbl_users.menu_access ມີ /hr/payroll ຫຼື NULL = ທຸກເມນູ).
  * ບໍ່ມີ = ບໍ່ເຫັນເງິນເດືອນພື້ນຖານ / ເງິນເບີກ / ເງິນ OT ຂອງຄົນອື່ນ ແລະ ເຂົ້າ /payroll/*, /advance/* ບໍ່ໄດ້.
  * ຂໍ້ມູນຂອງຕົນເອງ (/…/me) ບໍ່ກ່ຽວ — ພະນັກງານເຫັນເງິນເດືອນຂອງຕົນເອງສະເໝີ
  */
 exports.PAYROLL_MENU_PATH = "/hr/payroll";
-const canSeeSalary = async (req) => {
-    if (req.user?.typ === auth_1.EMPLOYEE_TOKEN)
-        return false;
-    const user = await userModel_1.default.findByPk(Number(req.user?.sub), { attributes: ["user_uuid", "status", "menu_access"] });
-    if (!user || Number(user.status) !== 1)
-        return false;
-    const allowed = (0, menuController_1.readMenuAccess)(user.menu_access);
-    if (!allowed)
-        return true;
-    const menu = await mainMenuModel_1.default.findOne({ where: { types: 2, path: exports.PAYROLL_MENU_PATH }, attributes: ["_uuid"] });
-    // ບໍ່ມີແຖວເມນູເງິນເດືອນ (DB ເກົ່າ) — ຈຳກັດຕາມເມນູບໍ່ໄດ້ ຈຶ່ງບໍ່ປິດ
-    return !menu || allowed.includes(Number(menu._uuid));
-};
+const canSeeSalary = (req) => (0, menuAccess_1.hasMenu)(req, exports.PAYROLL_MENU_PATH);
 exports.canSeeSalary = canSeeSalary;
 /** route ຂອງເງິນເດືອນ / ເງິນເບີກ (HR) — ບໍ່ມີສິດເມນູເງິນເດືອນ = 403 */
-const requireSalaryAccess = async (req, res, next) => {
-    try {
-        if (!(await (0, exports.canSeeSalary)(req))) {
-            res.status(403).json({ message: "ທ່ານບໍ່ມີສິດເບິ່ງຂໍ້ມູນເງິນເດືອນ (ຕ້ອງມີສິດເຂົ້າເມນູ ເງິນເດືອນ)" });
-            return;
-        }
-        next();
-    }
-    catch (error) {
-        console.error("requireSalaryAccess", error);
-        res.status(500).json({ message: "Error checking salary access" });
-    }
-};
-exports.requireSalaryAccess = requireSalaryAccess;
+exports.requireSalaryAccess = (0, menuAccess_1.requireMenu)(exports.PAYROLL_MENU_PATH, "ທ່ານບໍ່ມີສິດເບິ່ງຂໍ້ມູນເງິນເດືອນ (ຕ້ອງມີສິດເຂົ້າເມນູ ເງິນເດືອນ)");
 /** ແທນຄ່າຂອງ key ທີ່ກຳນົດດ້ວຍ null ທຸກຊັ້ນ (object/array) */
 const scrub = (value, keys) => {
     if (Array.isArray(value))

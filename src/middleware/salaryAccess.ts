@@ -1,8 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import MainMenu from "../models/mainMenuModel";
-import Users from "../models/userModel";
-import { readMenuAccess } from "../controllers/menuController";
-import { EMPLOYEE_TOKEN } from "./auth";
+import { hasMenu, requireMenu } from "./menuAccess";
 
 /**
  * ໃຜເຫັນເງິນເດືອນໄດ້ — ຜູ້ໃຊ້ລະບົບທີ່ມີສິດເຂົ້າເມນູ "ເງິນເດືອນ" (tbl_users.menu_access ມີ /hr/payroll ຫຼື NULL = ທຸກເມນູ).
@@ -11,30 +8,10 @@ import { EMPLOYEE_TOKEN } from "./auth";
  */
 export const PAYROLL_MENU_PATH = "/hr/payroll";
 
-export const canSeeSalary = async (req: Request) => {
-  if (req.user?.typ === EMPLOYEE_TOKEN) return false;
-  const user = await Users.findByPk(Number(req.user?.sub), { attributes: ["user_uuid", "status", "menu_access"] });
-  if (!user || Number(user.status) !== 1) return false;
-  const allowed = readMenuAccess(user.menu_access);
-  if (!allowed) return true;
-  const menu = await MainMenu.findOne({ where: { types: 2, path: PAYROLL_MENU_PATH }, attributes: ["_uuid"] });
-  // ບໍ່ມີແຖວເມນູເງິນເດືອນ (DB ເກົ່າ) — ຈຳກັດຕາມເມນູບໍ່ໄດ້ ຈຶ່ງບໍ່ປິດ
-  return !menu || allowed.includes(Number(menu._uuid));
-};
+export const canSeeSalary = (req: Request) => hasMenu(req, PAYROLL_MENU_PATH);
 
 /** route ຂອງເງິນເດືອນ / ເງິນເບີກ (HR) — ບໍ່ມີສິດເມນູເງິນເດືອນ = 403 */
-export const requireSalaryAccess = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    if (!(await canSeeSalary(req))) {
-      res.status(403).json({ message: "ທ່ານບໍ່ມີສິດເບິ່ງຂໍ້ມູນເງິນເດືອນ (ຕ້ອງມີສິດເຂົ້າເມນູ ເງິນເດືອນ)" });
-      return;
-    }
-    next();
-  } catch (error) {
-    console.error("requireSalaryAccess", error);
-    res.status(500).json({ message: "Error checking salary access" });
-  }
-};
+export const requireSalaryAccess = requireMenu(PAYROLL_MENU_PATH, "ທ່ານບໍ່ມີສິດເບິ່ງຂໍ້ມູນເງິນເດືອນ (ຕ້ອງມີສິດເຂົ້າເມນູ ເງິນເດືອນ)");
 
 /** ແທນຄ່າຂອງ key ທີ່ກຳນົດດ້ວຍ null ທຸກຊັ້ນ (object/array) */
 const scrub = (value: unknown, keys: Set<string>): unknown => {

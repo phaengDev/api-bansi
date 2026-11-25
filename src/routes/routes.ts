@@ -3,6 +3,9 @@ import { createUpload, createUploadFile } from "../utils/uploadFile";
 import { verifyToken, login, checkSession } from "../middleware/auth";
 import { requirePermission } from "../middleware/permission";
 import { hideSalaryFields, requireSalaryAccess } from "../middleware/salaryAccess";
+import { AUDIT } from "../middleware/auditRoutes";
+import { requireMenu } from "../middleware/menuAccess";
+import { getAuditLogs } from "../controllers/auditController";
 
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
 const hideEmployeeSalary = hideSalaryFields("basic_salary");
@@ -11,7 +14,7 @@ const hideOvertimeEstimate = hideSalaryFields("estimate");
 import { getUsers, createUser, getUserById, updateUser, deleteUser, updatePassword, getTypeUser } from "../controllers/userController";
 import { getcurrency, updateCurrency, updateCurrencyMt } from "../controllers/currencyController";
 import { createBank, updateBank, deleteBank, fetchBank, getBankOption } from "../controllers/bankController";
-import { getAllMainMenus, getMainMenus } from "../controllers/menuController";
+import { USER_ADMIN_MENU_PATH, getAllMainMenus, getMainMenus } from "../controllers/menuController";
 // ======== bansi (ບັນຊີ)
 import { createTypeAcount, updateTypeAcount, getTypeAcount, getTypeAcountOption } from "../controllers/bansi/typeAcountController";
 import { createTypeTreasury, updateTypeTreasury, deleteTypeTreasury, getTypeTreasury,getTypeTreasurOption, getTreasurbytype } from "../controllers/bansi/typeTreasuryController";
@@ -172,6 +175,9 @@ router.get("/app/voice/attendance", getAttendanceVoice);
 router.get("/menu/main", getMainMenus);
 router.get("/menu/all", getAllMainMenus);
 
+// ================= ປະຫວັດການແກ້ໄຂ / ຍົກເລີກ / ລຶບ (ເລື່ອງສຳຄັນ) — ສະເພາະຜູ້ມີສິດເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ
+router.get("/audit/fetch", requireMenu(USER_ADMIN_MENU_PATH, "ທ່ານບໍ່ມີສິດເບິ່ງປະຫວັດການແກ້ໄຂ"), getAuditLogs);
+
 // ================= ສະກຸນເງິນ
 router.put("/currency/:id", requirePermission("updates"), updateCurrency);
 router.post("/currency/mt", requirePermission("updates"), updateCurrencyMt);
@@ -180,9 +186,9 @@ router.post("/currency/mt", requirePermission("updates"), updateCurrencyMt);
 router.post("/user/create", requirePermission("creates"), createUser);
 router.post("/user/fetch", getUsers);
 router.get("/user/:id", getUserById);
-router.put("/user/password/:id", updatePassword);
-router.put("/user/:id", requirePermission("updates"), updateUser);
-router.delete("/user/:id", requirePermission("deletes"), deleteUser);
+router.put("/user/password/:id", AUDIT.userPassword, updatePassword);
+router.put("/user/:id", requirePermission("updates"), AUDIT.userUpdate, updateUser);
+router.delete("/user/:id", requirePermission("deletes"), AUDIT.userDelete, deleteUser);
 
 // ========= ທະນາຄານ — ໂລໂກ້ field "logo" ຫຼື "logos"
 router.post("/bank/create", requirePermission("creates"), createUpload('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), createBank);
@@ -232,10 +238,10 @@ router.get("/fiscal-year/fetch", getFiscalYears);
 router.get("/fiscal-year/option", getFiscalYearOption);
 router.post("/fiscal-year/create", requirePermission("creates"), createFiscalYear);
 router.put("/fiscal-year/current/:id", requirePermission("updates"), setCurrentFiscalYear);
-router.put("/fiscal-year/close/:id", requirePermission("updates"), closeFiscalYear);
-router.put("/fiscal-year/reopen/:id", requirePermission("updates"), reopenFiscalYear);
-router.put("/fiscal-year/:id", requirePermission("updates"), updateFiscalYear);
-router.delete("/fiscal-year/:id", requirePermission("deletes"), deleteFiscalYear);
+router.put("/fiscal-year/close/:id", requirePermission("updates"), AUDIT.fiscalClose, closeFiscalYear);
+router.put("/fiscal-year/reopen/:id", requirePermission("updates"), AUDIT.fiscalReopen, reopenFiscalYear);
+router.put("/fiscal-year/:id", requirePermission("updates"), AUDIT.fiscalUpdate, updateFiscalYear);
+router.delete("/fiscal-year/:id", requirePermission("deletes"), AUDIT.fiscalDelete, deleteFiscalYear);
 // ອັດຕາແລກປ່ຽນ (ປະຫວັດ) — ບັນທຶກແລ້ວອັບເດດ tbl_currency.reate ໃຫ້ເອງ
 router.post("/exchange-rate/fetch", getExchangeRates);
 router.post("/exchange-rate/create", requirePermission("creates"), createExchangeRate);
@@ -263,7 +269,7 @@ router.put("/doc-numbering/:id", requirePermission("updates"), updateDocNumberin
 router.get("/tax/fetch", getTaxes);
 router.get("/tax/option", getTaxOption);
 router.post("/tax/create", requirePermission("creates"), createTax);
-router.put("/tax/:id", requirePermission("updates"), updateTax);
+router.put("/tax/:id", requirePermission("updates"), AUDIT.taxUpdate, updateTax);
 // ລາຍງານອາກອນ (ຈາກສະໝຸດບັນຊີ)
 router.post("/tax/vat-report", getVatReport);
 router.post("/tax/profit-tax", getProfitTax);
@@ -283,11 +289,11 @@ router.post("/fx-reval/post", requirePermission("creates"), postFxReval);
 router.delete("/fx-reval/:month", requirePermission("deletes"), undoFxReval);
 // ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ — ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້, ນະໂຍບາຍບັນຊີ
 router.get("/account-setting", getAccountSetting);
-router.put("/account-setting", requirePermission("updates"), updateAccountSetting);
+router.put("/account-setting", requirePermission("updates"), AUDIT.settingUpdate, updateAccountSetting);
 // ປິດງວດປະຈຳເດືອນ (lock_date) + ລາຍການກວດ, ກະທົບຍອດທະນາຄານ
 router.get("/period-close/status", getPeriodCloseStatus);
-router.put("/period-close/close", requirePermission("updates"), closePeriod);
-router.put("/period-close/reopen", requirePermission("updates"), reopenPeriod);
+router.put("/period-close/close", requirePermission("updates"), AUDIT.periodClose, closePeriod);
+router.put("/period-close/reopen", requirePermission("updates"), AUDIT.periodReopen, reopenPeriod);
 router.get("/bank-rec/accounts", getBankRecAccounts);
 router.post("/bank-rec/history", getBankRecHistory);
 router.post("/bank-rec/open", openBankRec);
@@ -307,29 +313,29 @@ router.put("/fixed-asset/:id", requirePermission("updates"), updateFixedAsset);
 router.delete("/fixed-asset/:id", requirePermission("deletes"), deleteFixedAsset);
 // ລະຫັດຜ່ານເຂົ້າເມນູ desktop ບັນຊີ (tbl_main_menu.password) — ລາຍການເມນູ + ສະຖານະລັອກ ຢູ່ GET /menu/main
 router.post("/menu-lock/verify", verifyMenuLock);
-router.post("/menu-lock/save", requirePermission("updates"), saveMenuLock);
-router.post("/menu-lock/remove", requirePermission("updates"), removeMenuLock);
+router.post("/menu-lock/save", requirePermission("updates"), AUDIT.menuLock, saveMenuLock);
+router.post("/menu-lock/remove", requirePermission("updates"), AUDIT.menuUnlock, removeMenuLock);
 // ລາຍຮັບ (ບັນທຶກບັນຊີປະຈຳວັນ) — ບັນທຶກແລ້ວເງິນເຂົ້າບັນຊີເງິນຄັງທັນທີ, ຍົກເລີກ = ຫັກຄືນ; ໄຟລ໌ field "file_doct"
 router.post("/income/fetch", getIncomes);
 router.post("/income/create", requirePermission("creates"), createUploadFile("income").single("file_doct"), createIncome);
-router.put("/income/cancel/:id", requirePermission("deletes"), cancelIncome);
+router.put("/income/cancel/:id", requirePermission("deletes"), AUDIT.incomeCancel, cancelIncome);
 router.get("/income/download/:id", downloadIncomeFile);
 // ປະຫວັດການເຄື່ອນໄຫວຂອງບັນຊີເງິນຄັງ (tbl_account_movement) — ທຸກການປ່ຽນຍອດ: ຍອດກ່ອນ / ເຂົ້າ-ອອກ / ຍອດຫຼັງ
 router.post("/account-movement/fetch", getAccountMovements);
-router.put("/income/:id", requirePermission("updates"), createUploadFile("income").single("file_doct"), updateIncome);
+router.put("/income/:id", requirePermission("updates"), createUploadFile("income").single("file_doct"), AUDIT.incomeUpdate, updateIncome);
 // ລາຍຈ່າຍ (ຫົວ + ລາຍການຍ່ອຍ) — /expense/:id ຢູ່ທ້າຍສຸດ ບໍ່ໃຫ້ທັບ /expense/cancel, /expense/download
 router.post("/expense/fetch", getExpenses);
 router.post("/expense/create", requirePermission("creates"), createUploadFile("expense").single("file_doct"), createExpense);
-router.put("/expense/cancel/:id", requirePermission("deletes"), cancelExpense);
+router.put("/expense/cancel/:id", requirePermission("deletes"), AUDIT.expenseCancel, cancelExpense);
 router.get("/expense/download/:id", downloadExpenseFile);
-router.put("/expense/:id", requirePermission("updates"), createUploadFile("expense").single("file_doct"), updateExpense);
+router.put("/expense/:id", requirePermission("updates"), createUploadFile("expense").single("file_doct"), AUDIT.expenseUpdate, updateExpense);
 // ========= ບັນຊີຄູ່ (GL) — ຕາຕະລາງ ແລະ ຜັງບັນຊີເລີ່ມຕົ້ນ ສ້າງເອງຕອນເປີດ server (runAutoSync + seedGlDefaults)
 // ຜັງບັນຊີ
 router.get("/chart-account/fetch", getChartAccounts);
 router.get("/chart-account/option", getChartAccountOption);
 router.post("/chart-account/create", requirePermission("creates"), createChartAccount);
-router.put("/chart-account/:id", requirePermission("updates"), updateChartAccount);
-router.delete("/chart-account/:id", requirePermission("deletes"), deleteChartAccount);
+router.put("/chart-account/:id", requirePermission("updates"), AUDIT.accountUpdate, updateChartAccount);
+router.delete("/chart-account/:id", requirePermission("deletes"), AUDIT.accountDelete, deleteChartAccount);
 // ຜູກບັນຊີ (ປະເພດລາຍຮັບ-ລາຍຈ່າຍ, ບັນຊີເງິນຄັງ, ບົດບາດຂອງລະບົບ)
 router.get("/gl-mapping/fetch", getGlMappings);
 router.post("/gl-mapping/save", requirePermission("updates"), saveGlMappings);
@@ -339,7 +345,7 @@ router.post("/gl/rebuild", requirePermission("updates"), rebuildGl);
 // ສະໝຸດບັນຊີ: ລາຍການ, ບັນທຶກທົ່ວໄປ, ກັບລາຍການ
 router.post("/journal-entry/fetch", getJournalEntries);
 router.post("/journal-entry/create", requirePermission("creates"), createJournalEntry);
-router.put("/journal-entry/reverse/:id", requirePermission("deletes"), reverseJournalEntry);
+router.put("/journal-entry/reverse/:id", requirePermission("deletes"), AUDIT.journalReverse, reverseJournalEntry);
 // ຍອດຕາມບັນຊີ (ງົບທົດລອງ, ໃບສະຫຼຸບຊັບສົມບັດ) ແລະ ປຶ້ມບັນຊີໃຫຍ່ຂອງບັນຊີດຽວ
 router.post("/gl/balances", getGlBalances);
 router.post("/gl/ledger", getGlLedger);
@@ -350,12 +356,12 @@ router.put("/partner/:id", requirePermission("updates"), updatePartner);
 // ໃບແຈ້ງໜີ້ / ໃບບິນ — ແກ້ໄຂ/ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຕັດໜີ້ (ສິດ ເພີ່ມ / ແກ້ໄຂ / ລຶບ ຂອງຜູ້ໃຊ້)
 router.post("/partner-doc/fetch", getPartnerDocs);
 router.post("/partner-doc/create", requirePermission("creates"), createPartnerDoc);
-router.put("/partner-doc/update/:id", requirePermission("updates"), updatePartnerDoc);
-router.put("/partner-doc/cancel/:id", requirePermission("deletes"), cancelPartnerDoc);
+router.put("/partner-doc/update/:id", requirePermission("updates"), AUDIT.docUpdate, updatePartnerDoc);
+router.put("/partner-doc/cancel/:id", requirePermission("deletes"), AUDIT.docCancel, cancelPartnerDoc);
 // ຮັບ / ຈ່າຍຊຳລະ (ຕັດໜີ້ຫຼາຍໃບໄດ້) — ເງິນເຂົ້າ/ອອກ ບັນຊີເງິນຄັງ
 router.post("/partner-payment/fetch", getPartnerPayments);
 router.post("/partner-payment/create", requirePermission("creates"), createPartnerPayment);
-router.put("/partner-payment/cancel/:id", requirePermission("deletes"), cancelPartnerPayment);
+router.put("/partner-payment/cancel/:id", requirePermission("deletes"), AUDIT.paymentCancel, cancelPartnerPayment);
 // ========= ງົບປະມານລາຍຈ່າຍ (ຕາມໝວດລາຍຈ່າຍ ຕໍ່ປີການເງິນ) — ຍອດໃຊ້ຈິງຄິດຈາກລາຍຈ່າຍ; /check ໃຫ້ຟອມລາຍຈ່າຍເຕືອນເກີນງົບ
 router.post("/budget/fetch", getBudgets);
 router.post("/budget/expenses", getBudgetExpenses);
@@ -443,12 +449,12 @@ router.put("/employee/document/:id", requirePermission("updates"), hideEmployeeS
 router.get("/employee/document/download/:id", downloadEmployeeDocument);
 router.delete("/employee/document/:id", requirePermission("updates"), hideEmployeeSalary, deleteEmployeeDocument);
 // ຕັ້ງລະຫັດຜ່ານ app ຂອງພະນັກງານຄືນເປັນຄ່າເລີ່ມຕົ້ນ (ກ່ອນ /employee/:id)
-router.put("/employee/app-password/:id", requirePermission("updates"), hideEmployeeSalary, resetAppPassword);
-router.put("/employee/:id", requirePermission("updates"), profileUpload, hideEmployeeSalary, updateEmployee);
-router.delete("/employee/:id", requirePermission("deletes"), hideEmployeeSalary, deleteEmployee);
+router.put("/employee/app-password/:id", requirePermission("updates"), hideEmployeeSalary, AUDIT.employeeAppPassword, resetAppPassword);
+router.put("/employee/:id", requirePermission("updates"), profileUpload, hideEmployeeSalary, AUDIT.employeeUpdate, updateEmployee);
+router.delete("/employee/:id", requirePermission("deletes"), hideEmployeeSalary, AUDIT.employeeDelete, deleteEmployee);
 // ຂໍ້ມູນບໍລິສັດ (ແຖວດຽວ) — ພິກັດ + ໄລຍະສະແກນ, ເວລາເຂົ້າ-ອອກວຽກ, ວັນພັກ
 router.get("/company", getCompany);
-router.put("/company", requirePermission("updates"), companyLogoUpload, saveCompany);
+router.put("/company", requirePermission("updates"), companyLogoUpload, AUDIT.companyUpdate, saveCompany);
 // ຮູບເສື້ອເຄື່ອງແບບ 1 ໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ
 router.put("/company/uniform/:type", requirePermission("updates"), uniformPhotoUpload, saveUniformPhoto);
 router.delete("/company/uniform/:type", requirePermission("updates"), removeUniformPhoto);
@@ -539,9 +545,9 @@ router.post("/advance/fetch", requireSalaryAccess, requirePermission("updates"),
 router.post("/advance/create", requireSalaryAccess, requirePermission("creates"), createAdvance);
 router.put("/advance/approve/:id", requireSalaryAccess, requirePermission("updates"), approveAdvance);
 router.put("/advance/reject/:id", requireSalaryAccess, requirePermission("updates"), rejectAdvance);
-router.put("/advance/cancel/:id", requireSalaryAccess, requirePermission("updates"), cancelAdvance);
-router.put("/advance/pay/:id", requireSalaryAccess, requirePermission("updates"), payAdvance);
-router.put("/advance/unpay/:id", requireSalaryAccess, requirePermission("updates"), unpayAdvance);
+router.put("/advance/cancel/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.advanceCancel, cancelAdvance);
+router.put("/advance/pay/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.advancePay, payAdvance);
+router.put("/advance/unpay/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.advanceUnpay, unpayAdvance);
 router.put("/advance/schedule/:id", requireSalaryAccess, requirePermission("updates"), updateAdvanceSchedule);
 router.post("/advance/repay/:id", requireSalaryAccess, requirePermission("updates"), repayAdvance);
 router.delete("/advance/repayment/:id", requireSalaryAccess, requirePermission("deletes"), deleteAdvanceRepayment);
@@ -586,15 +592,15 @@ router.post("/payroll/tax-report", requireSalaryAccess, getPayrollTaxReport);
 router.post("/payroll/create", requireSalaryAccess, requirePermission("creates"), createPayroll);
 router.put("/payroll/recalc/:id", requireSalaryAccess, requirePermission("updates"), recalcPayroll);
 router.post("/payroll/line/preview/:id", requireSalaryAccess, previewPayrollLine);
-router.put("/payroll/line/:id", requireSalaryAccess, requirePermission("updates"), updatePayrollLine);
-router.delete("/payroll/line/:id", requireSalaryAccess, requirePermission("deletes"), deletePayrollLine);
-router.put("/payroll/pay/:id", requireSalaryAccess, requirePermission("updates"), payPayroll);
-router.put("/payroll/unpay/:id", requireSalaryAccess, requirePermission("updates"), unpayPayroll);
+router.put("/payroll/line/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.payrollLineUpdate, updatePayrollLine);
+router.delete("/payroll/line/:id", requireSalaryAccess, requirePermission("deletes"), AUDIT.payrollLineDelete, deletePayrollLine);
+router.put("/payroll/pay/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.payrollPay, payPayroll);
+router.put("/payroll/unpay/:id", requireSalaryAccess, requirePermission("updates"), AUDIT.payrollUnpay, unpayPayroll);
 // ສະລິບເງິນເດືອນຂອງຕົນເອງ (app ມືຖື) — ກ່ອນ /payroll/:id
 router.get("/payroll/me", getMyPayslips);
 // ກວດເງິນເດືອນຫຼວງໜ້າ (ເດືອນທີ່ຍັງບໍ່ຈ່າຍ) — ຄິດຈາກການເຂົ້າວຽກເຖິງມື້ນີ້ + ເງິນເພີ່ມ/ຫັກໃນໃບຮ່າງ
 router.get("/payroll/me/preview", getMyPayrollPreview);
 router.get("/payroll/:id", requireSalaryAccess, getPayroll);
-router.delete("/payroll/:id", requireSalaryAccess, requirePermission("deletes"), deletePayroll);
+router.delete("/payroll/:id", requireSalaryAccess, requirePermission("deletes"), AUDIT.payrollDelete, deletePayroll);
 
 export default router;
