@@ -334,6 +334,7 @@ router.put("/employee/resume-line/:id", (0, permission_1.requirePermission)("upd
 router.delete("/employee/resume-line/:id", (0, permission_1.requirePermission)("updates"), hideEmployeeSalary, resumeController_1.deleteResume);
 router.get("/employee/resume-line/file/:id", resumeController_1.downloadResumeFile);
 router.get("/employee/fetch", hideEmployeeSalary, employeeController_1.getEmployees);
+router.get("/employee/expiring", hrSummaryController_1.getExpiring);
 router.get("/employee/option", hideEmployeeSalary, employeeController_1.getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", employeeController_1.getMyEmployee);

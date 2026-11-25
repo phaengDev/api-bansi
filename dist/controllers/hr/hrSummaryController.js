@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSalaryHistory = exports.getEmployeeSummary = exports.getHrPending = void 0;
+exports.getSalaryHistory = exports.getEmployeeSummary = exports.getHrPending = exports.getExpiring = exports.expiringItems = void 0;
 const employee_1 = __importDefault(require("../../models/employee"));
 const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
 const attendanceRequest_1 = __importDefault(require("../../models/attendanceRequest"));
@@ -19,16 +19,78 @@ const workCalendar_1 = require("./workCalendar");
 /** ພາບລວມທີ່ດຶງຂໍ້ມູນຂ້າມໂມດູນ HR — ຄຳຮ້ອງທີ່ລໍຖ້າ HR ແລະ ສະຫຼຸບຂອງພະນັກງານ 1 ຄົນ */
 const PENDING = 1;
 const PAYROLL_PAID = 2;
+/**
+ * ເອກະສານ / ສັນຍາ ໃກ້ໝົດອາຍຸ ຂອງພະນັກງານທີ່ເຮັດວຽກຢູ່ — ບ່ອນດຽວທີ່ຄິດ (desktop "ຕ້ອງຕິດຕາມ" ແລະ ໜ້າພະນັກງານໃຊ້ຮ່ວມກັນ):
+ * ສັນຍາມີກຳນົດ / ບັດປະຈຳຕົວ / passport: ໝົດແລ້ວ ຫຼື ໝົດພາຍໃນ 30 ມື້; ທົດລອງວຽກ: ຄົບພາຍໃນ 14 ມື້ (ຜ່ານແລ້ວບໍ່ນັບ — ບໍ່ຕ້ອງເຮັດຫຍັງ).
+ * days = ມື້ທີ່ເຫຼືອ (ລົບ = ໝົດແລ້ວ), ລຽງໃກ້ສຸດກ່ອນ
+ */
+const EXPIRY_AHEAD_DAYS = 30;
+const PROBATION_AHEAD_DAYS = 14;
+const WORKING = 1;
+const expiringItems = async () => {
+    const today = (0, workCalendar_1.nowLao)().startOf("day");
+    const todayKey = today.format("YYYY-MM-DD");
+    const soon = today.clone().add(EXPIRY_AHEAD_DAYS, "days").format("YYYY-MM-DD");
+    const probationSoon = today.clone().add(PROBATION_AHEAD_DAYS, "days").format("YYYY-MM-DD");
+    const rows = (await employee_1.default.findAll({
+        where: {
+            work_status: WORKING,
+            [sequelize_1.Op.or]: [
+                { contract_fixed_term: 1, contract_end: { [sequelize_1.Op.lte]: soon } },
+                { probation_end: { [sequelize_1.Op.between]: [todayKey, probationSoon] } },
+                { id_card_expiry: { [sequelize_1.Op.lte]: soon } },
+                { passport_expiry: { [sequelize_1.Op.lte]: soon } },
+            ],
+        },
+        attributes: ["_uuid", "emp_code", "first_name", "last_name", "contract_fixed_term", "contract_end", "probation_end", "id_card_expiry", "passport_expiry"],
+        raw: true,
+    }));
+    const items = [];
+    const add = (row, kind, date, until, from) => {
+        if (!date || date > until || (from && date < from))
+            return;
+        items.push({
+            employee_id: Number(row._uuid), emp_code: row.emp_code, name: [row.first_name, row.last_name].filter(Boolean).join(" "),
+            kind, date, days: Math.round((new Date(`${date}T00:00:00`).getTime() - new Date(`${todayKey}T00:00:00`).getTime()) / 86400000),
+        });
+    };
+    for (const row of rows) {
+        if (Number(row.contract_fixed_term) === 1)
+            add(row, "contract", row.contract_end, soon);
+        add(row, "probation", row.probation_end, probationSoon, todayKey);
+        add(row, "id_card", row.id_card_expiry, soon);
+        add(row, "passport", row.passport_expiry, soon);
+    }
+    return items.sort((a, b) => a.days - b.days || a.emp_code.localeCompare(b.emp_code));
+};
+exports.expiringItems = expiringItems;
+/** GET /employee/expiring — ລາຍການໃກ້ໝົດອາຍຸ (ໜ້າພະນັກງານ: ແຖບ "ໃກ້ໝົດອາຍຸ" + ປ້າຍໃນແຖວ) */
+const getExpiring = async (_req, res) => {
+    try {
+        res.status(200).json({ data: await (0, exports.expiringItems)() });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting expiring documents");
+    }
+};
+exports.getExpiring = getExpiring;
 /** GET /hr/pending — ຈຳນວນຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop): ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນ (ລໍຖ້າອະນຸມັດ / ລໍຖ້າຈ່າຍ) */
 const getHrPending = async (_req, res) => {
     try {
-        const [leave, correction, advance] = await Promise.all([
+        const [leave, correction, advance, expiring] = await Promise.all([
             // ລໍຫົວໜ້າທີມຢູ່ = HR ຍັງເຮັດຫຍັງບໍ່ໄດ້ — ບໍ່ນັບ
             leaveRequest_1.default.count({ where: { status: PENDING, [sequelize_1.Op.or]: [{ lead_status: null }, { lead_status: { [sequelize_1.Op.ne]: leaveController_1.LEAD_WAITING } }] } }),
             attendanceRequest_1.default.count({ where: { status: PENDING } }),
             (0, advanceController_1.advancePendingCounts)(),
+            (0, exports.expiringItems)(),
         ]);
-        res.status(200).json({ data: { leave, correction, advance: advance.pending, advance_to_pay: advance.approved } });
+        res.status(200).json({
+            data: {
+                leave, correction, advance: advance.pending, advance_to_pay: advance.approved,
+                // ຈຳນວນຄົນທີ່ມີເອກະສານ / ສັນຍາ ໃກ້ໝົດອາຍຸ
+                expiring: new Set(expiring.map((item) => item.employee_id)).size,
+            },
+        });
     }
     catch (error) {
         (0, bansiHelpers_1.sendError)(res, error, "Error getting pending HR requests");

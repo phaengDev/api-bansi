@@ -125,7 +125,7 @@ import {
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
 } from "../controllers/hr/advanceController";
 import { decideMyApproval, getMyApprovalList, getMyApprovals } from "../controllers/hr/approvalController";
-import { getEmployeeSummary, getHrPending, getSalaryHistory } from "../controllers/hr/hrSummaryController";
+import { getEmployeeSummary, getExpiring, getHrPending, getSalaryHistory } from "../controllers/hr/hrSummaryController";
 import {
   bulkTasks, createMyTaskComment, createTask, createTaskComment, createTaskProject, deleteMyTaskComment, deleteTaskComment, deleteTaskFile,
   deleteTaskProject, downloadTaskFile, getMyTaskComments, getMyTaskFileLink, getMyTasks, getTask, getTaskProjects, getTasks, openTaskFile,
@@ -404,6 +404,7 @@ router.put("/employee/resume-line/:id", requirePermission("updates"), documentUp
 router.delete("/employee/resume-line/:id", requirePermission("updates"), hideEmployeeSalary, deleteResume);
 router.get("/employee/resume-line/file/:id", downloadResumeFile);
 router.get("/employee/fetch", hideEmployeeSalary, getEmployees);
+router.get("/employee/expiring", getExpiring);
 router.get("/employee/option", hideEmployeeSalary, getEmployeeOption);
 // ຂໍ້ມູນຂອງຕົນເອງ (app ມືຖືຂອງພະນັກງານ — ບັນຊີຕ້ອງຜູກກັບພະນັກງານ)
 router.get("/employee/me", getMyEmployee);

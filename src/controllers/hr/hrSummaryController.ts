@@ -17,16 +17,77 @@ import { nowLao } from "./workCalendar";
 const PENDING = 1;
 const PAYROLL_PAID = 2;
 
+/**
+ * ເອກະສານ / ສັນຍາ ໃກ້ໝົດອາຍຸ ຂອງພະນັກງານທີ່ເຮັດວຽກຢູ່ — ບ່ອນດຽວທີ່ຄິດ (desktop "ຕ້ອງຕິດຕາມ" ແລະ ໜ້າພະນັກງານໃຊ້ຮ່ວມກັນ):
+ * ສັນຍາມີກຳນົດ / ບັດປະຈຳຕົວ / passport: ໝົດແລ້ວ ຫຼື ໝົດພາຍໃນ 30 ມື້; ທົດລອງວຽກ: ຄົບພາຍໃນ 14 ມື້ (ຜ່ານແລ້ວບໍ່ນັບ — ບໍ່ຕ້ອງເຮັດຫຍັງ).
+ * days = ມື້ທີ່ເຫຼືອ (ລົບ = ໝົດແລ້ວ), ລຽງໃກ້ສຸດກ່ອນ
+ */
+const EXPIRY_AHEAD_DAYS = 30;
+const PROBATION_AHEAD_DAYS = 14;
+const WORKING = 1;
+export type ExpiryKind = "contract" | "probation" | "id_card" | "passport";
+
+export const expiringItems = async () => {
+  const today = nowLao().startOf("day");
+  const todayKey = today.format("YYYY-MM-DD");
+  const soon = today.clone().add(EXPIRY_AHEAD_DAYS, "days").format("YYYY-MM-DD");
+  const probationSoon = today.clone().add(PROBATION_AHEAD_DAYS, "days").format("YYYY-MM-DD");
+  const rows = (await Employee.findAll({
+    where: {
+      work_status: WORKING,
+      [Op.or]: [
+        { contract_fixed_term: 1, contract_end: { [Op.lte]: soon } },
+        { probation_end: { [Op.between]: [todayKey, probationSoon] } },
+        { id_card_expiry: { [Op.lte]: soon } },
+        { passport_expiry: { [Op.lte]: soon } },
+      ],
+    },
+    attributes: ["_uuid", "emp_code", "first_name", "last_name", "contract_fixed_term", "contract_end", "probation_end", "id_card_expiry", "passport_expiry"],
+    raw: true,
+  })) as any[];
+  const items: { employee_id: number; emp_code: string; name: string; kind: ExpiryKind; date: string; days: number }[] = [];
+  const add = (row: any, kind: ExpiryKind, date: string | null, until: string, from?: string) => {
+    if (!date || date > until || (from && date < from)) return;
+    items.push({
+      employee_id: Number(row._uuid), emp_code: row.emp_code, name: [row.first_name, row.last_name].filter(Boolean).join(" "),
+      kind, date, days: Math.round((new Date(`${date}T00:00:00`).getTime() - new Date(`${todayKey}T00:00:00`).getTime()) / 86_400_000),
+    });
+  };
+  for (const row of rows) {
+    if (Number(row.contract_fixed_term) === 1) add(row, "contract", row.contract_end, soon);
+    add(row, "probation", row.probation_end, probationSoon, todayKey);
+    add(row, "id_card", row.id_card_expiry, soon);
+    add(row, "passport", row.passport_expiry, soon);
+  }
+  return items.sort((a, b) => a.days - b.days || a.emp_code.localeCompare(b.emp_code));
+};
+
+/** GET /employee/expiring — ລາຍການໃກ້ໝົດອາຍຸ (ໜ້າພະນັກງານ: ແຖບ "ໃກ້ໝົດອາຍຸ" + ປ້າຍໃນແຖວ) */
+export const getExpiring = async (_req: Request, res: Response) => {
+  try {
+    res.status(200).json({ data: await expiringItems() });
+  } catch (error) {
+    sendError(res, error, "Error getting expiring documents");
+  }
+};
+
 /** GET /hr/pending — ຈຳນວນຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop): ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນ (ລໍຖ້າອະນຸມັດ / ລໍຖ້າຈ່າຍ) */
 export const getHrPending = async (_req: Request, res: Response) => {
   try {
-    const [leave, correction, advance] = await Promise.all([
+    const [leave, correction, advance, expiring] = await Promise.all([
       // ລໍຫົວໜ້າທີມຢູ່ = HR ຍັງເຮັດຫຍັງບໍ່ໄດ້ — ບໍ່ນັບ
       LeaveRequest.count({ where: { status: PENDING, [Op.or]: [{ lead_status: null }, { lead_status: { [Op.ne]: LEAD_WAITING } }] } }),
       AttendanceRequest.count({ where: { status: PENDING } }),
       advancePendingCounts(),
+      expiringItems(),
     ]);
-    res.status(200).json({ data: { leave, correction, advance: advance.pending, advance_to_pay: advance.approved } });
+    res.status(200).json({
+      data: {
+        leave, correction, advance: advance.pending, advance_to_pay: advance.approved,
+        // ຈຳນວນຄົນທີ່ມີເອກະສານ / ສັນຍາ ໃກ້ໝົດອາຍຸ
+        expiring: new Set(expiring.map((item) => item.employee_id)).size,
+      },
+    });
   } catch (error) {
     sendError(res, error, "Error getting pending HR requests");
   }
