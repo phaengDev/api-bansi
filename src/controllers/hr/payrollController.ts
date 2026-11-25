@@ -889,6 +889,11 @@ export const getPayrollTaxReport = async (req: Request, res: Response) => {
       order: [["period", "ASC"]],
     });
     const n = (v: unknown) => Math.round((Number(v) || 0) * 100) / 100;
+    // ເລກ ປກສ ແລະ ເລກບັດປະຈຳຕົວ (ຂໍ້ມູນພະນັກງານປັດຈຸບັນ) — ໃຊ້ຂຽນແບບແຈ້ງ ປກສ / ອາກອນ
+    const ids = [...new Set(rows.flatMap((p) => (p.lines ?? []).map((l: any) => Number(l.employee_id))))];
+    const people = new Map((ids.length
+      ? await Employee.findAll({ where: { _uuid: ids }, attributes: ["_uuid", "sso_no", "id_card_no"], raw: true }) as any[]
+      : []).map((e) => [Number(e._uuid), e]));
     res.status(200).json({
       year,
       data: rows.map((p) => ({
@@ -897,6 +902,7 @@ export const getPayrollTaxReport = async (req: Request, res: Response) => {
         pay_date: p.pay_date,
         lines: (p.lines ?? []).map((l: any) => ({
           employee_id: Number(l.employee_id), emp_code: l.emp_code, employee_name: l.employee_name, department_name: l.department_name,
+          sso_no: people.get(Number(l.employee_id))?.sso_no ?? null, id_card_no: people.get(Number(l.employee_id))?.id_card_no ?? null,
           gross: n(l.gross), sso_base: n(l.sso_base), sso_employee: n(l.sso_employee), sso_employer: n(l.sso_employer),
           taxable: n(l.taxable), tax: n(l.tax),
         })).sort((a: any, b: any) => String(a.emp_code).localeCompare(String(b.emp_code))),
