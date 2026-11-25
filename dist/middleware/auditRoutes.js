@@ -22,6 +22,7 @@ const salaryAdvance_1 = __importDefault(require("../models/salaryAdvance"));
 const userModel_1 = __importDefault(require("../models/userModel"));
 const mainMenuModel_1 = __importDefault(require("../models/mainMenuModel"));
 const companyDocument_1 = __importDefault(require("../models/companyDocument"));
+const expenseRecurring_1 = __importDefault(require("../models/expenseRecurring"));
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
  * ຊ່ອງໃນ `fields` ເທົ່ານັ້ນທີ່ເກັບ (ເກົ່າ → ໃໝ່) — ບໍ່ເກັບລະຫັດຜ່ານ ແລະ ໄຟລ໌
@@ -91,6 +92,7 @@ exports.AUDIT = {
         fields: ["title", "doc_no", "issue_date", "expiry_date", "original_name"] }),
     companyDocDelete: (0, audit_1.audit)({ entity: "company_doc", action: "delete", load: byPk(companyDocument_1.default), label: (r) => text(r.title, r.doc_no),
         fields: ["doc_no", "expiry_date"] }),
+    recurringDelete: (0, audit_1.audit)({ entity: "recurring", action: "delete", load: byPk(expenseRecurring_1.default), label: (r) => r.title, fields: ["amount", "day_of_month"] }),
     menuLock: (0, audit_1.audit)({ entity: "menu", action: "lock", id: menuId, load: byPk(mainMenuModel_1.default), label: (r) => r.name_la }),
     menuUnlock: (0, audit_1.audit)({ entity: "menu", action: "unlock", id: menuId, load: byPk(mainMenuModel_1.default), label: (r) => r.name_la }),
 };

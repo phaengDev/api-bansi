@@ -18,6 +18,7 @@ import SalaryAdvance from "../models/salaryAdvance";
 import Users from "../models/userModel";
 import MainMenu from "../models/mainMenuModel";
 import CompanyDocument from "../models/companyDocument";
+import ExpenseRecurring from "../models/expenseRecurring";
 
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
@@ -93,6 +94,7 @@ export const AUDIT = {
     fields: ["title", "doc_no", "issue_date", "expiry_date", "original_name"] }),
   companyDocDelete: audit({ entity: "company_doc", action: "delete", load: byPk(CompanyDocument), label: (r: any) => text(r.title, r.doc_no),
     fields: ["doc_no", "expiry_date"] }),
+  recurringDelete: audit({ entity: "recurring", action: "delete", load: byPk(ExpenseRecurring), label: (r: any) => r.title, fields: ["amount", "day_of_month"] }),
   menuLock: audit({ entity: "menu", action: "lock", id: menuId, load: byPk(MainMenu), label: (r: any) => r.name_la }),
   menuUnlock: audit({ entity: "menu", action: "unlock", id: menuId, load: byPk(MainMenu), label: (r: any) => r.name_la }),
 };

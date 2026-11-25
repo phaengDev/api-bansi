@@ -46,6 +46,8 @@ class Expenses extends Model {
    * ແລະ ລົງບັນຊີຄູ່ແລ້ວໂດຍໃບເງິນເດືອນ ຈຶ່ງບໍ່ຫັກເງິນ / ບໍ່ລົງບັນຊີຊ້ຳ; ຍົກເລີກການຈ່າຍເງິນເດືອນ = ລຶບອັນນີ້
    */
   public payroll_id!: number | null;
+  /** ບັນທຶກຈາກແມ່ແບບລາຍຈ່າຍປະຈຳ (tbl_expense_recurring) — null = ບັນທຶກເອງ */
+  public recurring_id!: number | null;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -103,6 +105,7 @@ Expenses.init(
     },
     createdbyid: DataTypes.INTEGER,
     payroll_id: DataTypes.INTEGER,
+    recurring_id: DataTypes.INTEGER,
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

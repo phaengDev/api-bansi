@@ -72,6 +72,7 @@ Expenses.init({
     },
     createdbyid: sequelize_1.DataTypes.INTEGER,
     payroll_id: sequelize_1.DataTypes.INTEGER,
+    recurring_id: sequelize_1.DataTypes.INTEGER,
     createdAt: {
         type: sequelize_1.DataTypes.DATE,
         defaultValue: sequelize_1.DataTypes.NOW,

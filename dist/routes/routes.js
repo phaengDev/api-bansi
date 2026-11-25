@@ -6,6 +6,7 @@ const auth_1 = require("../middleware/auth");
 const permission_1 = require("../middleware/permission");
 const salaryAccess_1 = require("../middleware/salaryAccess");
 const auditRoutes_1 = require("../middleware/auditRoutes");
+const recurringExpenseController_1 = require("../controllers/bansi/recurringExpenseController");
 const menuAccess_1 = require("../middleware/menuAccess");
 const auditController_1 = require("../controllers/auditController");
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
@@ -257,6 +258,11 @@ router.put("/income/:id", (0, permission_1.requirePermission)("updates"), (0, up
 // ລາຍຈ່າຍ (ຫົວ + ລາຍການຍ່ອຍ) — /expense/:id ຢູ່ທ້າຍສຸດ ບໍ່ໃຫ້ທັບ /expense/cancel, /expense/download
 router.post("/expense/fetch", expenseController_1.getExpenses);
 router.post("/expense/create", (0, permission_1.requirePermission)("creates"), (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), expenseController_1.createExpense);
+// ລາຍຈ່າຍປະຈຳເດືອນ (ແມ່ແບບຈາກລາຍຈ່າຍທີ່ບັນທຶກແລ້ວ) — ບັນທຶກແທ້ຜ່ານ /expense/create (recurring_id)
+router.get("/expense-recurring", recurringExpenseController_1.getRecurringExpenses);
+router.post("/expense-recurring/from-expense/:id", (0, permission_1.requirePermission)("creates"), recurringExpenseController_1.createRecurringFromExpense);
+router.put("/expense-recurring/:id", (0, permission_1.requirePermission)("updates"), recurringExpenseController_1.updateRecurringExpense);
+router.delete("/expense-recurring/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.recurringDelete, recurringExpenseController_1.deleteRecurringExpense);
 router.put("/expense/cancel/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.expenseCancel, expenseController_1.cancelExpense);
 router.get("/expense/download/:id", expenseController_1.downloadExpenseFile);
 router.put("/expense/:id", (0, permission_1.requirePermission)("updates"), (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), auditRoutes_1.AUDIT.expenseUpdate, expenseController_1.updateExpense);

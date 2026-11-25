@@ -4,6 +4,7 @@ import { verifyToken, login, checkSession } from "../middleware/auth";
 import { requirePermission } from "../middleware/permission";
 import { hideSalaryFields, requireSalaryAccess } from "../middleware/salaryAccess";
 import { AUDIT } from "../middleware/auditRoutes";
+import { createRecurringFromExpense, deleteRecurringExpense, getRecurringExpenses, updateRecurringExpense } from "../controllers/bansi/recurringExpenseController";
 import { requireMenu } from "../middleware/menuAccess";
 import { getAuditLogs } from "../controllers/auditController";
 
@@ -327,6 +328,11 @@ router.put("/income/:id", requirePermission("updates"), createUploadFile("income
 // ລາຍຈ່າຍ (ຫົວ + ລາຍການຍ່ອຍ) — /expense/:id ຢູ່ທ້າຍສຸດ ບໍ່ໃຫ້ທັບ /expense/cancel, /expense/download
 router.post("/expense/fetch", getExpenses);
 router.post("/expense/create", requirePermission("creates"), createUploadFile("expense").single("file_doct"), createExpense);
+// ລາຍຈ່າຍປະຈຳເດືອນ (ແມ່ແບບຈາກລາຍຈ່າຍທີ່ບັນທຶກແລ້ວ) — ບັນທຶກແທ້ຜ່ານ /expense/create (recurring_id)
+router.get("/expense-recurring", getRecurringExpenses);
+router.post("/expense-recurring/from-expense/:id", requirePermission("creates"), createRecurringFromExpense);
+router.put("/expense-recurring/:id", requirePermission("updates"), updateRecurringExpense);
+router.delete("/expense-recurring/:id", requirePermission("deletes"), AUDIT.recurringDelete, deleteRecurringExpense);
 router.put("/expense/cancel/:id", requirePermission("deletes"), AUDIT.expenseCancel, cancelExpense);
 router.get("/expense/download/:id", downloadExpenseFile);
 router.put("/expense/:id", requirePermission("updates"), createUploadFile("expense").single("file_doct"), AUDIT.expenseUpdate, updateExpense);

@@ -303,6 +303,8 @@ export const createExpense = async (req: Request, res: Response) => {
         balance_expense: taxed.total,
         description: text(body.description),
         file_doct: uploadedName(req) ?? null,
+        // ບັນທຶກຈາກແມ່ແບບລາຍຈ່າຍປະຈຳ — ໃຊ້ບອກວ່າເດືອນນີ້ບັນທຶກແລ້ວ
+        recurring_id: Number(body.recurring_id) > 0 ? Number(body.recurring_id) : null,
         status: ACTIVE,
         createdbyid: Number.isInteger(actor) ? actor : null,
       },
