@@ -105,6 +105,17 @@ export const taskFileUpload = documentsIn(TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|
 export const LEAVE_FILE_DIR = path.join(__dirname, "..", "..", "private", "leave-files");
 export const leaveFileUpload = documentsIn(LEAVE_FILE_DIR, /\.(jpe?g|png|webp|pdf)$/i, "ໃບລາຕ້ອງເປັນຮູບ (JPG, PNG, WEBP) ຫຼື PDF");
 
+/** ເອກະສານບໍລິສັດ (ໃບທະບຽນ, ໃບອະນຸຍາດ…) — 1 ໄຟລ໌ field "file" (ຮູບ / PDF), ນອກ uploads ດາວໂຫຼດຜ່ານ API */
+export const COMPANY_DOC_DIR = path.join(__dirname, "..", "..", "private", "company-documents");
+export const companyDocUpload = asJson(
+  multer({
+    storage: storageIn(COMPANY_DOC_DIR),
+    limits: { fileSize: MAX_FILE },
+    fileFilter: (_req, file, cb) =>
+      /\.(jpe?g|png|webp|pdf)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("ໄຟລ໌ຕ້ອງເປັນຮູບ (JPG, PNG, WEBP) ຫຼື PDF")),
+  }).single("file")
+);
+
 /** ລຶບໄຟລ໌ໂດຍບໍ່ສົນວ່າມີຢູ່ຫຼືບໍ່ (ໃຊ້ຕອນ rollback / ລຶບຂໍ້ມູນ) */
 export const removeQuietly = (filePath: string) => {
   fs.promises.unlink(filePath).catch(() => undefined);

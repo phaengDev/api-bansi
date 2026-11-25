@@ -71,6 +71,7 @@ const hrHelpers_1 = require("../controllers/hr/hrHelpers");
 const advanceController_1 = require("../controllers/hr/advanceController");
 const approvalController_1 = require("../controllers/hr/approvalController");
 const hrSummaryController_1 = require("../controllers/hr/hrSummaryController");
+const companyDocumentController_1 = require("../controllers/hr/companyDocumentController");
 const taskController_1 = require("../controllers/hr/taskController");
 const birthdayController_1 = require("../controllers/hr/birthdayController");
 const notificationController_1 = require("../controllers/hr/notificationController");
@@ -389,6 +390,12 @@ router.delete("/employee/:id", (0, permission_1.requirePermission)("deletes"), h
 router.get("/company", companyController_1.getCompany);
 router.put("/company", (0, permission_1.requirePermission)("updates"), hrHelpers_1.companyLogoUpload, auditRoutes_1.AUDIT.companyUpdate, companyController_1.saveCompany);
 // ຮູບເສື້ອເຄື່ອງແບບ 1 ໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ
+// ເອກະສານບໍລິສັດ (ໃບທະບຽນ, ໃບອະນຸຍາດ…) ພ້ອມວັນໝົດອາຍຸ — ກ່ອນ /company/uniform
+router.get("/company/document", companyDocumentController_1.getCompanyDocuments);
+router.get("/company/document/download/:id", companyDocumentController_1.downloadCompanyDocument);
+router.post("/company/document", (0, permission_1.requirePermission)("creates"), hrHelpers_1.companyDocUpload, companyDocumentController_1.createCompanyDocument);
+router.put("/company/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.companyDocUpload, auditRoutes_1.AUDIT.companyDocUpdate, companyDocumentController_1.updateCompanyDocument);
+router.delete("/company/document/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.companyDocDelete, companyDocumentController_1.deleteCompanyDocument);
 router.put("/company/uniform/:type", (0, permission_1.requirePermission)("updates"), hrHelpers_1.uniformPhotoUpload, companyController_1.saveUniformPhoto);
 router.delete("/company/uniform/:type", (0, permission_1.requirePermission)("updates"), companyController_1.removeUniformPhoto);
 // QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company

@@ -17,6 +17,7 @@ import PayrollLine from "../models/payrollLine";
 import SalaryAdvance from "../models/salaryAdvance";
 import Users from "../models/userModel";
 import MainMenu from "../models/mainMenuModel";
+import CompanyDocument from "../models/companyDocument";
 
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
@@ -88,6 +89,10 @@ export const AUDIT = {
   userUpdate: audit({ ...user, action: "update", fields: USER_FIELDS }),
   userDelete: audit({ ...user, action: "delete", fields: ["user_name", "status"] }),
   userPassword: audit({ ...user, action: "password" }),
+  companyDocUpdate: audit({ entity: "company_doc", action: "update", load: byPk(CompanyDocument), label: (r: any) => text(r.title, r.doc_no),
+    fields: ["title", "doc_no", "issue_date", "expiry_date", "original_name"] }),
+  companyDocDelete: audit({ entity: "company_doc", action: "delete", load: byPk(CompanyDocument), label: (r: any) => text(r.title, r.doc_no),
+    fields: ["doc_no", "expiry_date"] }),
   menuLock: audit({ entity: "menu", action: "lock", id: menuId, load: byPk(MainMenu), label: (r: any) => r.name_la }),
   menuUnlock: audit({ entity: "menu", action: "unlock", id: menuId, load: byPk(MainMenu), label: (r: any) => r.name_la }),
 };

@@ -11,6 +11,7 @@ import { advanceBalanceOf, advancePendingCounts } from "./advanceController";
 import { Op } from "sequelize";
 import { LEAD_WAITING, balancesOf } from "./leaveController";
 import { nowLao } from "./workCalendar";
+import { companyDocsDue } from "./companyDocumentController";
 
 /** ພາບລວມທີ່ດຶງຂໍ້ມູນຂ້າມໂມດູນ HR — ຄຳຮ້ອງທີ່ລໍຖ້າ HR ແລະ ສະຫຼຸບຂອງພະນັກງານ 1 ຄົນ */
 
@@ -74,18 +75,21 @@ export const getExpiring = async (_req: Request, res: Response) => {
 /** GET /hr/pending — ຈຳນວນຄຳຮ້ອງທີ່ລໍຖ້າ HR (ໜ້າ desktop): ລາພັກ, ແຈ້ງລືມສະແກນ, ເບີກເງິນ (ລໍຖ້າອະນຸມັດ / ລໍຖ້າຈ່າຍ) */
 export const getHrPending = async (_req: Request, res: Response) => {
   try {
-    const [leave, correction, advance, expiring] = await Promise.all([
+    const [leave, correction, advance, expiring, companyDocs] = await Promise.all([
       // ລໍຫົວໜ້າທີມຢູ່ = HR ຍັງເຮັດຫຍັງບໍ່ໄດ້ — ບໍ່ນັບ
       LeaveRequest.count({ where: { status: PENDING, [Op.or]: [{ lead_status: null }, { lead_status: { [Op.ne]: LEAD_WAITING } }] } }),
       AttendanceRequest.count({ where: { status: PENDING } }),
       advancePendingCounts(),
       expiringItems(),
+      companyDocsDue(),
     ]);
     res.status(200).json({
       data: {
         leave, correction, advance: advance.pending, advance_to_pay: advance.approved,
         // ຈຳນວນຄົນທີ່ມີເອກະສານ / ສັນຍາ ໃກ້ໝົດອາຍຸ
         expiring: new Set(expiring.map((item) => item.employee_id)).size,
+        // ເອກະສານບໍລິສັດ ໝົດແລ້ວ / ໝົດພາຍໃນ 60 ມື້
+        company_docs: companyDocs,
       },
     });
   } catch (error) {

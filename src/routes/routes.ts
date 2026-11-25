@@ -119,13 +119,14 @@ import { createResume, deleteResume, downloadResumeFile, updateResume } from "..
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyLogoUpload, documentUpload, leaveFileUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import { companyDocUpload, companyLogoUpload, documentUpload, leaveFileUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import {
   approveAdvance, cancelAdvance, cancelMyAdvance, createAdvance, createMyAdvance, deleteAdvanceRepayment, getAdvance, getAdvances, getMyAdvances,
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
 } from "../controllers/hr/advanceController";
 import { decideMyApproval, getMyApprovalList, getMyApprovals } from "../controllers/hr/approvalController";
 import { getEmployeeSummary, getExpiring, getHrPending, getSalaryHistory } from "../controllers/hr/hrSummaryController";
+import { createCompanyDocument, deleteCompanyDocument, downloadCompanyDocument, getCompanyDocuments, updateCompanyDocument } from "../controllers/hr/companyDocumentController";
 import {
   bulkTasks, createMyTaskComment, createTask, createTaskComment, createTaskProject, deleteMyTaskComment, deleteTaskComment, deleteTaskFile,
   deleteTaskProject, downloadTaskFile, getMyTaskComments, getMyTaskFileLink, getMyTasks, getTask, getTaskProjects, getTasks, openTaskFile,
@@ -459,6 +460,12 @@ router.delete("/employee/:id", requirePermission("deletes"), hideEmployeeSalary,
 router.get("/company", getCompany);
 router.put("/company", requirePermission("updates"), companyLogoUpload, AUDIT.companyUpdate, saveCompany);
 // ຮູບເສື້ອເຄື່ອງແບບ 1 ໂປໂລບໍລິສັດ, 2 ເສື້ອເຊີດ, 3 ເສື້ອທຳມະດາ
+// ເອກະສານບໍລິສັດ (ໃບທະບຽນ, ໃບອະນຸຍາດ…) ພ້ອມວັນໝົດອາຍຸ — ກ່ອນ /company/uniform
+router.get("/company/document", getCompanyDocuments);
+router.get("/company/document/download/:id", downloadCompanyDocument);
+router.post("/company/document", requirePermission("creates"), companyDocUpload, createCompanyDocument);
+router.put("/company/document/:id", requirePermission("updates"), companyDocUpload, AUDIT.companyDocUpdate, updateCompanyDocument);
+router.delete("/company/document/:id", requirePermission("deletes"), AUDIT.companyDocDelete, deleteCompanyDocument);
 router.put("/company/uniform/:type", requirePermission("updates"), uniformPhotoUpload, saveUniformPhoto);
 router.delete("/company/uniform/:type", requirePermission("updates"), removeUniformPhoto);
 // QR ສະແກນເຂົ້າ-ອອກວຽກ (HR) — ລະຫັດລັບຂອງ QR ບໍ່ອອກທາງ GET /company
