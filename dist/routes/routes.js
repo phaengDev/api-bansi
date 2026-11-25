@@ -372,6 +372,8 @@ router.put("/money/me/entries/:id", hrHelpers_1.receiptUpload, myMoneyController
 router.delete("/money/me/entries/:id", myMoneyController_1.deleteMyMoneyEntry);
 router.get("/money/me/summary", myMoneyController_1.getMyMoneySummary);
 router.get("/employee/summary/:id", hideSummaryMoney, hrSummaryController_1.getEmployeeSummary);
+// ປະຫວັດເງິນເດືອນ (ຈາກໃບເງິນເດືອນທີ່ຈ່າຍແລ້ວ + ປະຫວັດການແກ້ໄຂ) — ສະເພາະຜູ້ມີສິດເມນູເງິນເດືອນ
+router.get("/employee/salary-history/:id", salaryAccess_1.requireSalaryAccess, hrSummaryController_1.getSalaryHistory);
 router.post("/employee/create", (0, permission_1.requirePermission)("creates"), hrHelpers_1.profileUpload, hideEmployeeSalary, employeeController_1.createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", (0, permission_1.requirePermission)("updates"), hrHelpers_1.documentUpload, hideEmployeeSalary, employeeController_1.uploadEmployeeDocuments);

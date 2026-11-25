@@ -125,7 +125,7 @@ import {
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
 } from "../controllers/hr/advanceController";
 import { decideMyApproval, getMyApprovalList, getMyApprovals } from "../controllers/hr/approvalController";
-import { getEmployeeSummary, getHrPending } from "../controllers/hr/hrSummaryController";
+import { getEmployeeSummary, getHrPending, getSalaryHistory } from "../controllers/hr/hrSummaryController";
 import {
   bulkTasks, createMyTaskComment, createTask, createTaskComment, createTaskProject, deleteMyTaskComment, deleteTaskComment, deleteTaskFile,
   deleteTaskProject, downloadTaskFile, getMyTaskComments, getMyTaskFileLink, getMyTasks, getTask, getTaskProjects, getTasks, openTaskFile,
@@ -442,6 +442,8 @@ router.put("/money/me/entries/:id", receiptUpload, updateMyMoneyEntry);
 router.delete("/money/me/entries/:id", deleteMyMoneyEntry);
 router.get("/money/me/summary", getMyMoneySummary);
 router.get("/employee/summary/:id", hideSummaryMoney, getEmployeeSummary);
+// ປະຫວັດເງິນເດືອນ (ຈາກໃບເງິນເດືອນທີ່ຈ່າຍແລ້ວ + ປະຫວັດການແກ້ໄຂ) — ສະເພາະຜູ້ມີສິດເມນູເງິນເດືອນ
+router.get("/employee/salary-history/:id", requireSalaryAccess, getSalaryHistory);
 router.post("/employee/create", requirePermission("creates"), profileUpload, hideEmployeeSalary, createEmployee);
 // ເອກະສານ: POST :id = ພະນັກງານ, GET/DELETE :id = ເອກະສານ — ໄຟລ໌ບໍ່ມີ URL ສາທາລະນະ ດາວໂຫຼດຜ່ານນີ້ເທົ່ານັ້ນ
 router.post("/employee/document/:id", requirePermission("updates"), documentUpload, hideEmployeeSalary, uploadEmployeeDocuments);

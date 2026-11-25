@@ -3,12 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEmployeeSummary = exports.getHrPending = void 0;
+exports.getSalaryHistory = exports.getEmployeeSummary = exports.getHrPending = void 0;
 const employee_1 = __importDefault(require("../../models/employee"));
 const leaveRequest_1 = __importDefault(require("../../models/leaveRequest"));
 const attendanceRequest_1 = __importDefault(require("../../models/attendanceRequest"));
 const payrollLine_1 = __importDefault(require("../../models/payrollLine"));
 const payroll_1 = __importDefault(require("../../models/payroll"));
+const auditLog_1 = __importDefault(require("../../models/auditLog"));
+const userModel_1 = __importDefault(require("../../models/userModel"));
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
 const advanceController_1 = require("./advanceController");
 const sequelize_1 = require("sequelize");
@@ -73,3 +75,65 @@ const getEmployeeSummary = async (req, res) => {
     }
 };
 exports.getEmployeeSummary = getEmployeeSummary;
+/**
+ * GET /employee/salary-history/:id — ປະຫວັດເງິນເດືອນພື້ນຖານ ໂດຍບໍ່ມີຕາຕະລາງໃໝ່:
+ * - periods: ຈາກໃບເງິນເດືອນທີ່ຈ່າຍແລ້ວ (ແຕ່ລະເດືອນເກັບເງິນເດືອນພື້ນຖານຂອງເດືອນນັ້ນໄວ້) → ລວມເດືອນຕິດກັນທີ່ເທົ່າກັນເປັນຊ່ວງ
+ * - changes: ຈາກປະຫວັດການແກ້ໄຂ (tbl_audit_log) — ໃຜປ່ຽນ ເມື່ອໃດ ຈາກເທົ່າໃດ ເປັນເທົ່າໃດ
+ * ໃໝ່ສຸດກ່ອນທັງສອງລາຍການ. ສະເພາະຜູ້ມີສິດເມນູເງິນເດືອນ (route)
+ */
+const getSalaryHistory = async (req, res) => {
+    try {
+        const id = Number((0, bansiHelpers_1.decodeId)(req));
+        const employee = await employee_1.default.findByPk(id, { attributes: ["_uuid", "basic_salary"] });
+        if (!employee) {
+            res.status(404).json({ message: "ບໍ່ພົບພະນັກງານ" });
+            return;
+        }
+        const [lines, audits] = await Promise.all([
+            payrollLine_1.default.findAll({
+                where: { employee_id: id },
+                attributes: ["basic_salary", "net"],
+                include: [{ model: payroll_1.default, as: "payroll", required: true, where: { status: PAYROLL_PAID }, attributes: ["period"] }],
+                order: [[{ model: payroll_1.default, as: "payroll" }, "period", "ASC"]],
+            }),
+            auditLog_1.default.findAll({ where: { entity: "employee", entity_id: id, action: "update" }, order: [["at", "DESC"]], limit: 100, raw: true }),
+        ]);
+        const periods = [];
+        for (const line of lines.map((l) => l.get({ plain: true }))) {
+            const salary = Number(line.basic_salary) || 0;
+            const last = periods[periods.length - 1];
+            if (last && last.basic_salary === salary) {
+                last.to = line.payroll.period;
+                last.months += 1;
+            }
+            else {
+                periods.push({ from: line.payroll.period, to: line.payroll.period, basic_salary: salary, months: 1 });
+            }
+        }
+        const changes = audits.flatMap((row) => {
+            try {
+                const diff = JSON.parse(row.changes ?? "{}");
+                if (!diff.basic_salary)
+                    return [];
+                return [{ at: row.at, user_id: row.user_id, from: Number(diff.basic_salary[0]) || 0, to: Number(diff.basic_salary[1]) || 0 }];
+            }
+            catch {
+                return [];
+            }
+        });
+        const userIds = [...new Set(changes.map((c) => Number(c.user_id)).filter(Boolean))];
+        const users = new Map((userIds.length ? await userModel_1.default.findAll({ where: { user_uuid: userIds }, attributes: ["user_uuid", "user_name"], raw: true }) : [])
+            .map((u) => [Number(u.user_uuid), u.user_name]));
+        res.status(200).json({
+            data: {
+                current: Number(employee.basic_salary) || 0,
+                periods: periods.reverse(),
+                changes: changes.map((c) => ({ ...c, user_name: users.get(Number(c.user_id)) ?? null })),
+            },
+        });
+    }
+    catch (error) {
+        (0, bansiHelpers_1.sendError)(res, error, "Error getting salary history");
+    }
+};
+exports.getSalaryHistory = getSalaryHistory;

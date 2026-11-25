@@ -4,6 +4,8 @@ import LeaveRequest from "../../models/leaveRequest";
 import AttendanceRequest from "../../models/attendanceRequest";
 import PayrollLine from "../../models/payrollLine";
 import Payroll from "../../models/payroll";
+import AuditLog from "../../models/auditLog";
+import Users from "../../models/userModel";
 import { decodeId, sendError } from "../bansi/bansiHelpers";
 import { advanceBalanceOf, advancePendingCounts } from "./advanceController";
 import { Op } from "sequelize";
@@ -66,5 +68,66 @@ export const getEmployeeSummary = async (req: Request<{ id: string }>, res: Resp
     });
   } catch (error) {
     sendError(res, error, "Error getting employee summary");
+  }
+};
+
+/**
+ * GET /employee/salary-history/:id — ປະຫວັດເງິນເດືອນພື້ນຖານ ໂດຍບໍ່ມີຕາຕະລາງໃໝ່:
+ * - periods: ຈາກໃບເງິນເດືອນທີ່ຈ່າຍແລ້ວ (ແຕ່ລະເດືອນເກັບເງິນເດືອນພື້ນຖານຂອງເດືອນນັ້ນໄວ້) → ລວມເດືອນຕິດກັນທີ່ເທົ່າກັນເປັນຊ່ວງ
+ * - changes: ຈາກປະຫວັດການແກ້ໄຂ (tbl_audit_log) — ໃຜປ່ຽນ ເມື່ອໃດ ຈາກເທົ່າໃດ ເປັນເທົ່າໃດ
+ * ໃໝ່ສຸດກ່ອນທັງສອງລາຍການ. ສະເພາະຜູ້ມີສິດເມນູເງິນເດືອນ (route)
+ */
+export const getSalaryHistory = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const id = Number(decodeId(req));
+    const employee = await Employee.findByPk(id, { attributes: ["_uuid", "basic_salary"] });
+    if (!employee) {
+      res.status(404).json({ message: "ບໍ່ພົບພະນັກງານ" });
+      return;
+    }
+    const [lines, audits] = await Promise.all([
+      PayrollLine.findAll({
+        where: { employee_id: id },
+        attributes: ["basic_salary", "net"],
+        include: [{ model: Payroll, as: "payroll", required: true, where: { status: PAYROLL_PAID }, attributes: ["period"] }],
+        order: [[{ model: Payroll, as: "payroll" }, "period", "ASC"]],
+      }),
+      AuditLog.findAll({ where: { entity: "employee", entity_id: id, action: "update" }, order: [["at", "DESC"]], limit: 100, raw: true }),
+    ]);
+
+    const periods: { from: string; to: string; basic_salary: number; months: number }[] = [];
+    for (const line of lines.map((l: any) => l.get({ plain: true }))) {
+      const salary = Number(line.basic_salary) || 0;
+      const last = periods[periods.length - 1];
+      if (last && last.basic_salary === salary) {
+        last.to = line.payroll.period;
+        last.months += 1;
+      } else {
+        periods.push({ from: line.payroll.period, to: line.payroll.period, basic_salary: salary, months: 1 });
+      }
+    }
+
+    const changes = (audits as any[]).flatMap((row) => {
+      try {
+        const diff = JSON.parse(row.changes ?? "{}");
+        if (!diff.basic_salary) return [];
+        return [{ at: row.at, user_id: row.user_id, from: Number(diff.basic_salary[0]) || 0, to: Number(diff.basic_salary[1]) || 0 }];
+      } catch {
+        return [];
+      }
+    });
+    const userIds = [...new Set(changes.map((c) => Number(c.user_id)).filter(Boolean))];
+    const users = new Map((userIds.length ? await Users.findAll({ where: { user_uuid: userIds }, attributes: ["user_uuid", "user_name"], raw: true }) as any[] : [])
+      .map((u) => [Number(u.user_uuid), u.user_name]));
+
+    res.status(200).json({
+      data: {
+        current: Number(employee.basic_salary) || 0,
+        periods: periods.reverse(),
+        changes: changes.map((c) => ({ ...c, user_name: users.get(Number(c.user_id)) ?? null })),
+      },
+    });
+  } catch (error) {
+    sendError(res, error, "Error getting salary history");
   }
 };
