@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import Users from "../models/userModel";
+import { EMPLOYEE_TOKEN } from "./auth";
 
 /** ສິດຂອງຜູ້ໃຊ້ (tbl_users) — 1 = ອະນຸຍາດ (ຄືກັບ getPermission ຂອງໜ້າເວັບ) */
 export type PermissionFlag = "creates" | "updates" | "deletes";
@@ -8,6 +9,8 @@ const ALLOWED = 1;
 
 /** ຜູ້ໃຊ້ທີ່ login (sub ຂອງ JWT) ທີ່ຍັງເປີດໃຊ້ງານ — ບໍ່ພົບ = null */
 export const currentUser = async (req: Request) => {
+  // token ຂອງ app ພະນັກງານ (sub = employee _uuid) ບໍ່ແມ່ນຜູ້ໃຊ້ລະບົບ — ບໍ່ໃຫ້ເລກ id ໄປກົງກັບ tbl_users ໂດຍບັງເອີນ
+  if (req.user?.typ === EMPLOYEE_TOKEN) return null;
   const id = Number(req.user?.sub);
   if (!Number.isInteger(id) || id <= 0) return null;
   const user = await Users.findByPk(id, { attributes: ["user_uuid", "status", "creates", "updates", "deletes", "password"] });

@@ -102,8 +102,8 @@ router.get("/app/voice/attendance", voiceController_1.getAttendanceVoice);
 router.get("/menu/main", menuController_1.getMainMenus);
 router.get("/menu/all", menuController_1.getAllMainMenus);
 // ================= ສະກຸນເງິນ
-router.put("/currency/:id", currencyController_1.updateCurrency);
-router.post("/currency/mt", currencyController_1.updateCurrencyMt);
+router.put("/currency/:id", (0, permission_1.requirePermission)("updates"), currencyController_1.updateCurrency);
+router.post("/currency/mt", (0, permission_1.requirePermission)("updates"), currencyController_1.updateCurrencyMt);
 // ========= ບັນຊີຜູ້ໃຊ້ — ສິດກວດຈາກ tbl_users (requirePermission); ປ່ຽນລະຫັດ: ຕົນເອງ (ໃສ່ລະຫັດເກົ່າ) ຫຼື ມີສິດແກ້ໄຂ
 router.post("/user/create", (0, permission_1.requirePermission)("creates"), userController_1.createUser);
 router.post("/user/fetch", userController_1.getUsers);
@@ -112,21 +112,21 @@ router.put("/user/password/:id", userController_1.updatePassword);
 router.put("/user/:id", (0, permission_1.requirePermission)("updates"), userController_1.updateUser);
 router.delete("/user/:id", (0, permission_1.requirePermission)("deletes"), userController_1.deleteUser);
 // ========= ທະນາຄານ — ໂລໂກ້ field "logo" ຫຼື "logos"
-router.post("/bank/create", (0, uploadFile_1.createUpload)('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), bankController_1.createBank);
-router.put("/bank/:id", (0, uploadFile_1.createUpload)('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), bankController_1.updateBank);
-router.delete("/bank/:id", bankController_1.deleteBank);
+router.post("/bank/create", (0, permission_1.requirePermission)("creates"), (0, uploadFile_1.createUpload)('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), bankController_1.createBank);
+router.put("/bank/:id", (0, permission_1.requirePermission)("updates"), (0, uploadFile_1.createUpload)('logo').fields([{ name: "logo", maxCount: 1 }, { name: "logos", maxCount: 1 }]), bankController_1.updateBank);
+router.delete("/bank/:id", (0, permission_1.requirePermission)("deletes"), bankController_1.deleteBank);
 router.get("/bank/fetch", bankController_1.fetchBank);
 router.get("/bank", bankController_1.getBankOption);
 // ========= ໝວດບັນຊີ (bansi type account) routes
 router.get("/type-account/fetch", typeAcountController_1.getTypeAcount);
 router.get("/type-account/option", typeAcountController_1.getTypeAcountOption);
-router.post("/type-account/create", typeAcountController_1.createTypeAcount);
-router.put("/type-account/:id", typeAcountController_1.updateTypeAcount);
+router.post("/type-account/create", (0, permission_1.requirePermission)("creates"), typeAcountController_1.createTypeAcount);
+router.put("/type-account/:id", (0, permission_1.requirePermission)("updates"), typeAcountController_1.updateTypeAcount);
 // ========= ປະເພດບັນຊີ (bansi type treasury) routes — fetch ເປັນ POST ເພາະຮັບ filter { typeId, currencyId } ທາງ body
 router.post("/type-treasury/fetch", typeTreasuryController_1.getTypeTreasury);
-router.post("/type-treasury/create", typeTreasuryController_1.createTypeTreasury);
-router.put("/type-treasury/:id", typeTreasuryController_1.updateTypeTreasury);
-router.delete("/type-treasury/:id", typeTreasuryController_1.deleteTypeTreasury);
+router.post("/type-treasury/create", (0, permission_1.requirePermission)("creates"), typeTreasuryController_1.createTypeTreasury);
+router.put("/type-treasury/:id", (0, permission_1.requirePermission)("updates"), typeTreasuryController_1.updateTypeTreasury);
+router.delete("/type-treasury/:id", (0, permission_1.requirePermission)("deletes"), typeTreasuryController_1.deleteTypeTreasury);
 router.get("/type-treasury/option", typeTreasuryController_1.getTypeTreasurOption);
 router.post("/type-treasury/option", typeTreasuryController_1.getTypeTreasurOption);
 router.get("/type-treasury/bytype/:id", typeTreasuryController_1.getTreasurbytype);
@@ -135,61 +135,61 @@ router.post("/treasury-account/fetch", treasuryAcountController_1.getTreasuryAco
 router.get("/treasury-account/option", treasuryAcountController_1.getAcountOption);
 router.post("/treasury-account/option", treasuryAcountController_1.getTreasuryAcountOption);
 router.post("/treasury-account/option/except", treasuryAcountController_1.getAcountOptionExcept);
-router.post("/treasury-account/create", treasuryAcountController_1.createTreasuryAcount);
+router.post("/treasury-account/create", (0, permission_1.requirePermission)("creates"), treasuryAcountController_1.createTreasuryAcount);
 router.get("/treasury-account/typeone/:id", treasuryAcountController_1.getTreasurtypeone);
 // ລາກຍ້າຍບັດ — ກ່ອນ /:id ບໍ່ດັ່ງນັ້ນ "sort" ຈະຖືກຈັບເປັນ :id
 router.put("/treasury-account/sort", (0, permission_1.requirePermission)("updates"), treasuryAcountController_1.sortTreasuryAccounts);
-router.put("/treasury-account/:id", treasuryAcountController_1.updateTreasuryAcount);
+router.put("/treasury-account/:id", (0, permission_1.requirePermission)("updates"), treasuryAcountController_1.updateTreasuryAcount);
 // ========= ໂອນເງິນລະຫວ່າງບັນຊີ (bansi transfer money) routes
 router.post("/transfer-money/fetch", transferMoneyControlle_1.getTransferMoney);
-router.post("/transfer-money/create", transferMoneyControlle_1.createTransferMoney);
+router.post("/transfer-money/create", (0, permission_1.requirePermission)("creates"), transferMoneyControlle_1.createTransferMoney);
 // ປະຫວັດເງິນເຂົ້າ-ອອກ ຂອງບັນຊີດຽວ (ໜ້າປຶ້ມບັນຊີໃຫຍ່)
 router.post("/transfer-money/statement", transferMoneyControlle_1.getAccountStatement);
 // ========= ປະເພດລາຍຮັບ-ລາຍຈ່າຍ (bansi finance categories) routes — :id ຂອງ fetch/option ແມ່ນ typestatus (1 ລາຍຮັບ, 2 ລາຍຈ່າຍ), ບໍ່ແມ່ນ base64
 router.get("/finance-category/fetch/:id", typeinexpController_1.getTypeInexp);
 router.get("/finance-category/option/:id", typeinexpController_1.getTypeInexpOption);
-router.post("/finance-category/create", typeinexpController_1.createTypeInexp);
-router.put("/finance-category/:id", typeinexpController_1.updateTypeInexp);
+router.post("/finance-category/create", (0, permission_1.requirePermission)("creates"), typeinexpController_1.createTypeInexp);
+router.put("/finance-category/:id", (0, permission_1.requirePermission)("updates"), typeinexpController_1.updateTypeInexp);
 // ຟອມລາຍຮັບ/ລາຍຈ່າຍ ເພີ່ມລາຍການຍ່ອຍໃໝ່ໄດ້ເລີຍ (ບໍ່ຕ້ອງໄປໜ້າຕັ້ງຄ່າ)
 router.post("/finance-category/sub/:id", (0, permission_1.requirePermission)("creates", "updates"), typeinexpController_1.addSubCategory);
 // ========= ຕັ້ງຄ່າບັນຊີ (bansi settings)
 // ປີການເງິນ
 router.get("/fiscal-year/fetch", fiscalYearController_1.getFiscalYears);
 router.get("/fiscal-year/option", fiscalYearController_1.getFiscalYearOption);
-router.post("/fiscal-year/create", fiscalYearController_1.createFiscalYear);
-router.put("/fiscal-year/current/:id", fiscalYearController_1.setCurrentFiscalYear);
-router.put("/fiscal-year/close/:id", fiscalYearController_1.closeFiscalYear);
-router.put("/fiscal-year/reopen/:id", fiscalYearController_1.reopenFiscalYear);
-router.put("/fiscal-year/:id", fiscalYearController_1.updateFiscalYear);
-router.delete("/fiscal-year/:id", fiscalYearController_1.deleteFiscalYear);
+router.post("/fiscal-year/create", (0, permission_1.requirePermission)("creates"), fiscalYearController_1.createFiscalYear);
+router.put("/fiscal-year/current/:id", (0, permission_1.requirePermission)("updates"), fiscalYearController_1.setCurrentFiscalYear);
+router.put("/fiscal-year/close/:id", (0, permission_1.requirePermission)("updates"), fiscalYearController_1.closeFiscalYear);
+router.put("/fiscal-year/reopen/:id", (0, permission_1.requirePermission)("updates"), fiscalYearController_1.reopenFiscalYear);
+router.put("/fiscal-year/:id", (0, permission_1.requirePermission)("updates"), fiscalYearController_1.updateFiscalYear);
+router.delete("/fiscal-year/:id", (0, permission_1.requirePermission)("deletes"), fiscalYearController_1.deleteFiscalYear);
 // ອັດຕາແລກປ່ຽນ (ປະຫວັດ) — ບັນທຶກແລ້ວອັບເດດ tbl_currency.reate ໃຫ້ເອງ
 router.post("/exchange-rate/fetch", exchangeRateController_1.getExchangeRates);
-router.post("/exchange-rate/create", exchangeRateController_1.createExchangeRate);
-router.delete("/exchange-rate/:id", exchangeRateController_1.deleteExchangeRate);
+router.post("/exchange-rate/create", (0, permission_1.requirePermission)("creates"), exchangeRateController_1.createExchangeRate);
+router.delete("/exchange-rate/:id", (0, permission_1.requirePermission)("deletes"), exchangeRateController_1.deleteExchangeRate);
 // ຍອດຍົກມາ — body { fiscal_id } / { fiscal_id, items[] }
 router.post("/opening-balance/fetch", openingBalanceController_1.getOpeningBalances);
-router.post("/opening-balance/save", openingBalanceController_1.saveOpeningBalances);
+router.post("/opening-balance/save", (0, permission_1.requirePermission)("creates", "updates"), openingBalanceController_1.saveOpeningBalances);
 // ວິທີຊຳລະເງິນ
 router.get("/payment-method/fetch", paymentMethodController_1.getPaymentMethods);
 router.get("/payment-method/option", paymentMethodController_1.getPaymentMethodOption);
-router.post("/payment-method/create", paymentMethodController_1.createPaymentMethod);
-router.put("/payment-method/:id", paymentMethodController_1.updatePaymentMethod);
+router.post("/payment-method/create", (0, permission_1.requirePermission)("creates"), paymentMethodController_1.createPaymentMethod);
+router.put("/payment-method/:id", (0, permission_1.requirePermission)("updates"), paymentMethodController_1.updatePaymentMethod);
 // ປະເພດປຶ້ມບັນຊີ
 router.get("/journal-type/fetch", journalTypeController_1.getJournalTypes);
 router.get("/journal-type/option", journalTypeController_1.getJournalTypeOption);
-router.post("/journal-type/create", journalTypeController_1.createJournalType);
-router.put("/journal-type/:id", journalTypeController_1.updateJournalType);
+router.post("/journal-type/create", (0, permission_1.requirePermission)("creates"), journalTypeController_1.createJournalType);
+router.put("/journal-type/:id", (0, permission_1.requirePermission)("updates"), journalTypeController_1.updateJournalType);
 // ເລກທີເອກະສານ — /next/:code ອອກເລກໃໝ່ (code ເປັນ doc_code ທຳມະດາ ບໍ່ແມ່ນ base64)
 router.get("/doc-numbering/fetch", docNumberingController_1.getDocNumberings);
 router.get("/doc-numbering/option", docNumberingController_1.getDocNumberingOption);
-router.post("/doc-numbering/create", docNumberingController_1.createDocNumbering);
-router.post("/doc-numbering/next/:code", docNumberingController_1.nextDocNumber);
-router.put("/doc-numbering/:id", docNumberingController_1.updateDocNumbering);
+router.post("/doc-numbering/create", (0, permission_1.requirePermission)("creates"), docNumberingController_1.createDocNumbering);
+router.post("/doc-numbering/next/:code", (0, permission_1.requirePermission)("creates"), docNumberingController_1.nextDocNumber);
+router.put("/doc-numbering/:id", (0, permission_1.requirePermission)("updates"), docNumberingController_1.updateDocNumbering);
 // ອາກອນ
 router.get("/tax/fetch", taxController_1.getTaxes);
 router.get("/tax/option", taxController_1.getTaxOption);
-router.post("/tax/create", taxController_1.createTax);
-router.put("/tax/:id", taxController_1.updateTax);
+router.post("/tax/create", (0, permission_1.requirePermission)("creates"), taxController_1.createTax);
+router.put("/tax/:id", (0, permission_1.requirePermission)("updates"), taxController_1.updateTax);
 // ລາຍງານອາກອນ (ຈາກສະໝຸດບັນຊີ)
 router.post("/tax/vat-report", taxReportController_1.getVatReport);
 router.post("/tax/profit-tax", taxReportController_1.getProfitTax);
@@ -233,39 +233,39 @@ router.put("/fixed-asset/:id", (0, permission_1.requirePermission)("updates"), f
 router.delete("/fixed-asset/:id", (0, permission_1.requirePermission)("deletes"), fixedAssetController_1.deleteFixedAsset);
 // ລະຫັດຜ່ານເຂົ້າເມນູ desktop ບັນຊີ (tbl_main_menu.password) — ລາຍການເມນູ + ສະຖານະລັອກ ຢູ່ GET /menu/main
 router.post("/menu-lock/verify", menuLockController_1.verifyMenuLock);
-router.post("/menu-lock/save", menuLockController_1.saveMenuLock);
-router.post("/menu-lock/remove", menuLockController_1.removeMenuLock);
+router.post("/menu-lock/save", (0, permission_1.requirePermission)("updates"), menuLockController_1.saveMenuLock);
+router.post("/menu-lock/remove", (0, permission_1.requirePermission)("updates"), menuLockController_1.removeMenuLock);
 // ລາຍຮັບ (ບັນທຶກບັນຊີປະຈຳວັນ) — ບັນທຶກແລ້ວເງິນເຂົ້າບັນຊີເງິນຄັງທັນທີ, ຍົກເລີກ = ຫັກຄືນ; ໄຟລ໌ field "file_doct"
 router.post("/income/fetch", incomeController_1.getIncomes);
-router.post("/income/create", (0, uploadFile_1.createUploadFile)("income").single("file_doct"), incomeController_1.createIncome);
-router.put("/income/cancel/:id", incomeController_1.cancelIncome);
+router.post("/income/create", (0, permission_1.requirePermission)("creates"), (0, uploadFile_1.createUploadFile)("income").single("file_doct"), incomeController_1.createIncome);
+router.put("/income/cancel/:id", (0, permission_1.requirePermission)("deletes"), incomeController_1.cancelIncome);
 router.get("/income/download/:id", incomeController_1.downloadIncomeFile);
 // ປະຫວັດການເຄື່ອນໄຫວຂອງບັນຊີເງິນຄັງ (tbl_account_movement) — ທຸກການປ່ຽນຍອດ: ຍອດກ່ອນ / ເຂົ້າ-ອອກ / ຍອດຫຼັງ
 router.post("/account-movement/fetch", accountMovement_1.getAccountMovements);
-router.put("/income/:id", (0, uploadFile_1.createUploadFile)("income").single("file_doct"), incomeController_1.updateIncome);
+router.put("/income/:id", (0, permission_1.requirePermission)("updates"), (0, uploadFile_1.createUploadFile)("income").single("file_doct"), incomeController_1.updateIncome);
 // ລາຍຈ່າຍ (ຫົວ + ລາຍການຍ່ອຍ) — /expense/:id ຢູ່ທ້າຍສຸດ ບໍ່ໃຫ້ທັບ /expense/cancel, /expense/download
 router.post("/expense/fetch", expenseController_1.getExpenses);
-router.post("/expense/create", (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), expenseController_1.createExpense);
-router.put("/expense/cancel/:id", expenseController_1.cancelExpense);
+router.post("/expense/create", (0, permission_1.requirePermission)("creates"), (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), expenseController_1.createExpense);
+router.put("/expense/cancel/:id", (0, permission_1.requirePermission)("deletes"), expenseController_1.cancelExpense);
 router.get("/expense/download/:id", expenseController_1.downloadExpenseFile);
-router.put("/expense/:id", (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), expenseController_1.updateExpense);
+router.put("/expense/:id", (0, permission_1.requirePermission)("updates"), (0, uploadFile_1.createUploadFile)("expense").single("file_doct"), expenseController_1.updateExpense);
 // ========= ບັນຊີຄູ່ (GL) — ຕາຕະລາງ ແລະ ຜັງບັນຊີເລີ່ມຕົ້ນ ສ້າງເອງຕອນເປີດ server (runAutoSync + seedGlDefaults)
 // ຜັງບັນຊີ
 router.get("/chart-account/fetch", chartAccountController_1.getChartAccounts);
 router.get("/chart-account/option", chartAccountController_1.getChartAccountOption);
-router.post("/chart-account/create", chartAccountController_1.createChartAccount);
-router.put("/chart-account/:id", chartAccountController_1.updateChartAccount);
-router.delete("/chart-account/:id", chartAccountController_1.deleteChartAccount);
+router.post("/chart-account/create", (0, permission_1.requirePermission)("creates"), chartAccountController_1.createChartAccount);
+router.put("/chart-account/:id", (0, permission_1.requirePermission)("updates"), chartAccountController_1.updateChartAccount);
+router.delete("/chart-account/:id", (0, permission_1.requirePermission)("deletes"), chartAccountController_1.deleteChartAccount);
 // ຜູກບັນຊີ (ປະເພດລາຍຮັບ-ລາຍຈ່າຍ, ບັນຊີເງິນຄັງ, ບົດບາດຂອງລະບົບ)
 router.get("/gl-mapping/fetch", chartAccountController_1.getGlMappings);
-router.post("/gl-mapping/save", chartAccountController_1.saveGlMappings);
+router.post("/gl-mapping/save", (0, permission_1.requirePermission)("updates"), chartAccountController_1.saveGlMappings);
 // ສະຖານະ + ລົງບັນຊີຍ້ອນຫຼັງໃຫ້ເອກະສານເກົ່າ
 router.get("/gl/status", chartAccountController_1.getGlStatus);
-router.post("/gl/rebuild", chartAccountController_1.rebuildGl);
+router.post("/gl/rebuild", (0, permission_1.requirePermission)("updates"), chartAccountController_1.rebuildGl);
 // ສະໝຸດບັນຊີ: ລາຍການ, ບັນທຶກທົ່ວໄປ, ກັບລາຍການ
 router.post("/journal-entry/fetch", journalController_1.getJournalEntries);
-router.post("/journal-entry/create", journalController_1.createJournalEntry);
-router.put("/journal-entry/reverse/:id", journalController_1.reverseJournalEntry);
+router.post("/journal-entry/create", (0, permission_1.requirePermission)("creates"), journalController_1.createJournalEntry);
+router.put("/journal-entry/reverse/:id", (0, permission_1.requirePermission)("deletes"), journalController_1.reverseJournalEntry);
 // ຍອດຕາມບັນຊີ (ງົບທົດລອງ, ໃບສະຫຼຸບຊັບສົມບັດ) ແລະ ປຶ້ມບັນຊີໃຫຍ່ຂອງບັນຊີດຽວ
 router.post("/gl/balances", journalController_1.getGlBalances);
 router.post("/gl/ledger", journalController_1.getGlLedger);
@@ -286,9 +286,9 @@ router.put("/partner-payment/cancel/:id", (0, permission_1.requirePermission)("d
 router.post("/budget/fetch", budgetController_1.getBudgets);
 router.post("/budget/expenses", budgetController_1.getBudgetExpenses);
 router.post("/budget/check", budgetController_1.checkBudget);
-router.post("/budget/create", budgetController_1.createBudget);
-router.put("/budget/:id", budgetController_1.updateBudget);
-router.delete("/budget/:id", budgetController_1.deleteBudget);
+router.post("/budget/create", (0, permission_1.requirePermission)("creates"), budgetController_1.createBudget);
+router.put("/budget/:id", (0, permission_1.requirePermission)("updates"), budgetController_1.updateBudget);
+router.delete("/budget/:id", (0, permission_1.requirePermission)("deletes"), budgetController_1.deleteBudget);
 // ========= ຂໍ້ມູນພື້ນຖານ (HR): ແຂວງ/ເມືອງ, ພະແນກ + ຕຳແໜ່ງ, ພະນັກງານ + ເອກະສານ — ການແກ້ໄຂກວດສິດຂອງຜູ້ໃຊ້
 router.get("/address/province", departmentController_1.getProvinces);
 router.get("/department/fetch", departmentController_1.getDepartments);

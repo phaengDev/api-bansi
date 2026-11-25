@@ -5,9 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requirePermission = exports.hasPermission = exports.currentUser = void 0;
 const userModel_1 = __importDefault(require("../models/userModel"));
+const auth_1 = require("./auth");
 const ALLOWED = 1;
 /** ຜູ້ໃຊ້ທີ່ login (sub ຂອງ JWT) ທີ່ຍັງເປີດໃຊ້ງານ — ບໍ່ພົບ = null */
 const currentUser = async (req) => {
+    // token ຂອງ app ພະນັກງານ (sub = employee _uuid) ບໍ່ແມ່ນຜູ້ໃຊ້ລະບົບ — ບໍ່ໃຫ້ເລກ id ໄປກົງກັບ tbl_users ໂດຍບັງເອີນ
+    if (req.user?.typ === auth_1.EMPLOYEE_TOKEN)
+        return null;
     const id = Number(req.user?.sub);
     if (!Number.isInteger(id) || id <= 0)
         return null;
