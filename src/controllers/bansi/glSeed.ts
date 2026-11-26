@@ -2,6 +2,7 @@ import { QueryTypes } from "sequelize";
 import sequelize from "../../config/database";
 import ChartAccount from "../../models/chartAccount";
 import GlMapping from "../../models/glMapping";
+import { LoanClassRule } from "../../models/loanCredit";
 
 /**
  * ເອີ້ນຫຼັງ runAutoSync (App.ts) — ຕາຕະລາງບັນຊີຄູ່/ລູກໜີ້-ເຈົ້າໜີ້ ຖືກສ້າງດ້ວຍ autoSync ແຕ່ autoSync ບໍ່ສ້າງ index
@@ -111,6 +112,11 @@ const ROLE_CODES: Record<string, string> = {
   INTEREST_RECEIVABLE: "1185",
   LOAN_FEE_EXPENSE: "5210",
   LOAN_FEE_INCOME: "4290",
+  CREDIT_FEE_INCOME: "4230",
+  CREDIT_PENALTY_INCOME: "4240",
+  LOAN_RECOVERY_INCOME: "4250",
+  LOAN_PROVISION_EXPENSE: "5250",
+  LOAN_ALLOWANCE: "1186",
 };
 
 /**
@@ -127,6 +133,12 @@ const LATER_ACCOUNTS: [string, string, string, string, string, number, string, n
   ["1180", "ເງິນໃຫ້ກູ້ຢືມ", "Loans receivable", "应收贷款", "1100", 1, "CURRENT_ASSET", 1],
   ["1185", "ດອກເບ້ຍຄ້າງຮັບ", "Interest receivable", "应收利息", "1100", 1, "CURRENT_ASSET", 1],
   ["2165", "ດອກເບ້ຍຄ້າງຈ່າຍ", "Interest payable", "应付利息", "2100", 2, "CURRENT_LIABILITY", 2],
+  // ລະບົບສິນເຊື່ອ (sql/credit_system.sql ຂໍ້ 16)
+  ["1186", "ເງິນແຮໜີ້ສົງໄສຈະສູນ (ເງິນໃຫ້ກູ້)", "Allowance for loan losses", "贷款损失准备", "1100", 1, "CURRENT_ASSET", 2],
+  ["4230", "ລາຍຮັບຄ່າທຳນຽມສິນເຊື່ອ", "Loan fee income", "贷款手续费收入", "4200", 4, "OTHER_INCOME", 2],
+  ["4240", "ລາຍຮັບຄ່າປັບຊ້າ", "Late payment penalty income", "逾期罚息收入", "4200", 4, "OTHER_INCOME", 2],
+  ["4250", "ລາຍຮັບຈາກໜີ້ທີ່ຕັດສູນແລ້ວເກັບຄືນໄດ້", "Recovery of written-off loans", "已核销贷款收回", "4200", 4, "OTHER_INCOME", 2],
+  ["5250", "ຄ່າໃຊ້ຈ່າຍເງິນແຮໜີ້ສົງໄສຈະສູນ", "Loan loss provision expense", "贷款损失准备费用", "5200", 5, "OTHER_EXPENSE", 1],
 ];
 
 const ensureLaterAccounts = async () => {
@@ -157,6 +169,30 @@ const INDEXES: [string, string, string[], boolean][] = [
   ["tbl_partner_payment", "idx_partner_payment_date", ["pay_date"], false],
   ["tbl_partner_allocation", "idx_partner_allocation_payment", ["payment_id"], false],
   ["tbl_partner_allocation", "idx_partner_allocation_doc", ["doc_id"], false],
+  // ລະບົບສິນເຊື່ອ — ຄື sql/credit_system.sql
+  ["tbl_loan_customer", "uq_loan_customer_code", ["customer_code"], true],
+  ["tbl_loan_customer", "idx_loan_customer_id_no", ["id_no"], false],
+  ["tbl_loan_customer", "idx_loan_customer_phone", ["phone"], false],
+  ["tbl_loan_product", "uq_loan_product_code", ["product_code"], true],
+  ["tbl_loan_application", "uq_loan_application_no", ["application_no"], true],
+  ["tbl_loan_application", "idx_loan_application_customer", ["customer_id"], false],
+  ["tbl_loan_application", "idx_loan_application_status", ["status"], false],
+  ["tbl_loan_approval", "idx_loan_approval_application", ["application_id"], false],
+  ["tbl_loan_guarantor", "idx_loan_guarantor_application", ["application_id"], false],
+  ["tbl_loan_guarantor", "idx_loan_guarantor_loan", ["loan_id"], false],
+  ["tbl_loan_collateral", "idx_loan_collateral_application", ["application_id"], false],
+  ["tbl_loan_collateral", "idx_loan_collateral_loan", ["loan_id"], false],
+  ["tbl_loan_collateral", "idx_loan_collateral_doc", ["document_no"], false],
+  ["tbl_loan_document", "idx_loan_document_owner", ["owner_type", "owner_id"], false],
+  ["tbl_loan_penalty", "idx_loan_penalty_loan", ["loan_id", "installment_no"], false],
+  ["tbl_loan_class_rule", "uq_loan_class_rule", ["loan_class"], true],
+  ["tbl_loan_classification", "uq_loan_classification", ["period", "loan_id"], true],
+  ["tbl_loan_classification", "idx_loan_classification_class", ["period", "loan_class"], false],
+  ["tbl_loan_restructure", "idx_loan_restructure_loan", ["loan_id"], false],
+  ["tbl_loan_writeoff", "idx_loan_writeoff_loan", ["loan_id"], false],
+  ["tbl_loan_collection", "idx_loan_collection_loan", ["loan_id"], false],
+  ["tbl_loan_collection", "idx_loan_collection_promise", ["promise_date"], false],
+  ["tbl_loan_notice", "idx_loan_notice_loan", ["loan_id", "installment_no", "notice_type"], false],
 ];
 
 const ensureIndexes = async () => {
@@ -195,4 +231,24 @@ export const seedGlDefaults = async () => {
     await GlMapping.create({ source_type: "ROLE", source_key: role, account_id: account._uuid });
     console.log(`🛠️  tbl_gl_mapping: ${role} → ${code}`);
   }
+  await seedLoanClassRules();
+};
+
+/**
+ * ເກນຈັດຊັ້ນໜີ້ A–E ຕັ້ງຕົ້ນ (sql/credit_system.sql ຂໍ້ 9) — ສະເພາະຕອນຕາຕະລາງຍັງຫວ່າງ.
+ * ** ຈຳນວນວັນ ແລະ ອັດຕາເງິນແຮເປັນຕົວຢ່າງ: ກວດກັບລະບຽບທະນາຄານແຫ່ງ ສປປ ລາວ ຂອງໃບອະນຸຍາດ ແລ້ວແກ້ໃນ ຕັ້ງຄ່າສິນເຊື່ອ **
+ */
+const seedLoanClassRules = async () => {
+  if ((await LoanClassRule.count()) > 0) return;
+  const rows = [
+    [1, "A", "ປົກກະຕິ", "Pass", 0, 29, 1, 0],
+    [2, "B", "ຕ້ອງເອົາໃຈໃສ່", "Special mention", 30, 89, 3, 0],
+    [3, "C", "ຕ່ຳກວ່າມາດຕະຖານ", "Substandard", 90, 179, 20, 1],
+    [4, "D", "ສົງໄສ", "Doubtful", 180, 359, 50, 1],
+    [5, "E", "ສູນເສຍ", "Loss", 360, null, 100, 1],
+  ] as const;
+  await LoanClassRule.bulkCreate(rows.map(([loan_class, class_code, name_la, name_en, min_days, max_days, provision_rate, is_npl]) => ({
+    loan_class, class_code, name_la, name_en, min_days, max_days, provision_rate, is_npl,
+  })) as any);
+  console.log("🛠️  tbl_loan_class_rule: A–E");
 };

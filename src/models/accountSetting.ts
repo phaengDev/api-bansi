@@ -37,6 +37,7 @@ class AccountSetting extends Model {
   declare invoice_copies: number;
   declare createdAt: Date;
   declare updatedAt: Date;
+  declare use_credit: number;
 }
 
 const flag = (on: number) => ({ type: DataTypes.TINYINT, allowNull: false, defaultValue: on });
@@ -63,6 +64,8 @@ AccountSetting.init(
     invoice_copies: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 2 },
     createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     updatedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    /** ລະບົບສິນເຊື່ອ (sql/credit_system.sql) — 0 = ປິດ, ເມນູສິນເຊື່ອບໍ່ຂຶ້ນ */
+    use_credit: flag(0),
   },
   { sequelize, modelName: "AccountSetting", tableName: "tbl_account_setting", timestamps: true }
 );

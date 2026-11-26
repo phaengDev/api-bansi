@@ -70,6 +70,12 @@ export const ROLES: Record<string, { groups: number[]; label: string }> = {
   INTEREST_RECEIVABLE: { groups: [1], label: "ດອກເບ້ຍຄ້າງຮັບ" },
   LOAN_FEE_EXPENSE: { groups: [5], label: "ຄ່າທຳນຽມ / ຄ່າປັບ ເງິນກູ້ຢືມ" },
   LOAN_FEE_INCOME: { groups: [4], label: "ຄ່າທຳນຽມ / ຄ່າປັບ ເງິນໃຫ້ກູ້" },
+  // ລະບົບສິນເຊື່ອ (sql/credit_system.sql) — ຜະລິດຕະພັນເລືອກບັນຊີເອງໄດ້, ບໍ່ເລືອກ = ບັນຊີເຫຼົ່ານີ້
+  CREDIT_FEE_INCOME: { groups: [4], label: "ລາຍຮັບຄ່າທຳນຽມສິນເຊື່ອ" },
+  CREDIT_PENALTY_INCOME: { groups: [4], label: "ລາຍຮັບຄ່າປັບຊ້າ" },
+  LOAN_RECOVERY_INCOME: { groups: [4], label: "ລາຍຮັບໜີ້ສູນເກັບຄືນໄດ້" },
+  LOAN_PROVISION_EXPENSE: { groups: [5], label: "ຄ່າໃຊ້ຈ່າຍເງິນແຮໜີ້ສົງໄສຈະສູນ" },
+  LOAN_ALLOWANCE: { groups: [1], label: "ເງິນແຮໜີ້ສົງໄສຈະສູນ (ເງິນໃຫ້ກູ້)" },
 };
 
 /** error ທີ່ສົ່ງກັບໃຫ້ຜູ້ໃຊ້ເປັນ 400 (ຂໍ້ມູນ/ການຕັ້ງຄ່າບໍ່ຄົບ) */

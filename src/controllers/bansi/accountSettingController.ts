@@ -8,7 +8,7 @@ import { sendError } from "./bansiHelpers";
  * ອັດຕາອາກອນກຳໄລ ແລະ ນະໂຍບາຍບັນຊີ. ວັນທີປິດງວດ (lock_date) ປ່ຽນຜ່ານ /period-close ເທົ່ານັ້ນ
  */
 
-const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation"] as const;
+const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation", "use_credit"] as const;
 const TEXTS: [field: "tax_id" | "chief_accountant" | "director" | "invoice_license", max: number][] = [
   ["tax_id", 50],
   ["invoice_license", 100],

@@ -71,7 +71,7 @@ const EMPLOYEE_FIELDS = ["basic_salary", "bank_id", "bank_account_no", "departme
 const PAYROLL_LINE_FIELDS = ["allowance", "bonus", "overtime", "other_deduction", "advance_deduction", "tax", "sso_employee", "net", "note"];
 const USER_FIELDS = ["user_name", "status", "type_user", "employee_id", "creates", "updates", "deletes", "menu_access", "approve_leave", "approve_correction", "approve_advance"];
 const SETTING_FIELDS = ["accounting_mode", "number_format", "tax_id", "chief_accountant", "director", "use_vat", "use_fixed_assets", "use_withholding",
-    "use_fx_revaluation", "use_bank_reconciliation", "profit_tax_rate", "invoice_license", "invoice_account_id", "invoice_copies"];
+    "use_fx_revaluation", "use_bank_reconciliation", "use_credit", "profit_tax_rate", "invoice_license", "invoice_account_id", "invoice_copies"];
 const income = { entity: "income", load: byPk(incomeModel_1.default), label: (r) => text(r.number, r.incom_title) };
 const expense = { entity: "expense", load: byPk(expenseModel_1.default), label: (r) => text(r.number, r.expense_title) };
 const doc = { entity: "invoice", load: byPk(partnerDoc_1.default), label: (r) => r.doc_number };

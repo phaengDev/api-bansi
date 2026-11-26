@@ -44,6 +44,8 @@ AccountSetting.init({
     invoice_copies: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 2 },
     createdAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
     updatedAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
+    /** ລະບົບສິນເຊື່ອ (sql/credit_system.sql) — 0 = ປິດ, ເມນູສິນເຊື່ອບໍ່ຂຶ້ນ */
+    use_credit: flag(0),
 }, { sequelize: database_1.default, modelName: "AccountSetting", tableName: "tbl_account_setting", timestamps: true });
 (0, autoSync_1.autoSync)(AccountSetting);
 exports.default = AccountSetting;

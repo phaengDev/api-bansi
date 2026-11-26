@@ -291,6 +291,10 @@ const ACCOUNT_MENUS = [
   { name_la: "ປິດງວດບັນຊີ", name_en: "Period Closing", name_cn: "期末结账", icons: "fa-solid fa-clipboard-check", path: "/account/closing" },
   // ເງິນກູ້ (2026-11-25) — ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້, ຕາຕະລາງຜ່ອນ, ດອກເບ້ຍຄ້າງ
   { name_la: "ເງິນກູ້", name_en: "Loans", name_cn: "借贷款", icons: "fa-solid fa-sack-dollar", path: "/account/loans" },
+  // ລະບົບສິນເຊື່ອ (2026-11-26) — ຂຶ້ນສະເພາະບໍລິສັດທີ່ເປີດ use_credit
+  { name_la: "ລູກຄ້າສິນເຊື່ອ", name_en: "Borrowers", name_cn: "借款客户", icons: "fa-solid fa-address-card", path: "/credit/customers" },
+  { name_la: "ຄຳຮ້ອງ ແລະ ສັນຍາ", name_en: "Applications & contracts", name_cn: "申请与合同", icons: "fa-solid fa-file-signature", path: "/credit/contracts" },
+  { name_la: "ຕັ້ງຄ່າສິນເຊື່ອ", name_en: "Credit settings", name_cn: "信贷设置", icons: "fa-solid fa-sliders", path: "/credit/settings" },
 ];
 
 export const seedDefaults = async () => {

@@ -30,6 +30,8 @@ export type ScheduleTerms = {
   method: number;
   day_basis: number;
   frequency_months: number;
+  /** ຈ່າຍທຸກຈັກມື້ (7, 14, 1) — ມີ = ໃຊ້ແທນ frequency_months */
+  frequency_days?: number | null;
   term: number;
   start_date: string;
   first_due_date: string;
@@ -51,9 +53,14 @@ export type ScheduleRow = {
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const daysBetween = (from: string, to: string) => Math.max(0, moment(to).diff(moment(from), "days"));
 
-/** ວັນຄົບກຳນົດ — ນັບຈາກງວດທຳອິດທຸກເທື່ອ (31/01 → 28/02 → 31/03, ບໍ່ເລື່ອນ) */
-export const dueDates = (firstDue: string, term: number, frequency: number) =>
-  Array.from({ length: term }, (_, i) => moment(firstDue).add(i * frequency, "months").format("YYYY-MM-DD"));
+/** ວັນຄົບກຳນົດ — ນັບຈາກງວດທຳອິດທຸກເທື່ອ (31/01 → 28/02 → 31/03, ບໍ່ເລື່ອນ); everyDays = ນັບເປັນມື້ */
+export const dueDates = (firstDue: string, term: number, frequency: number, everyDays?: number | null) =>
+  Array.from({ length: term }, (_, i) =>
+    (everyDays ? moment(firstDue).add(i * everyDays, "days") : moment(firstDue).add(i * frequency, "months")).format("YYYY-MM-DD"));
+
+/** ອັດຕາຕໍ່ງວດ ຈາກອັດຕາຕໍ່ປີ — ທຸກອາທິດ = ÷52, ທຸກ 2 ອາທິດ = ÷26, ທຸກມື້ = ÷365, ເປັນເດືອນ = × ເດືອນ ÷ 12 */
+export const periodicRate = (yearly: number, frequencyMonths: number, everyDays?: number | null) =>
+  everyDays === 7 ? yearly / 52 : everyDays === 14 ? yearly / 26 : everyDays ? (yearly * everyDays) / 365 : (yearly * frequencyMonths) / 12;
 
 export const buildSchedule = (terms: ScheduleTerms, decimals = 2): ScheduleRow[] => {
   const rd = (n: number) => roundTo(n, decimals);
@@ -61,8 +68,9 @@ export const buildSchedule = (terms: ScheduleTerms, decimals = 2): ScheduleRow[]
   const n = Math.max(1, Math.round(terms.term));
   const freq = Math.max(1, Math.round(terms.frequency_months));
   const yearly = (Number(terms.annual_rate) || 0) / 100;
-  const periodic = (yearly * freq) / 12;
-  const dates = dueDates(terms.first_due_date, n, freq);
+  const everyDays = Number(terms.frequency_days) || null;
+  const periodic = periodicRate(yearly, freq, everyDays);
+  const dates = dueDates(terms.first_due_date, n, freq, everyDays);
   const level = periodic > 0 ? (P * periodic) / (1 - Math.pow(1 + periodic, -n)) : P / n;
 
   const rows: ScheduleRow[] = [];

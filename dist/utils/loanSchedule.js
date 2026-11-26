@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.allocatePaid = exports.earnedInterest = exports.withPeriodStart = exports.termsError = exports.buildSchedule = exports.dueDates = exports.FREQUENCIES = exports.DAY_BASIS = exports.METHODS = exports.roundTo = exports.decimalsOf = void 0;
+exports.allocatePaid = exports.earnedInterest = exports.withPeriodStart = exports.termsError = exports.buildSchedule = exports.periodicRate = exports.dueDates = exports.FREQUENCIES = exports.DAY_BASIS = exports.METHODS = exports.roundTo = exports.decimalsOf = void 0;
 const moment_1 = __importDefault(require("moment"));
 /**
  * ຄິດຕາຕະລາງຜ່ອນ ແລະ ດອກເບ້ຍຄ້າງຂອງເງິນກູ້ (ບໍ່ແຕະຖານຂໍ້ມູນ — ໃຊ້ທັງຕອນສະແດງຕົວຢ່າງໃນຟອມ ແລະ ຕອນບັນທຶກ)
@@ -30,17 +30,21 @@ exports.DAY_BASIS = { MONTHLY: 1, ACTUAL_365: 2 };
 exports.FREQUENCIES = [1, 3, 6, 12];
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const daysBetween = (from, to) => Math.max(0, (0, moment_1.default)(to).diff((0, moment_1.default)(from), "days"));
-/** ວັນຄົບກຳນົດ — ນັບຈາກງວດທຳອິດທຸກເທື່ອ (31/01 → 28/02 → 31/03, ບໍ່ເລື່ອນ) */
-const dueDates = (firstDue, term, frequency) => Array.from({ length: term }, (_, i) => (0, moment_1.default)(firstDue).add(i * frequency, "months").format("YYYY-MM-DD"));
+/** ວັນຄົບກຳນົດ — ນັບຈາກງວດທຳອິດທຸກເທື່ອ (31/01 → 28/02 → 31/03, ບໍ່ເລື່ອນ); everyDays = ນັບເປັນມື້ */
+const dueDates = (firstDue, term, frequency, everyDays) => Array.from({ length: term }, (_, i) => (everyDays ? (0, moment_1.default)(firstDue).add(i * everyDays, "days") : (0, moment_1.default)(firstDue).add(i * frequency, "months")).format("YYYY-MM-DD"));
 exports.dueDates = dueDates;
+/** ອັດຕາຕໍ່ງວດ ຈາກອັດຕາຕໍ່ປີ — ທຸກອາທິດ = ÷52, ທຸກ 2 ອາທິດ = ÷26, ທຸກມື້ = ÷365, ເປັນເດືອນ = × ເດືອນ ÷ 12 */
+const periodicRate = (yearly, frequencyMonths, everyDays) => everyDays === 7 ? yearly / 52 : everyDays === 14 ? yearly / 26 : everyDays ? (yearly * everyDays) / 365 : (yearly * frequencyMonths) / 12;
+exports.periodicRate = periodicRate;
 const buildSchedule = (terms, decimals = 2) => {
     const rd = (n) => (0, exports.roundTo)(n, decimals);
     const P = rd(terms.principal);
     const n = Math.max(1, Math.round(terms.term));
     const freq = Math.max(1, Math.round(terms.frequency_months));
     const yearly = (Number(terms.annual_rate) || 0) / 100;
-    const periodic = (yearly * freq) / 12;
-    const dates = (0, exports.dueDates)(terms.first_due_date, n, freq);
+    const everyDays = Number(terms.frequency_days) || null;
+    const periodic = (0, exports.periodicRate)(yearly, freq, everyDays);
+    const dates = (0, exports.dueDates)(terms.first_due_date, n, freq, everyDays);
     const level = periodic > 0 ? (P * periodic) / (1 - Math.pow(1 + periodic, -n)) : P / n;
     const rows = [];
     let balance = P;

@@ -17,6 +17,10 @@ class Loan extends Model {
   declare loan_code: string;
   declare direction: number;
   declare counterparty: string;
+  declare customer_id: number | null;
+  declare product_id: number | null;
+  declare application_id: number | null;
+  declare officer_id: number | null;
   declare contract_no: string | null;
   declare currency_id: number | null;
   declare principal: string;
@@ -24,6 +28,7 @@ class Loan extends Model {
   declare method: number;
   declare day_basis: number;
   declare frequency_months: number;
+  declare frequency_days: number | null;
   declare term: number;
   declare start_date: string;
   declare first_due_date: string;
@@ -39,6 +44,14 @@ class Loan extends Model {
   declare created_by: number | null;
   declare createdAt: Date;
   declare updatedAt: Date;
+  declare upfront_fee: string;
+  declare penalty_rate: string;
+  declare penalty_base: number;
+  declare grace_days: number;
+  declare loan_class: number;
+  declare days_overdue: number;
+  declare closed_date: string | null;
+  declare close_reason: number | null;
 }
 
 const money = () => ({ type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 });
@@ -49,6 +62,11 @@ Loan.init(
     loan_code: { type: DataTypes.STRING(30), allowNull: false },
     direction: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     counterparty: { type: DataTypes.STRING(200), allowNull: false },
+    // ---- ສິນເຊື່ອ (sql/credit_system.sql) — ລູກຄ້າ, ຜະລິດຕະພັນ, ຄຳຮ້ອງ, ພະນັກງານສິນເຊື່ອ (tbl_employee) ----
+    customer_id: DataTypes.INTEGER,
+    product_id: DataTypes.INTEGER,
+    application_id: DataTypes.INTEGER,
+    officer_id: DataTypes.INTEGER,
     contract_no: DataTypes.STRING(100),
     currency_id: DataTypes.INTEGER,
     principal: money(),
@@ -56,6 +74,8 @@ Loan.init(
     method: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     day_basis: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     frequency_months: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    /** ຈ່າຍທຸກຈັກມື້ (7 ອາທິດ, 14 ສອງອາທິດ, 1 ທຸກມື້) — null = ນັບເປັນເດືອນ (frequency_months) */
+    frequency_days: DataTypes.INTEGER,
     term: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 12 },
     start_date: { type: DataTypes.DATEONLY, allowNull: false },
     first_due_date: { type: DataTypes.DATEONLY, allowNull: false },
@@ -71,6 +91,18 @@ Loan.init(
     created_by: DataTypes.INTEGER,
     createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     updatedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    /** ຄ່າທຳນຽມເປີດສິນເຊື່ອ — ຫັກຈາກເງິນທີ່ຈ່າຍໃຫ້ລູກຄ້າຕອນປ່ອຍກູ້ */
+    upfront_fee: money(),
+    /** ຄ່າປັບຊ້າ % ຕໍ່ວັນ; penalty_base 1 = ຍອດງວດທີ່ຄ້າງ (ຕົ້ນ+ດອກ), 2 = ສະເພາະຕົ້ນທຶນທີ່ຄ້າງ; ເລີ່ມຫຼັງຜ່ອນຜັນ grace_days ວັນ */
+    penalty_rate: { type: DataTypes.DECIMAL(9, 4), allowNull: false, defaultValue: 0 },
+    penalty_base: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    grace_days: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    /** ຊັ້ນໜີ້ 1–5 (A–E) ແລະ ວັນເລີຍກຳນົດ ຕອນຈັດຊັ້ນລ່າສຸດ */
+    loan_class: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    days_overdue: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    /** ປິດສັນຍາ: 1 ຈ່າຍຄົບ, 2 ປິດກ່ອນກຳນົດ, 3 ປັບໂຄງສ້າງ (ໄປສັນຍາໃໝ່), 4 ຕັດໜີ້ສູນ */
+    closed_date: DataTypes.DATEONLY,
+    close_reason: DataTypes.TINYINT,
   },
   { sequelize, modelName: "Loan", tableName: "tbl_loan", timestamps: true }
 );
@@ -115,6 +147,8 @@ export class LoanPayment extends Model {
   declare principal: string;
   declare interest: string;
   declare fee: string;
+  declare penalty: string;
+  declare payment_type: number;
   declare reference: string | null;
   declare note: string | null;
   declare status: number;
@@ -133,6 +167,9 @@ LoanPayment.init(
     principal: money(),
     interest: money(),
     fee: money(),
+    /** ຄ່າປັບຊ້າທີ່ຮັບ; payment_type 1 ຕາມງວດ, 2 ຈ່າຍລ່ວງໜ້າບາງສ່ວນ, 3 ປິດບັນຊີກ່ອນກຳນົດ */
+    penalty: money(),
+    payment_type: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     reference: DataTypes.STRING(100),
     note: DataTypes.STRING(255),
     status: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },

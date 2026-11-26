@@ -25,6 +25,11 @@ Loan.init({
     loan_code: { type: sequelize_1.DataTypes.STRING(30), allowNull: false },
     direction: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     counterparty: { type: sequelize_1.DataTypes.STRING(200), allowNull: false },
+    // ---- ສິນເຊື່ອ (sql/credit_system.sql) — ລູກຄ້າ, ຜະລິດຕະພັນ, ຄຳຮ້ອງ, ພະນັກງານສິນເຊື່ອ (tbl_employee) ----
+    customer_id: sequelize_1.DataTypes.INTEGER,
+    product_id: sequelize_1.DataTypes.INTEGER,
+    application_id: sequelize_1.DataTypes.INTEGER,
+    officer_id: sequelize_1.DataTypes.INTEGER,
     contract_no: sequelize_1.DataTypes.STRING(100),
     currency_id: sequelize_1.DataTypes.INTEGER,
     principal: money(),
@@ -32,6 +37,8 @@ Loan.init({
     method: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     day_basis: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     frequency_months: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    /** ຈ່າຍທຸກຈັກມື້ (7 ອາທິດ, 14 ສອງອາທິດ, 1 ທຸກມື້) — null = ນັບເປັນເດືອນ (frequency_months) */
+    frequency_days: sequelize_1.DataTypes.INTEGER,
     term: { type: sequelize_1.DataTypes.INTEGER, allowNull: false, defaultValue: 12 },
     start_date: { type: sequelize_1.DataTypes.DATEONLY, allowNull: false },
     first_due_date: { type: sequelize_1.DataTypes.DATEONLY, allowNull: false },
@@ -47,6 +54,18 @@ Loan.init({
     created_by: sequelize_1.DataTypes.INTEGER,
     createdAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
     updatedAt: { type: sequelize_1.DataTypes.DATE, defaultValue: sequelize_1.DataTypes.NOW },
+    /** ຄ່າທຳນຽມເປີດສິນເຊື່ອ — ຫັກຈາກເງິນທີ່ຈ່າຍໃຫ້ລູກຄ້າຕອນປ່ອຍກູ້ */
+    upfront_fee: money(),
+    /** ຄ່າປັບຊ້າ % ຕໍ່ວັນ; penalty_base 1 = ຍອດງວດທີ່ຄ້າງ (ຕົ້ນ+ດອກ), 2 = ສະເພາະຕົ້ນທຶນທີ່ຄ້າງ; ເລີ່ມຫຼັງຜ່ອນຜັນ grace_days ວັນ */
+    penalty_rate: { type: sequelize_1.DataTypes.DECIMAL(9, 4), allowNull: false, defaultValue: 0 },
+    penalty_base: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    grace_days: { type: sequelize_1.DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    /** ຊັ້ນໜີ້ 1–5 (A–E) ແລະ ວັນເລີຍກຳນົດ ຕອນຈັດຊັ້ນລ່າສຸດ */
+    loan_class: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    days_overdue: { type: sequelize_1.DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    /** ປິດສັນຍາ: 1 ຈ່າຍຄົບ, 2 ປິດກ່ອນກຳນົດ, 3 ປັບໂຄງສ້າງ (ໄປສັນຍາໃໝ່), 4 ຕັດໜີ້ສູນ */
+    closed_date: sequelize_1.DataTypes.DATEONLY,
+    close_reason: sequelize_1.DataTypes.TINYINT,
 }, { sequelize: database_1.default, modelName: "Loan", tableName: "tbl_loan", timestamps: true });
 /**
  * ຕາຕະລາງຜ່ອນ — ແຖວລະງວດ (ສ້າງຈາກເງື່ອນໄຂຂອງເງິນກູ້, ສ້າງໃໝ່ເມື່ອແກ້ເງື່ອນໄຂ ກ່ອນມີການຈ່າຍ).
@@ -79,6 +98,9 @@ LoanPayment.init({
     principal: money(),
     interest: money(),
     fee: money(),
+    /** ຄ່າປັບຊ້າທີ່ຮັບ; payment_type 1 ຕາມງວດ, 2 ຈ່າຍລ່ວງໜ້າບາງສ່ວນ, 3 ປິດບັນຊີກ່ອນກຳນົດ */
+    penalty: money(),
+    payment_type: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
     reference: sequelize_1.DataTypes.STRING(100),
     note: sequelize_1.DataTypes.STRING(255),
     status: { type: sequelize_1.DataTypes.TINYINT, allowNull: false, defaultValue: 1 },

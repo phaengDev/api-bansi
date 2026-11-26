@@ -9,6 +9,11 @@ import { requireMenu } from "../middleware/menuAccess";
 import {
   cancelLoanPayment, createLoan, deleteLoan, getAccrualRuns, getLoan, getLoans, payLoan, previewAccrual, previewLoan, runAccrual, undoAccrual, updateLoan,
 } from "../controllers/bansi/loanController";
+import {
+  cancelApplication, createApplication, createCollateral, createCustomer, createProduct, decideApplication, deleteApplication, deleteCollateral,
+  deleteCustomer, disburseApplication, getApplication, getApplications, getContract, getContracts, getCustomer, getCustomers, getProducts,
+  previewApplication, saveClassRules, undoDisbursement, updateApplication, updateCollateral, updateCustomer, updateProduct,
+} from "../controllers/credit/creditController";
 import { getAuditLogs } from "../controllers/auditController";
 
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
@@ -305,6 +310,32 @@ router.post("/bank-rec/open", openBankRec);
 router.post("/bank-rec/save", requirePermission("creates", "updates"), saveBankRec);
 router.delete("/bank-rec/:id", requirePermission("deletes"), deleteBankRec);
 // ຊັບສົມບັດຄົງທີ່ — ທະບຽນ, ຄ່າຫຼຸ້ຍຫ້ຽນລາຍເດືອນ, ຈຳໜ່າຍ, ຕາຕະລາງ
+// ================= ລະບົບສິນເຊື່ອ (sql/credit_system.sql) — ຜະລິດຕະພັນ, ລູກຄ້າ, ຫຼັກຊັບ, ຄຳຮ້ອງ → ອະນຸມັດ → ປ່ອຍກູ້, ສັນຍາ
+router.get("/credit/product", getProducts);
+router.post("/credit/product", requirePermission("creates"), createProduct);
+router.put("/credit/product/:id", requirePermission("updates"), updateProduct);
+router.put("/credit/class-rule", requirePermission("updates"), saveClassRules);
+router.get("/credit/customer", getCustomers);
+router.get("/credit/customer/:id", getCustomer);
+router.post("/credit/customer", requirePermission("creates"), createCustomer);
+router.put("/credit/customer/:id", requirePermission("updates"), updateCustomer);
+router.delete("/credit/customer/:id", requirePermission("deletes"), deleteCustomer);
+router.post("/credit/collateral", requirePermission("creates"), createCollateral);
+router.put("/credit/collateral/:id", requirePermission("updates"), updateCollateral);
+router.delete("/credit/collateral/:id", requirePermission("deletes"), deleteCollateral);
+router.post("/credit/preview", previewApplication);
+router.get("/credit/application", getApplications);
+router.get("/credit/application/:id", getApplication);
+router.post("/credit/application", requirePermission("creates"), createApplication);
+router.put("/credit/application/:id", requirePermission("updates"), updateApplication);
+router.post("/credit/application/:id/decide", requirePermission("updates"), decideApplication);
+router.post("/credit/application/:id/cancel", requirePermission("updates"), cancelApplication);
+router.post("/credit/application/:id/disburse", requirePermission("creates"), disburseApplication);
+router.delete("/credit/application/:id", requirePermission("deletes"), deleteApplication);
+router.get("/credit/contract", getContracts);
+router.get("/credit/contract/:id", getContract);
+router.post("/credit/contract/:id/undo-disburse", requirePermission("deletes"), undoDisbursement);
+
 // ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
 router.get("/loan/fetch", getLoans);
 router.get("/loan/accrual-runs", getAccrualRuns);

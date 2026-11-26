@@ -10,7 +10,7 @@ const bansiHelpers_1 = require("./bansiHelpers");
  * ຕັ້ງຄ່າບັນຊີຂອງບໍລິສັດ (tbl_account_setting, ແຖວດຽວ) — ຮູບແບບການໃຊ້ງານ (ທຳມະດາ / ຄົບຕາມມາດຕະຖານ), ຮູບແບບຕົວເລກ, ເລກອາກອນ, ຜູ້ເຊັນງົບ, ຟັງຊັນທີ່ໃຊ້,
  * ອັດຕາອາກອນກຳໄລ ແລະ ນະໂຍບາຍບັນຊີ. ວັນທີປິດງວດ (lock_date) ປ່ຽນຜ່ານ /period-close ເທົ່ານັ້ນ
  */
-const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation"];
+const FLAGS = ["use_vat", "use_fixed_assets", "use_withholding", "use_fx_revaluation", "use_bank_reconciliation", "use_credit"];
 const TEXTS = [
     ["tax_id", 50],
     ["invoice_license", 100],
