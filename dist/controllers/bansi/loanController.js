@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hasAccrualToPost = exports.getAccrualRuns = exports.undoAccrual = exports.runAccrual = exports.previewAccrual = exports.computeAccruals = exports.cancelLoanPayment = exports.payLoan = exports.deleteLoan = exports.updateLoan = exports.createLoan = exports.previewLoan = exports.getLoan = exports.getLoans = exports.paymentsOf = exports.currencyMap = exports.presentLoan = exports.summarize = exports.undoStart = exports.applyStart = exports.installmentsOf = exports.writeInstallments = exports.termsOf = exports.nextCode = exports.assertAccount = exports.takeOut = exports.lockTreasury = exports.treasuryCurrencyId = exports.baseCurrencyId = exports.currencyDecimals = exports.bookedOn = exports.isBorrowed = exports.fail = exports.LENT = exports.BORROWED = void 0;
+exports.hasAccrualToPost = exports.getAccrualRuns = exports.undoAccrual = exports.runAccrual = exports.previewAccrual = exports.computeAccruals = exports.cancelLoanPayment = exports.payLoan = exports.deleteLoan = exports.updateLoan = exports.createLoan = exports.previewLoan = exports.getLoan = exports.getLoans = exports.presentPayments = exports.paymentsOf = exports.currencyMap = exports.presentLoan = exports.summarize = exports.undoStart = exports.applyStart = exports.installmentsOf = exports.writeInstallments = exports.termsOf = exports.nextCode = exports.assertAccount = exports.takeOut = exports.lockTreasury = exports.treasuryCurrencyId = exports.baseCurrencyId = exports.currencyDecimals = exports.bookedOn = exports.isBorrowed = exports.fail = exports.LENT = exports.BORROWED = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -344,6 +344,33 @@ const currencyMap = async () => new Map((await currencyModel_1.default.findAll({
 exports.currencyMap = currencyMap;
 const paymentsOf = (rows) => rows.map((p) => ({ pay_date: String(p.pay_date), principal: num(p.principal), interest: num(p.interest), fee: num(p.fee) }));
 exports.paymentsOf = paymentsOf;
+/**
+ * ປະຫວັດການຈ່າຍ / ຮັບ ຂອງເງິນກູ້ໜຶ່ງສັນຍາ ພ້ອມຊື່ບັນຊີເງິນຄັງ ແລະ ເລກລາຍການບັນຊີ — ໃຊ້ຮ່ວມ:
+ * GET /loan/:id ແລະ GET /credit/contract/:id. treasury = ບັນຊີທີ່ຮັບ/ຈ່າຍເງິນກູ້ຕອນເລີ່ມ
+ */
+const presentPayments = async (loan, payments) => {
+    const treasuries = new Map((await treasuryAcount_1.default.findAll({
+        where: { _uuid: [...new Set([...payments.map((p) => p.treasury_account_id), loan.treasury_account_id].filter(Boolean))] },
+        attributes: ["_uuid", "acountName", "account_code"], raw: true,
+    })).map((a) => [Number(a._uuid), a]));
+    const entries = new Map((await journalEntry_1.default.findAll({
+        where: { source_type: "LOAN_PAYMENT", source_id: payments.map((p) => String(p._uuid)), reversal_of: null },
+        attributes: ["source_id", "entry_number"], raw: true,
+    })).map((e) => [String(e.source_id), e.entry_number]));
+    return {
+        treasury: loan.treasury_account_id ? treasuries.get(Number(loan.treasury_account_id)) ?? null : null,
+        payments: payments.map((p) => {
+            const amounts = { principal: num(p.principal), interest: num(p.interest), fee: num(p.fee), penalty: num(p.penalty) };
+            return {
+                ...p.get({ plain: true }), ...amounts,
+                total: (0, glCore_1.round2)(amounts.principal + amounts.interest + amounts.fee + amounts.penalty),
+                treasury: treasuries.get(Number(p.treasury_account_id)) ?? null,
+                entry_number: entries.get(String(p._uuid)) ?? null,
+            };
+        }),
+    };
+};
+exports.presentPayments = presentPayments;
 /** GET /loan/fetch — ທຸກເງິນກູ້ (ທັງສອງທາງ) ພ້ອມຍອດຄົງເຫຼືອ ແລະ ງວດຕໍ່ໄປ */
 const getLoans = async (_req, res) => {
     try {
@@ -382,29 +409,17 @@ const getLoan = async (req, res) => {
         ]);
         const active = payments.filter((p) => Number(p.status) === ACTIVE);
         const { rows, summary } = (0, exports.summarize)(loan, stored, (0, exports.paymentsOf)(active));
-        const treasuries = new Map((await treasuryAcount_1.default.findAll({
-            where: { _uuid: [...new Set([...payments.map((p) => p.treasury_account_id), loan.treasury_account_id].filter(Boolean))] },
-            attributes: ["_uuid", "acountName", "account_code"], raw: true,
-        })).map((a) => [Number(a._uuid), a]));
-        const entries = new Map((await journalEntry_1.default.findAll({
-            where: { source_type: "LOAN_PAYMENT", source_id: payments.map((p) => String(p._uuid)), reversal_of: null },
-            attributes: ["source_id", "entry_number"], raw: true,
-        })).map((e) => [String(e.source_id), e.entry_number]));
+        const { treasury, payments: paymentRows } = await (0, exports.presentPayments)(loan, payments);
         const accruals = await loan_1.LoanAccrual.count({ where: { loan_id: loan._uuid } });
         res.status(200).json({
             data: {
                 ...(0, exports.presentLoan)(loan, currencies),
                 ...summary,
-                treasury: loan.treasury_account_id ? treasuries.get(Number(loan.treasury_account_id)) ?? null : null,
+                treasury,
                 // ແກ້ເງື່ອນໄຂ/ລຶບ ໄດ້ສະເພາະກ່ອນມີການຈ່າຍ ແລະ ກ່ອນຄິດດອກເບ້ຍຄ້າງ
                 locked: active.length > 0 || accruals > 0,
                 schedule: rows,
-                payments: payments.map((p) => ({
-                    ...p.get({ plain: true }), principal: num(p.principal), interest: num(p.interest), fee: num(p.fee),
-                    total: (0, glCore_1.round2)(num(p.principal) + num(p.interest) + num(p.fee)),
-                    treasury: treasuries.get(Number(p.treasury_account_id)) ?? null,
-                    entry_number: entries.get(String(p._uuid)) ?? null,
-                })),
+                payments: paymentRows,
             },
         });
     }
@@ -469,6 +484,9 @@ const updateLoan = async (req, res) => {
         const loan = await loan_1.default.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
         if (!loan)
             throw new glCore_1.GlError("ບໍ່ພົບເງິນກູ້");
+        // ສັນຍາສິນເຊື່ອ (ມາຈາກຄຳຮ້ອງທີ່ອະນຸມັດ) ແກ້ / ລຶບ ຢູ່ນີ້ບໍ່ໄດ້ — ຍົກເລີກການປ່ອຍກູ້ຢູ່ລະບົບສິນເຊື່ອ
+        if (loan.customer_id)
+            throw new glCore_1.GlError("ນີ້ແມ່ນສັນຍາສິນເຊື່ອ — ຈັດການຢູ່ ຄຳຮ້ອງ ແລະ ສັນຍາ");
         const input = await parseInput(req.body || {}, t, loan);
         const termsChanged = TERM_FIELDS.some((key) => !sameValue(input[key], loan[key]));
         const actorId = Number((0, bansiHelpers_1.actorOf)(req)) || null;
@@ -512,6 +530,9 @@ const deleteLoan = async (req, res) => {
         const loan = await loan_1.default.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
         if (!loan)
             throw new glCore_1.GlError("ບໍ່ພົບເງິນກູ້");
+        // ສັນຍາສິນເຊື່ອ (ມາຈາກຄຳຮ້ອງທີ່ອະນຸມັດ) ແກ້ / ລຶບ ຢູ່ນີ້ບໍ່ໄດ້ — ຍົກເລີກການປ່ອຍກູ້ຢູ່ລະບົບສິນເຊື່ອ
+        if (loan.customer_id)
+            throw new glCore_1.GlError("ນີ້ແມ່ນສັນຍາສິນເຊື່ອ — ຈັດການຢູ່ ຄຳຮ້ອງ ແລະ ສັນຍາ");
         if (await loan_1.LoanPayment.count({ where: { loan_id: loan._uuid, status: ACTIVE }, transaction: t })) {
             throw new glCore_1.GlError("ມີການຈ່າຍແລ້ວ ລຶບບໍ່ໄດ້ — ຍົກເລີກການຈ່າຍກ່ອນ");
         }

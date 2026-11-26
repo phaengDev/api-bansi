@@ -14,7 +14,7 @@ import { todayLao } from "../bansi/journalHelpers";
 import { districtInclude } from "../hr/hrHelpers";
 import {
   LENT, applyStart, assertAccount, baseCurrencyId, currencyDecimals, currencyMap, fail, installmentsOf, nextCode, paymentsOf,
-  presentLoan, summarize, termsOf, treasuryCurrencyId, undoStart, writeInstallments,
+  presentLoan, presentPayments, summarize, treasuryCurrencyId, undoStart, writeInstallments,
 } from "../bansi/loanController";
 import { buildSchedule, roundTo, termsError } from "../../utils/loanSchedule";
 
@@ -913,10 +913,11 @@ export const getContract = async (req: Request<{ id: string }>, res: Response) =
     ]);
     const { rows, summary } = summarize(loan, await installmentsOf(loan._uuid), paymentsOf(payments.filter((p) => Number(p.status) === ACTIVE)));
     const app = loan.application_id ? await LoanApplication.findByPk(loan.application_id, { attributes: ["_uuid", "application_no"] }) : null;
+    const { treasury, payments: paymentRows } = await presentPayments(loan, payments);
     res.status(200).json({
       data: {
         ...presentLoan(loan, currencies), ...summary,
-        upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
+        treasury, upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
         customer: customer && { ...customer.get({ plain: true }), monthly_income: num(customer.monthly_income) },
         product: product && presentProduct(product),
         officer: officer ? [(officer as any).first_name, (officer as any).last_name].filter(Boolean).join(" ") : null,
@@ -924,10 +925,7 @@ export const getContract = async (req: Request<{ id: string }>, res: Response) =
         collaterals: collaterals.map((c) => ({ ...c.get({ plain: true }), market_value: num(c.market_value), appraised_value: num(c.appraised_value) })),
         guarantors: guarantors.map((g) => ({ ...g.get({ plain: true }), monthly_income: num(g.monthly_income) })),
         schedule: rows,
-        payments: payments.map((p) => ({
-          ...p.get({ plain: true }), principal: num(p.principal), interest: num(p.interest), fee: num(p.fee), penalty: num(p.penalty),
-          total: round2(num(p.principal) + num(p.interest) + num(p.fee) + num(p.penalty)),
-        })),
+        payments: paymentRows,
         locked: payments.some((p) => Number(p.status) === ACTIVE) || (await LoanAccrual.count({ where: { loan_id: loan._uuid } })) > 0,
       },
     });

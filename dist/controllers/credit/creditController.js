@@ -1013,10 +1013,11 @@ const getContract = async (req, res) => {
         ]);
         const { rows, summary } = (0, loanController_1.summarize)(loan, await (0, loanController_1.installmentsOf)(loan._uuid), (0, loanController_1.paymentsOf)(payments.filter((p) => Number(p.status) === ACTIVE)));
         const app = loan.application_id ? await loanCredit_1.LoanApplication.findByPk(loan.application_id, { attributes: ["_uuid", "application_no"] }) : null;
+        const { treasury, payments: paymentRows } = await (0, loanController_1.presentPayments)(loan, payments);
         res.status(200).json({
             data: {
                 ...(0, loanController_1.presentLoan)(loan, currencies), ...summary,
-                upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
+                treasury, upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
                 customer: customer && { ...customer.get({ plain: true }), monthly_income: num(customer.monthly_income) },
                 product: product && presentProduct(product),
                 officer: officer ? [officer.first_name, officer.last_name].filter(Boolean).join(" ") : null,
@@ -1024,10 +1025,7 @@ const getContract = async (req, res) => {
                 collaterals: collaterals.map((c) => ({ ...c.get({ plain: true }), market_value: num(c.market_value), appraised_value: num(c.appraised_value) })),
                 guarantors: guarantors.map((g) => ({ ...g.get({ plain: true }), monthly_income: num(g.monthly_income) })),
                 schedule: rows,
-                payments: payments.map((p) => ({
-                    ...p.get({ plain: true }), principal: num(p.principal), interest: num(p.interest), fee: num(p.fee), penalty: num(p.penalty),
-                    total: (0, glCore_1.round2)(num(p.principal) + num(p.interest) + num(p.fee) + num(p.penalty)),
-                })),
+                payments: paymentRows,
                 locked: payments.some((p) => Number(p.status) === ACTIVE) || (await loan_1.LoanAccrual.count({ where: { loan_id: loan._uuid } })) > 0,
             },
         });
