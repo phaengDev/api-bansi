@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.contractsWithSummary = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.userNames = exports.APP = void 0;
+exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.contractsWithSummary = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.APP = exports.userNames = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -51,6 +51,8 @@ const hrHelpers_1 = require("../hr/hrHelpers");
 const loanController_1 = require("../bansi/loanController");
 const loanSchedule_1 = require("../../utils/loanSchedule");
 const creditPenalty_1 = require("./creditPenalty");
+Object.defineProperty(exports, "userNames", { enumerable: true, get: function () { return creditPenalty_1.userNames; } });
+const riskController_1 = require("./riskController");
 /**
  * ລະບົບສິນເຊື່ອ (sql/credit_system.sql): ຜະລິດຕະພັນ, ລູກຄ້າ (KYC), ຫຼັກຊັບ, ຄຳຮ້ອງ → ອະນຸມັດ (ຫຼາຍຂັ້ນ, maker-checker) → ປ່ອຍກູ້.
  * ປ່ອຍກູ້ = ສ້າງສັນຍາ tbl_loan (direction 2, CR-000001) ຈາກເງື່ອນໄຂທີ່ອະນຸມັດ → ຕາຕະລາງຜ່ອນ / ການຊຳລະ / ດອກເບ້ຍຄ້າງ / ລົງບັນຊີ
@@ -77,15 +79,6 @@ const nextNumber = async (model, field, prefix, t) => {
     const max = rows.reduce((n, r) => Math.max(n, Number(String(r[field]).slice(prefix.length)) || 0), 0);
     return `${prefix}${String(max + 1).padStart(6, "0")}`;
 };
-/** ຊື່ຜູ້ໃຊ້ (ຜູ້ອະນຸມັດ, ຜູ້ບັນທຶກ) ຕາມ user_uuid */
-const userNames = async (ids) => {
-    const wanted = [...new Set(ids.map(Number).filter(Boolean))];
-    if (!wanted.length)
-        return new Map();
-    const rows = (await userModel_1.default.findAll({ where: { user_uuid: wanted }, attributes: ["user_uuid", "user_name"], raw: true }));
-    return new Map(rows.map((u) => [Number(u.user_uuid), u.user_name]));
-};
-exports.userNames = userNames;
 // ================= ຜະລິດຕະພັນ
 const presentProduct = (p) => ({
     ...p.get({ plain: true }),
@@ -292,7 +285,9 @@ const contractsWithSummary = async (where) => {
             no: r.no, due_date: String(r.due_date), principal: num(r.principal), interest: num(r.interest), settled: Number(r.settled) === 1,
         }));
         const paid = payments.filter((p) => p.loan_id === loan._uuid);
-        const { summary } = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(paid));
+        const special = (0, creditPenalty_1.closedSpecially)(loan);
+        const raw = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(paid)).summary;
+        const summary = special ? (0, creditPenalty_1.specialSummary)(raw) : raw;
         const product = products.find((p) => p._uuid === loan.product_id);
         const customer = customers.find((c) => c._uuid === loan.customer_id);
         const penalty = (0, creditPenalty_1.penaltyState)(loan, stored, paid, ledger.filter((x) => x.loan_id === loan._uuid), today, (0, loanSchedule_1.decimalsOf)(currencies.get(Number(loan.currency_id))?.name));
@@ -300,7 +295,9 @@ const contractsWithSummary = async (where) => {
         return {
             ...(0, loanController_1.presentLoan)(loan, currencies), ...summary, upfront_fee: num(loan.upfront_fee),
             paid_penalty: (0, glCore_1.round2)(paid.reduce((n, p) => n + num(p.penalty), 0)),
-            penalty_due: penalty.due, days_overdue: daysOverdue, aging: (0, creditPenalty_1.agingOf)(daysOverdue),
+            penalty_due: special ? 0 : penalty.due, days_overdue: daysOverdue, aging: (0, creditPenalty_1.agingOf)(daysOverdue),
+            /** ຍອດຕົ້ນທຶນທີ່ຕັດເປັນໜີ້ສູນ / ຍ້າຍໄປສັນຍາໃໝ່ (ສະແດງໃນລາຍການ) */
+            closed_balance: special ? raw.outstanding : 0,
             product: product ? { _uuid: product._uuid, code: product.product_code, name: product.name_la } : null,
             customer: customer ? { _uuid: customer._uuid, code: customer.customer_code, name: customer.full_name, phone: customer.phone } : null,
         };
@@ -1031,15 +1028,20 @@ const getContract = async (req, res) => {
         ]);
         const stored = await (0, loanController_1.installmentsOf)(loan._uuid);
         const active = payments.filter((p) => Number(p.status) === ACTIVE);
-        const { rows, summary } = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(active));
+        const special = (0, creditPenalty_1.closedSpecially)(loan);
+        const base = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(active));
+        const summary = special ? (0, creditPenalty_1.specialSummary)(base.summary) : base.summary;
+        // ປິດແບບພິເສດ: ງວດທີ່ຍັງຄ້າງ = ປິດ (ບໍ່ສະແດງເປັນກາຍກຳນົດ)
+        const rows = special ? base.rows.map((r) => (["overdue", "partial", "upcoming"].includes(r.state) ? { ...r, state: "closed" } : r)) : base.rows;
         const app = loan.application_id ? await loanCredit_1.LoanApplication.findByPk(loan.application_id, { attributes: ["_uuid", "application_no"] }) : null;
         const { treasury, payments: paymentRows } = await (0, loanController_1.presentPayments)(loan, payments);
-        const [ledger, logs] = await Promise.all([
+        const [ledger, logs, notices] = await Promise.all([
             loanCredit_1.LoanPenalty.findAll({ where: { loan_id: loan._uuid }, order: [["_uuid", "DESC"]] }),
             loanCredit_1.LoanCollection.findAll({ where: { loan_id: loan._uuid }, order: [["contact_date", "DESC"], ["_uuid", "DESC"]] }),
+            loanCredit_1.LoanNotice.findAll({ where: { loan_id: loan._uuid }, order: [["sent_at", "DESC"], ["_uuid", "DESC"]] }),
         ]);
         const penalty = (0, creditPenalty_1.penaltyState)(loan, stored, active, ledger, (0, journalHelpers_1.todayLao)(), (0, loanSchedule_1.decimalsOf)(currencies.get(Number(loan.currency_id))?.name));
-        const names = await (0, exports.userNames)([...ledger.map((x) => x.waived_by), ...logs.map((x) => x.created_by)]);
+        const names = await (0, creditPenalty_1.userNames)([...ledger.map((x) => x.waived_by), ...logs.map((x) => x.created_by)]);
         // ຍອດຄົງເຫຼືອຫຼັງແຕ່ລະການຊຳລະ (ໃບຮັບເງິນ) — ຕາມລຳດັບວັນທີ
         let balance = num(loan.principal) - stored.filter((r) => r.settled).reduce((n, r) => n + r.principal, 0);
         const after = new Map();
@@ -1051,11 +1053,13 @@ const getContract = async (req, res) => {
             data: {
                 ...(0, loanController_1.presentLoan)(loan, currencies), ...summary,
                 treasury, upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
-                penalty: { ...penalty, days_overdue: summary.closed ? 0 : penalty.days_overdue },
+                penalty: special ? { ...penalty, due: 0, days_overdue: 0 } : { ...penalty, days_overdue: summary.closed ? 0 : penalty.days_overdue },
+                closure: await (0, riskController_1.closureOf)(loan), closed_balance: special ? base.summary.outstanding : 0,
                 waivers: ledger.filter((x) => Number(x.status) === creditPenalty_1.PENALTY_WAIVED).map((x) => ({
                     _uuid: x._uuid, installment_no: x.installment_no, date: x.calc_date, amount: num(x.waived_amount), reason: x.waive_reason, by: names.get(Number(x.waived_by)) ?? null,
                 })),
                 collections: logs.map((x) => ({ ...x.get({ plain: true }), promise_amount: num(x.promise_amount), by: names.get(Number(x.created_by)) ?? null })),
+                notices: notices.map((x) => x.get({ plain: true })),
                 customer: customer && { ...customer.get({ plain: true }), monthly_income: num(customer.monthly_income) },
                 product: product && presentProduct(product),
                 officer: officer ? [officer.first_name, officer.last_name].filter(Boolean).join(" ") : null,

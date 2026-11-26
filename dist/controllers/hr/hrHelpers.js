@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.originalNameOf = exports.removeQuietly = exports.companyDocUpload = exports.COMPANY_DOC_DIR = exports.leaveFileUpload = exports.LEAVE_FILE_DIR = exports.taskFileUpload = exports.TASK_FILE_DIR = exports.documentUpload = exports.receiptUpload = exports.RECEIPT_DIR = exports.uniformPhotoUpload = exports.companyLogoUpload = exports.profileUpload = exports.asJson = exports.storageIn = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
+exports.originalNameOf = exports.removeQuietly = exports.companyDocUpload = exports.COMPANY_DOC_DIR = exports.leaveFileUpload = exports.LEAVE_FILE_DIR = exports.taskFileUpload = exports.TASK_FILE_DIR = exports.creditDocUpload = exports.CREDIT_DOC_DIR = exports.documentUpload = exports.receiptUpload = exports.RECEIPT_DIR = exports.uniformPhotoUpload = exports.companyLogoUpload = exports.profileUpload = exports.asJson = exports.storageIn = exports.MAX_FILE = exports.companyLogoUrl = exports.profileUrl = exports.districtInclude = exports.phoneDigits = exports.APP_PHONE = exports.DEFAULT_APP_PASSWORD = exports.DOCUMENT_DIR = exports.COMPANY_FOLDER = exports.PROFILE_FOLDER = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -81,6 +81,9 @@ const documentsIn = (dir, types, typesMessage) => (0, exports.asJson)((0, multer
     fileFilter: (_req, file, cb) => (types.test(file.originalname) ? cb(null, true) : cb(new Error(typesMessage))),
 }).array("files", 5));
 exports.documentUpload = documentsIn(exports.DOCUMENT_DIR, DOCUMENT_TYPES, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel");
+/** ເອກະສານຂອງລະບົບສິນເຊື່ອ (ບັດ, ສຳມະໂນຄົວ, ສັນຍາທີ່ເຊັນ, ໃບຕາດິນ, ຮູບຫຼັກຊັບ) — ບໍ່ຢູ່ໃຕ້ /image */
+exports.CREDIT_DOC_DIR = path_1.default.join(__dirname, "..", "..", "private", "credit-docs");
+exports.creditDocUpload = documentsIn(exports.CREDIT_DOC_DIR, DOCUMENT_TYPES, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel");
 /** ເອກະສານຄັດຕິດຂອງວຽກ (ບໍ່ຢູ່ໃຕ້ /image) — ຄືກັບເອກະສານພະນັກງານ + PowerPoint */
 exports.TASK_FILE_DIR = path_1.default.join(__dirname, "..", "..", "private", "task-files");
 exports.taskFileUpload = documentsIn(exports.TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|docx?|xlsx?|pptx?)$/i, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel, PowerPoint");

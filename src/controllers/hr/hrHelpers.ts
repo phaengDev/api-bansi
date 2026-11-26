@@ -96,6 +96,10 @@ const documentsIn = (dir: string, types: RegExp, typesMessage: string) => asJson
 
 export const documentUpload = documentsIn(DOCUMENT_DIR, DOCUMENT_TYPES, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel");
 
+/** ເອກະສານຂອງລະບົບສິນເຊື່ອ (ບັດ, ສຳມະໂນຄົວ, ສັນຍາທີ່ເຊັນ, ໃບຕາດິນ, ຮູບຫຼັກຊັບ) — ບໍ່ຢູ່ໃຕ້ /image */
+export const CREDIT_DOC_DIR = path.join(__dirname, "..", "..", "private", "credit-docs");
+export const creditDocUpload = documentsIn(CREDIT_DOC_DIR, DOCUMENT_TYPES, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel");
+
 /** ເອກະສານຄັດຕິດຂອງວຽກ (ບໍ່ຢູ່ໃຕ້ /image) — ຄືກັບເອກະສານພະນັກງານ + PowerPoint */
 export const TASK_FILE_DIR = path.join(__dirname, "..", "..", "private", "task-files");
 export const taskFileUpload = documentsIn(TASK_FILE_DIR, /\.(jpe?g|png|webp|pdf|docx?|xlsx?|pptx?)$/i, "ອະນຸຍາດສະເພາະຮູບ, PDF, Word, Excel, PowerPoint");

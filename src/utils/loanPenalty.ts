@@ -107,3 +107,18 @@ export const splitAmount = (amount: number, penaltyDue: number, dues: { interest
   }
   return { penalty, interest: roundTo(interest, decimals), principal: roundTo(principal, decimals), left };
 };
+
+/**
+ * ມື້ກາຍກຳນົດຂອງງວດເກົ່າສຸດທີ່ຍັງຄ້າງ ณ ວັນທີ date (ການຈ່າຍທີ່ລົງວັນທີ ≤ date) — 0 = ບໍ່ກາຍ.
+ * ໃຊ້ຈັດຊັ້ນໜີ້ທ້າຍເດືອນ ແລະ ຢຸດຄິດດອກເບ້ຍຄ້າງຂອງໜີ້ NPL
+ */
+export const daysOverdueAt = (startDate: string, rows: StoredInstallment[], payments: PaidRow[], date: string) => {
+  const upTo = payments.filter((p) => p.pay_date <= date);
+  const allocated = allocatePaid(withPeriodStart(startDate, rows), upTo.reduce((n, p) => n + p.principal, 0), upTo.reduce((n, p) => n + p.interest, 0));
+  const oldest = allocated.find((r) => !r.settled && r.due_date < date && (r.due_principal > 0.004 || r.due_interest > 0.004));
+  return oldest ? days(oldest.due_date, date) : 0;
+};
+
+/** ເກນຈັດຊັ້ນໜີ້ (tbl_loan_class_rule) ທີ່ກົງກັບມື້ກາຍກຳນົດ — ບໍ່ພົບ = ຊັ້ນທຳອິດ */
+export const classOf = <R extends { min_days: number; max_days: number | null }>(rules: R[], daysOverdue: number) =>
+  rules.find((r) => daysOverdue >= Number(r.min_days) && (r.max_days === null || daysOverdue <= Number(r.max_days))) ?? rules[0];

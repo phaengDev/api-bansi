@@ -3,7 +3,8 @@ import { Op, QueryTypes, Transaction } from "sequelize";
 import moment from "moment";
 import sequelize from "../../config/database";
 import Loan, { LoanAccrual, LoanInstallment, LoanPayment } from "../../models/loan";
-import { LoanPenalty, LoanProduct } from "../../models/loanCredit";
+import { LoanClassRule, LoanPenalty, LoanProduct, LoanWriteoff } from "../../models/loanCredit";
+import { classOf, daysOverdueAt } from "../../utils/loanPenalty";
 import ChartAccount from "../../models/chartAccount";
 import JournalEntry from "../../models/journalEntry";
 import TreasuryAccount from "../../models/treasuryAcount";
@@ -50,9 +51,9 @@ export const fail = (res: Response, error: unknown, fallback: string) => {
 
 const notReady = (res: Response) => res.status(503).json({ message: "ຍັງບໍ່ໄດ້ເປີດໃຊ້ລະບົບບັນຊີຄູ່", notReady: true });
 
-const monthEnd = (month: string) => moment(month, "YYYY-MM").endOf("month").format("YYYY-MM-DD");
+export const monthEnd = (month: string) => moment(month, "YYYY-MM").endOf("month").format("YYYY-MM-DD");
 const nextMonthStart = (month: string) => moment(month, "YYYY-MM").add(1, "month").startOf("month").format("YYYY-MM-DD");
-const parseMonth = (value: unknown) => {
+export const parseMonth = (value: unknown) => {
   const m = moment(String(value ?? ""), "YYYY-MM", true);
   if (!m.isValid()) throw new GlError("ກະລຸນາເລືອກເດືອນ");
   return m.format("YYYY-MM");
@@ -520,6 +521,8 @@ export type PaymentInput = {
   penalty?: number;
   /** 1 ຕາມງວດ, 2 ຈ່າຍລ່ວງໜ້າບາງສ່ວນ, 3 ປິດບັນຊີກ່ອນກຳນົດ */
   paymentType?: number;
+  /** ເກັບຄືນໜີ້ທີ່ຕັດເປັນໜີ້ສູນແລ້ວ — ຕົ້ນ + ດອກ ເຂົ້າລາຍຮັບໜີ້ສູນເກັບຄືນ (4250) ແທນບັນຊີເງິນໃຫ້ກູ້ / ດອກເບ້ຍ */
+  recovery?: boolean;
   reference?: string | null;
   note?: string | null;
 };
@@ -568,11 +571,15 @@ export const recordLoanPayment = async (loan: Loan, input: PaymentInput, t: Tran
   const label = `${loan.loan_code} ${loan.counterparty}`;
   const sideOf = (lineIsLoanSide: boolean) => (borrowed === lineIsLoanSide ? DEBIT : CREDIT);
   const product = loan.product_id ? await LoanProduct.findByPk(loan.product_id, { transaction: t }) : null;
+  const recoveryAccount = input.recovery ? await roleAccountId("LOAN_RECOVERY_INCOME", t) : null;
   const lines: DraftLine[] = [
-    { ...common, accountId: loan.loan_account_id, side: sideOf(true), amount: principal, description: `${label} · ຕົ້ນທຶນ` },
     {
-      ...common, side: sideOf(true), amount: interest, description: `${label} · ດອກເບ້ຍ`,
-      accountId: loan.interest_account_id ?? (await roleAccountId(borrowed ? "INTEREST_EXPENSE" : "INTEREST_INCOME", t)),
+      ...common, accountId: recoveryAccount ?? loan.loan_account_id, side: sideOf(true), amount: principal,
+      description: `${label} · ${recoveryAccount ? "ເກັບຄືນໜີ້ສູນ (ຕົ້ນທຶນ)" : "ຕົ້ນທຶນ"}`,
+    },
+    {
+      ...common, side: sideOf(true), amount: interest, description: `${label} · ${recoveryAccount ? "ເກັບຄືນໜີ້ສູນ (ດອກເບ້ຍ)" : "ດອກເບ້ຍ"}`,
+      accountId: recoveryAccount ?? loan.interest_account_id ?? (await roleAccountId(borrowed ? "INTEREST_EXPENSE" : "INTEREST_INCOME", t)),
     },
   ];
   if (fee > 0) {
@@ -586,7 +593,7 @@ export const recordLoanPayment = async (loan: Loan, input: PaymentInput, t: Tran
     lines.push({ ...common, accountId: penaltyAccount, side: sideOf(true), amount: penalty, description: `${label} · ຄ່າປັບກາຍກຳນົດ` });
   }
   lines.push({ accountId: cash.accountId, side: sideOf(false), amount: total, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: account._uuid });
-  const description = `${borrowed ? "ຈ່າຍຄືນເງິນກູ້" : "ຮັບຄືນເງິນໃຫ້ກູ້"} ${label}${row.reference ? ` (${row.reference})` : ""}`;
+  const description = `${input.recovery ? "ເກັບຄືນໜີ້ສູນ" : borrowed ? "ຈ່າຍຄືນເງິນກູ້" : "ຮັບຄືນເງິນໃຫ້ກູ້"} ${label}${row.reference ? ` (${row.reference})` : ""}`;
   await postEntry({ date, sourceType: "LOAN_PAYMENT", sourceId: row._uuid, reference: number, description, lines, actorId }, t);
   await moveBalance(account, {
     direction: borrowed ? MOVE_OUT : MOVE_IN, amount: total, source: "LOAN_PAYMENT", sourceId: row._uuid, docNumber: number, date, description, actorId,
@@ -640,8 +647,14 @@ export const cancelLoanPayment = async (req: Request<{ id: string }>, res: Respo
       }, t);
     }
     await row.update({ status: CANCELLED, updatedAt: new Date() }, { transaction: t });
-    // ສັນຍາທີ່ການຈ່າຍນີ້ປິດໄວ້ → ເປີດຄືນ
-    if (loan?.closed_date && num(row.principal) > 0) await loan.update({ closed_date: null, close_reason: null } as any, { transaction: t });
+    const writeoff = loan?.close_reason === 4 ? await LoanWriteoff.findOne({ where: { loan_id: loan._uuid, status: 1 }, transaction: t }) : null;
+    if (writeoff && String(row.pay_date) >= String(writeoff.writeoff_date)) {
+      // ຍົກເລີກການເກັບຄືນໜີ້ສູນ — ສັນຍາຍັງເປັນໜີ້ສູນ, ຍອດເກັບຄືນຫຼຸດລົງ
+      await writeoff.update({ recovered_amount: round2(Math.max(0, num(writeoff.recovered_amount) - num(row.principal) - num(row.interest))), updatedAt: new Date() } as any, { transaction: t });
+    } else if (loan?.closed_date && [1, 2].includes(Number(loan.close_reason)) && num(row.principal) > 0) {
+      // ສັນຍາທີ່ການຈ່າຍນີ້ປິດໄວ້ (ຈ່າຍຄົບ / ປິດກ່ອນກຳນົດ) → ເປີດຄືນ
+      await loan.update({ closed_date: null, close_reason: null } as any, { transaction: t });
+    }
     await t.commit();
     res.status(200).json({ message: "Successfully cancelled loan payment" });
   } catch (error) {
@@ -665,7 +678,11 @@ export const computeAccruals = async (month: string, t?: Transaction) => {
     LoanPayment.findAll({ where: { loan_id: loans.map((l) => l._uuid), status: ACTIVE, pay_date: { [Op.lte]: end } }, transaction: t }),
   ]);
   const out: { loan: Loan; earned: number; paid: number; accrued: number; rate: number; lak: number }[] = [];
+  // ສັນຍາສິນເຊື່ອທີ່ເປັນໜີ້ NPL (ຕາມເກນຈັດຊັ້ນ) ບໍ່ຄິດດອກເບ້ຍຄ້າງ — ຮັບຮູ້ລາຍຮັບເມື່ອໄດ້ຮັບເງິນແທ້
+  const rules = loans.some((l) => l.customer_id) ? await LoanClassRule.findAll({ order: [["loan_class", "ASC"]], transaction: t }) : [];
   for (const loan of loans) {
+    // ປິດແລ້ວ (ຈ່າຍຄົບ, ຕັດໜີ້ສູນ, ປັບໂຄງສ້າງເປັນສັນຍາໃໝ່) ກ່ອນທ້າຍເດືອນ
+    if (loan.closed_date && String(loan.closed_date) <= end) continue;
     const stored: StoredInstallment[] = installments.filter((r) => r.loan_id === loan._uuid).map((r) => ({
       no: r.no, due_date: String(r.due_date), principal: num(r.principal), interest: num(r.interest), settled: Number(r.settled) === 1,
     }));
@@ -673,6 +690,10 @@ export const computeAccruals = async (month: string, t?: Transaction) => {
     const settled = stored.filter((r) => r.settled);
     const outstanding = round2(num(loan.principal) - settled.reduce((n, r) => n + r.principal, 0) - paid.reduce((n, p) => n + num(p.principal), 0));
     if (outstanding <= 0.004) continue;
+    if (loan.customer_id && rules.length) {
+      const overdue = daysOverdueAt(String(loan.start_date), stored, paid.map((p) => ({ pay_date: String(p.pay_date), principal: num(p.principal), interest: num(p.interest) })), end);
+      if (Number(classOf(rules, overdue)?.is_npl) === 1) continue;
+    }
     const earned = earnedInterest(String(loan.start_date), stored, end);
     const paidInterest = round2(settled.reduce((n, r) => n + r.interest, 0) + paid.reduce((n, p) => n + num(p.interest), 0));
     const accrued = roundTo(earned - paidInterest, await currencyDecimals(loan.currency_id, t));

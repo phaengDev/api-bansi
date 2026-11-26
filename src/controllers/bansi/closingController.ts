@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { hasAccrualToPost } from "./loanController";
+import { hasProvisionToPost, provisionPosted } from "../credit/riskController";
 import { Op, QueryTypes } from "sequelize";
 import moment from "moment";
 import sequelize from "../../config/database";
@@ -110,6 +111,11 @@ const checksOf = async (month: string, setting: any, banks: Treasury[], foreign:
   // ດອກເບ້ຍຄ້າງຂອງເງິນກູ້: ຖາມສະເພາະເມື່ອມີດອກເບ້ຍທີ່ເກີດແລ້ວແຕ່ຍັງບໍ່ຈ່າຍ (ຫຼື ລົງແລ້ວ)
   const accrued = await posted("LOAN_ACCRUAL");
   if (accrued || (await hasAccrualToPost(month))) checks.push({ key: "loan_accrual", ok: accrued });
+  // ລະບົບສິນເຊື່ອ: ຈັດຊັ້ນໜີ້ ແລະ ຕັ້ງເງິນແຮທ້າຍເດືອນ (ເມື່ອມີສັນຍາທີ່ຍັງຄ້າງ)
+  if (Number(setting.use_credit) === 1) {
+    const provisioned = await provisionPosted(month);
+    if (provisioned || (await hasProvisionToPost(month))) checks.push({ key: "loan_provision", ok: provisioned });
+  }
   return checks;
 };
 

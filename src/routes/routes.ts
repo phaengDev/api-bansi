@@ -17,6 +17,11 @@ import {
 import {
   collectContract, createCollection, deleteCollection, getCollections, getDashboard, quoteContract, undoWaiver, waivePenalty,
 } from "../controllers/credit/collectionController";
+import {
+  getClassification, postClassification, recoverContract, restructureContract, undoClassification, undoRestructure, undoWriteOff, writeOffContract,
+} from "../controllers/credit/riskController";
+import { createNotice, deleteDocument, downloadDocument, getDocuments, uploadDocuments } from "../controllers/credit/creditDocController";
+import { getCreditReport } from "../controllers/credit/creditReportController";
 import { getAuditLogs } from "../controllers/auditController";
 
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
@@ -131,7 +136,7 @@ import { createResume, deleteResume, downloadResumeFile, updateResume } from "..
 import {
   approveCorrection, cancelMyCorrection, createMyCorrection, getCorrections, getMyCorrections, rejectCorrection,
 } from "../controllers/hr/correctionController";
-import { companyDocUpload, companyLogoUpload, documentUpload, leaveFileUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
+import { companyDocUpload, companyLogoUpload, creditDocUpload, documentUpload, leaveFileUpload, profileUpload, receiptUpload, taskFileUpload, uniformPhotoUpload } from "../controllers/hr/hrHelpers";
 import {
   approveAdvance, cancelAdvance, cancelMyAdvance, createAdvance, createMyAdvance, deleteAdvanceRepayment, getAdvance, getAdvances, getMyAdvances,
   payAdvance, rejectAdvance, repayAdvance, unpayAdvance, updateAdvanceSchedule,
@@ -347,6 +352,21 @@ router.get("/credit/collections", getCollections);
 router.post("/credit/collection", requirePermission("creates"), createCollection);
 router.delete("/credit/collection/:id", requirePermission("deletes"), deleteCollection);
 router.get("/credit/dashboard", getDashboard);
+// ໄລຍະ 3: ຈັດຊັ້ນໜີ້ + ເງິນແຮ, ຕັດໜີ້ສູນ / ເກັບຄືນ, ປັບໂຄງສ້າງ, ເອກະສານ, ແຈ້ງເຕືອນ, ລາຍງານ
+router.get("/credit/classification", getClassification);
+router.post("/credit/classification", requirePermission("creates"), postClassification);
+router.delete("/credit/classification/:period", requirePermission("deletes"), undoClassification);
+router.post("/credit/contract/:id/writeoff", requirePermission("deletes"), writeOffContract);
+router.delete("/credit/writeoff/:id", requirePermission("deletes"), undoWriteOff);
+router.post("/credit/contract/:id/recover", requirePermission("creates"), recoverContract);
+router.post("/credit/contract/:id/restructure", requirePermission("updates"), restructureContract);
+router.delete("/credit/restructure/:id", requirePermission("deletes"), undoRestructure);
+router.get("/credit/document", getDocuments);
+router.post("/credit/document", requirePermission("creates", "updates"), creditDocUpload, uploadDocuments);
+router.get("/credit/document/download/:id", downloadDocument);
+router.delete("/credit/document/:id", requirePermission("deletes"), deleteDocument);
+router.post("/credit/notice", requirePermission("creates"), createNotice);
+router.get("/credit/report/:type", getCreditReport);
 
 // ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
 router.get("/loan/fetch", getLoans);

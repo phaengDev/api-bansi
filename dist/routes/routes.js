@@ -11,6 +11,9 @@ const menuAccess_1 = require("../middleware/menuAccess");
 const loanController_1 = require("../controllers/bansi/loanController");
 const creditController_1 = require("../controllers/credit/creditController");
 const collectionController_1 = require("../controllers/credit/collectionController");
+const riskController_1 = require("../controllers/credit/riskController");
+const creditDocController_1 = require("../controllers/credit/creditDocController");
+const creditReportController_1 = require("../controllers/credit/creditReportController");
 const auditController_1 = require("../controllers/auditController");
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
 const hideEmployeeSalary = (0, salaryAccess_1.hideSalaryFields)("basic_salary");
@@ -269,6 +272,21 @@ router.get("/credit/collections", collectionController_1.getCollections);
 router.post("/credit/collection", (0, permission_1.requirePermission)("creates"), collectionController_1.createCollection);
 router.delete("/credit/collection/:id", (0, permission_1.requirePermission)("deletes"), collectionController_1.deleteCollection);
 router.get("/credit/dashboard", collectionController_1.getDashboard);
+// ໄລຍະ 3: ຈັດຊັ້ນໜີ້ + ເງິນແຮ, ຕັດໜີ້ສູນ / ເກັບຄືນ, ປັບໂຄງສ້າງ, ເອກະສານ, ແຈ້ງເຕືອນ, ລາຍງານ
+router.get("/credit/classification", riskController_1.getClassification);
+router.post("/credit/classification", (0, permission_1.requirePermission)("creates"), riskController_1.postClassification);
+router.delete("/credit/classification/:period", (0, permission_1.requirePermission)("deletes"), riskController_1.undoClassification);
+router.post("/credit/contract/:id/writeoff", (0, permission_1.requirePermission)("deletes"), riskController_1.writeOffContract);
+router.delete("/credit/writeoff/:id", (0, permission_1.requirePermission)("deletes"), riskController_1.undoWriteOff);
+router.post("/credit/contract/:id/recover", (0, permission_1.requirePermission)("creates"), riskController_1.recoverContract);
+router.post("/credit/contract/:id/restructure", (0, permission_1.requirePermission)("updates"), riskController_1.restructureContract);
+router.delete("/credit/restructure/:id", (0, permission_1.requirePermission)("deletes"), riskController_1.undoRestructure);
+router.get("/credit/document", creditDocController_1.getDocuments);
+router.post("/credit/document", (0, permission_1.requirePermission)("creates", "updates"), hrHelpers_1.creditDocUpload, creditDocController_1.uploadDocuments);
+router.get("/credit/document/download/:id", creditDocController_1.downloadDocument);
+router.delete("/credit/document/:id", (0, permission_1.requirePermission)("deletes"), creditDocController_1.deleteDocument);
+router.post("/credit/notice", (0, permission_1.requirePermission)("creates"), creditDocController_1.createNotice);
+router.get("/credit/report/:type", creditReportController_1.getCreditReport);
 // ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
 router.get("/loan/fetch", loanController_1.getLoans);
 router.get("/loan/accrual-runs", loanController_1.getAccrualRuns);

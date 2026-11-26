@@ -172,6 +172,10 @@ const collectContract = async (req, res) => {
         const date = (0, bansiHelpers_1.toDateOnly)(body.pay_date);
         if (!date)
             throw new glCore_1.GlError("ກະລຸນາເລືອກວັນທີ");
+        if (Number(loan.close_reason) === 4)
+            throw new glCore_1.GlError("ສັນຍານີ້ຕັດເປັນໜີ້ສູນແລ້ວ — ໃຊ້ ເກັບຄືນໜີ້ສູນ");
+        if (Number(loan.close_reason) === 3)
+            throw new glCore_1.GlError("ສັນຍານີ້ຖືກປັບໂຄງສ້າງເປັນສັນຍາໃໝ່ແລ້ວ — ຮັບຊຳລະຢູ່ສັນຍາໃໝ່");
         const q = await quoteOf(loan, date, t);
         if (q.summary.closed && !(q.penalty.due > 0))
             throw new glCore_1.GlError("ສັນຍານີ້ຈ່າຍຄົບແລ້ວ");
@@ -212,6 +216,8 @@ const waivePenalty = async (req, res) => {
     const t = await database_1.default.transaction();
     try {
         const loan = await contractOf(Number(req.params.id), t, true);
+        if ([3, 4].includes(Number(loan.close_reason)))
+            throw new glCore_1.GlError("ສັນຍານີ້ປິດແລ້ວ");
         const reason = String(req.body?.reason ?? "").trim().slice(0, 255);
         if (!reason)
             throw new glCore_1.GlError("ກະລຸນາບອກເຫດຜົນທີ່ຍົກເວັ້ນ");
@@ -263,6 +269,7 @@ const getCollections = async (_req, res) => {
         const contracts = (await (0, creditController_1.contractsWithSummary)({})).filter((c) => !c.closed || c.penalty_due > 0);
         const ids = contracts.map((c) => c._uuid);
         const logs = ids.length ? await loanCredit_1.LoanCollection.findAll({ where: { loan_id: ids }, order: [["contact_date", "DESC"], ["_uuid", "DESC"]] }) : [];
+        const notices = ids.length ? await loanCredit_1.LoanNotice.findAll({ where: { loan_id: ids }, order: [["sent_at", "DESC"], ["_uuid", "DESC"]], attributes: ["loan_id", "sent_at", "channel", "notice_type"] }) : [];
         const names = await (0, creditController_1.userNames)(logs.map((l) => l.created_by));
         res.status(200).json({
             data: contracts.map((c) => {
@@ -271,6 +278,7 @@ const getCollections = async (_req, res) => {
                     ...c,
                     last_contact: last ? { ...last.get({ plain: true }), promise_amount: num(last.promise_amount), by: names.get(Number(last.created_by)) ?? null } : null,
                     contacts: logs.filter((l) => l.loan_id === c._uuid).length,
+                    last_notice: notices.find((n) => n.loan_id === c._uuid)?.sent_at ?? null,
                 };
             }),
             today: (0, journalHelpers_1.todayLao)(),

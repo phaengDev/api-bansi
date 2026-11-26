@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.agingOf = exports.AGING = exports.penaltyState = exports.PENALTY_WAIVED = exports.PENALTY_PAID = void 0;
+exports.userNames = exports.specialSummary = exports.closedSpecially = exports.agingOf = exports.AGING = exports.penaltyState = exports.PENALTY_WAIVED = exports.PENALTY_PAID = void 0;
 const loanPenalty_1 = require("../../utils/loanPenalty");
 const loanSchedule_1 = require("../../utils/loanSchedule");
+const userModel_1 = __importDefault(require("../../models/userModel"));
 /** tbl_loan_penalty.status */
 exports.PENALTY_PAID = 2;
 exports.PENALTY_WAIVED = 3;
@@ -43,3 +47,18 @@ exports.AGING = [
 ];
 const agingOf = (daysOverdue) => exports.AGING.find((b) => daysOverdue >= b.min && daysOverdue <= b.max).key;
 exports.agingOf = agingOf;
+/** ປິດແບບພິເສດ: 3 ປັບໂຄງສ້າງ (ຍອດຍ້າຍໄປສັນຍາໃໝ່), 4 ຕັດໜີ້ສູນ (ຍອດອອກຈາກປຶ້ມ) — ບໍ່ນັບເປັນໜີ້ຄ້າງອີກ */
+const closedSpecially = (loan) => [3, 4].includes(Number(loan.close_reason));
+exports.closedSpecially = closedSpecially;
+/** ສະຫຼຸບຂອງສັນຍາທີ່ປິດແບບພິເສດ: ປິດແລ້ວ, ບໍ່ມີຍອດຄ້າງ / ງວດຕໍ່ໄປ / ກາຍກຳນົດ */
+const specialSummary = (summary) => ({ ...summary, outstanding: 0, closed: true, next: null, overdue_count: 0, overdue_amount: 0 });
+exports.specialSummary = specialSummary;
+/** ຊື່ຜູ້ໃຊ້ (ຜູ້ອະນຸມັດ, ຜູ້ບັນທຶກ) ຕາມ user_uuid */
+const userNames = async (ids) => {
+    const wanted = [...new Set(ids.map(Number).filter(Boolean))];
+    if (!wanted.length)
+        return new Map();
+    const rows = (await userModel_1.default.findAll({ where: { user_uuid: wanted }, attributes: ["user_uuid", "user_name"], raw: true }));
+    return new Map(rows.map((u) => [Number(u.user_uuid), u.user_name]));
+};
+exports.userNames = userNames;

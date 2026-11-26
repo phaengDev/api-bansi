@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.splitAmount = exports.spreadOldestFirst = exports.penaltiesOf = void 0;
+exports.classOf = exports.daysOverdueAt = exports.splitAmount = exports.spreadOldestFirst = exports.penaltiesOf = void 0;
 const moment_1 = __importDefault(require("moment"));
 const loanSchedule_1 = require("./loanSchedule");
 const days = (from, to) => (0, moment_1.default)(to).diff((0, moment_1.default)(from), "days");
@@ -91,3 +91,17 @@ const splitAmount = (amount, penaltyDue, dues, decimals) => {
     return { penalty, interest: (0, loanSchedule_1.roundTo)(interest, decimals), principal: (0, loanSchedule_1.roundTo)(principal, decimals), left };
 };
 exports.splitAmount = splitAmount;
+/**
+ * ມື້ກາຍກຳນົດຂອງງວດເກົ່າສຸດທີ່ຍັງຄ້າງ ณ ວັນທີ date (ການຈ່າຍທີ່ລົງວັນທີ ≤ date) — 0 = ບໍ່ກາຍ.
+ * ໃຊ້ຈັດຊັ້ນໜີ້ທ້າຍເດືອນ ແລະ ຢຸດຄິດດອກເບ້ຍຄ້າງຂອງໜີ້ NPL
+ */
+const daysOverdueAt = (startDate, rows, payments, date) => {
+    const upTo = payments.filter((p) => p.pay_date <= date);
+    const allocated = (0, loanSchedule_1.allocatePaid)((0, loanSchedule_1.withPeriodStart)(startDate, rows), upTo.reduce((n, p) => n + p.principal, 0), upTo.reduce((n, p) => n + p.interest, 0));
+    const oldest = allocated.find((r) => !r.settled && r.due_date < date && (r.due_principal > 0.004 || r.due_interest > 0.004));
+    return oldest ? days(oldest.due_date, date) : 0;
+};
+exports.daysOverdueAt = daysOverdueAt;
+/** ເກນຈັດຊັ້ນໜີ້ (tbl_loan_class_rule) ທີ່ກົງກັບມື້ກາຍກຳນົດ — ບໍ່ພົບ = ຊັ້ນທຳອິດ */
+const classOf = (rules, daysOverdue) => rules.find((r) => daysOverdue >= Number(r.min_days) && (r.max_days === null || daysOverdue <= Number(r.max_days))) ?? rules[0];
+exports.classOf = classOf;

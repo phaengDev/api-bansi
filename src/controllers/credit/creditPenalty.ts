@@ -3,6 +3,7 @@ import type { LoanPayment } from "../../models/loan";
 import type { LoanPenalty } from "../../models/loanCredit";
 import { penaltiesOf } from "../../utils/loanPenalty";
 import { roundTo, type StoredInstallment } from "../../utils/loanSchedule";
+import Users from "../../models/userModel";
 
 /** tbl_loan_penalty.status */
 export const PENALTY_PAID = 2;
@@ -45,3 +46,18 @@ export const AGING = [
   { key: "d180", min: 181, max: Infinity },
 ] as const;
 export const agingOf = (daysOverdue: number) => AGING.find((b) => daysOverdue >= b.min && daysOverdue <= b.max)!.key;
+
+/** ປິດແບບພິເສດ: 3 ປັບໂຄງສ້າງ (ຍອດຍ້າຍໄປສັນຍາໃໝ່), 4 ຕັດໜີ້ສູນ (ຍອດອອກຈາກປຶ້ມ) — ບໍ່ນັບເປັນໜີ້ຄ້າງອີກ */
+export const closedSpecially = (loan: { close_reason?: number | null }) => [3, 4].includes(Number(loan.close_reason));
+
+/** ສະຫຼຸບຂອງສັນຍາທີ່ປິດແບບພິເສດ: ປິດແລ້ວ, ບໍ່ມີຍອດຄ້າງ / ງວດຕໍ່ໄປ / ກາຍກຳນົດ */
+export const specialSummary = <S extends { outstanding: number; closed: boolean; next: unknown; overdue_count: number; overdue_amount: number }>(summary: S): S =>
+  ({ ...summary, outstanding: 0, closed: true, next: null, overdue_count: 0, overdue_amount: 0 });
+
+/** ຊື່ຜູ້ໃຊ້ (ຜູ້ອະນຸມັດ, ຜູ້ບັນທຶກ) ຕາມ user_uuid */
+export const userNames = async (ids: (number | null | undefined)[]) => {
+  const wanted = [...new Set(ids.map(Number).filter(Boolean))];
+  if (!wanted.length) return new Map<number, string>();
+  const rows = (await Users.findAll({ where: { user_uuid: wanted }, attributes: ["user_uuid", "user_name"], raw: true })) as any[];
+  return new Map<number, string>(rows.map((u) => [Number(u.user_uuid), u.user_name]));
+};
