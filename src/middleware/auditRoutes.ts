@@ -20,6 +20,7 @@ import MainMenu from "../models/mainMenuModel";
 import CompanyDocument from "../models/companyDocument";
 import ExpenseRecurring from "../models/expenseRecurring";
 import Loan, { LoanPayment } from "../models/loan";
+import { LoanApplication, LoanCustomer, LoanPenalty, LoanProduct, LoanRestructure, LoanWriteoff } from "../models/loanCredit";
 
 /**
  * ລາຍການ route ທີ່ເກັບປະຫວັດ — ສະເພາະເລື່ອງສຳຄັນ: ແກ້ໄຂ / ຍົກເລີກ / ລຶບ ເອກະສານເງິນ, ເງິນເດືອນ, ສິດຜູ້ໃຊ້, ຕັ້ງຄ່າ.
@@ -50,13 +51,52 @@ const user = { entity: "user", load: byPk(Users), label: (r: any) => r.user_name
 const fiscal = { entity: "fiscal_year", load: byPk(FiscalYear), label: (r: any) => r.fiscal_code };
 const menuId = (req: Request) => Number(req.body?.menu_id) || null;
 
+/** route ຂອງລະບົບສິນເຊື່ອ ໃຊ້ id ເປັນຕົວເລກທຳມະດາ (ບໍ່ແມ່ນ base64) */
+const plainId = (req: Request) => Number(req.params?.id) || null;
+const contract = { entity: "credit_contract", id: plainId, load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty) };
+const application = { entity: "credit_application", id: plainId, load: byPk(LoanApplication), label: (r: any) => r.application_no };
+/** ເດືອນຂອງການຈັດຊັ້ນໜີ້ (POST body.period / DELETE :period) */
+/** ແຖວທີ່ຜູກກັບສັນຍາ (ຄ່າປັບ / ໜີ້ສູນ / ປັບໂຄງສ້າງ) + ລະຫັດ ແລະ ຊື່ສັນຍາ — ປ້າຍໃນປະຫວັດບອກວ່າແມ່ນສັນຍາໃດ */
+const withContract = (model: ModelStatic<Model>) => async (id: number | null) => {
+  const row = await byPk(model)(id);
+  if (!row) return null;
+  const loan = await Loan.findByPk(Number((row as any).loan_id), { attributes: ["loan_code", "counterparty"], raw: true }) as any;
+  return { ...row, loan_code: loan?.loan_code ?? null, counterparty: loan?.counterparty ?? null };
+};
+const periodOf = async (_id: number | null, req: Request) => ({ period: String(req.body?.period ?? req.params?.period ?? "") });
+const APP_FIELDS = ["status", "approval_level", "approved_amount", "approved_term", "approved_rate", "reject_reason"];
+
 export const AUDIT = {
-  loanUpdate: audit({ entity: "loan", action: "update", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
+  // ---- ລະບົບສິນເຊື່ອ ----
+  creditProductUpdate: audit({ entity: "credit_product", action: "update", id: plainId, load: byPk(LoanProduct), label: (r: any) => text(r.product_code, r.name_la),
+    fields: ["min_amount", "max_amount", "min_term", "max_term", "annual_rate", "method", "upfront_fee_rate", "upfront_fee_fixed", "penalty_rate", "grace_days", "max_ltv", "max_debt_ratio", "approval_levels", "status"] }),
+  creditCustomerUpdate: audit({ entity: "credit_customer", action: "update", id: plainId, load: byPk(LoanCustomer), label: (r: any) => text(r.customer_code, r.full_name),
+    fields: ["full_name", "id_no", "phone", "monthly_income", "credit_limit", "risk_level", "blacklisted", "blacklist_reason", "status"] }),
+  creditCustomerDelete: audit({ entity: "credit_customer", action: "delete", id: plainId, load: byPk(LoanCustomer), label: (r: any) => text(r.customer_code, r.full_name),
+    fields: ["full_name", "id_no", "phone"] }),
+  creditAppDecide: audit({ ...application, action: "decide", fields: APP_FIELDS }),
+  creditAppCancel: audit({ ...application, action: "cancel", fields: ["status", "note"] }),
+  creditAppDelete: audit({ ...application, action: "delete", fields: ["requested_amount", "requested_term", "status"] }),
+  creditDisburse: audit({ ...application, action: "disburse", fields: ["status", "loan_id"] }),
+  creditUndoDisburse: audit({ ...contract, action: "reverse", fields: ["principal", "start_date"] }),
+  creditCollect: audit({ ...contract, action: "collect" }),
+  creditWaive: audit({ ...contract, action: "waive" }),
+  creditUndoWaiver: audit({ entity: "credit_penalty", action: "reverse", id: plainId, load: withContract(LoanPenalty), label: (r: any) => text(r.loan_code, r.counterparty, `· #${r.installment_no}`),
+    fields: ["waived_amount", "waive_reason"] }),
+  creditWriteOff: audit({ ...contract, action: "writeoff", fields: ["closed_date", "close_reason"] }),
+  creditUndoWriteOff: audit({ entity: "credit_writeoff", action: "reverse", id: plainId, load: withContract(LoanWriteoff), label: (r: any) => text(r.loan_code, r.counterparty), fields: ["status", "principal", "reason"] }),
+  creditRecover: audit({ ...contract, action: "collect" }),
+  creditRestructure: audit({ ...contract, action: "restructure", fields: ["closed_date", "close_reason"] }),
+  creditUndoRestructure: audit({ entity: "credit_restructure", action: "reverse", id: plainId, load: withContract(LoanRestructure), label: (r: any) => text(r.loan_code, r.counterparty), fields: ["status", "old_outstanding", "reason"] }),
+  creditClassify: audit({ entity: "credit_classification", action: "classify", id: () => null, load: periodOf, label: (r: any) => r.period }),
+  creditUnclassify: audit({ entity: "credit_classification", action: "reverse", id: () => null, load: periodOf, label: (r: any) => r.period }),
+
+  loanUpdate: audit({ entity: "loan", id: plainId, action: "update", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
     fields: ["counterparty", "contract_no", "principal", "annual_rate", "method", "term", "start_date", "first_due_date", "loan_account_id", "interest_account_id"] }),
-  loanDelete: audit({ entity: "loan", action: "delete", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
+  loanDelete: audit({ entity: "loan", id: plainId, action: "delete", load: byPk(Loan), label: (r: any) => text(r.loan_code, r.counterparty),
     fields: ["counterparty", "principal", "annual_rate", "term", "start_date"] }),
-  loanPaymentCancel: audit({ entity: "loan_payment", action: "cancel", load: byPk(LoanPayment), label: (r: any) => r.number,
-    fields: ["status", "principal", "interest", "fee"] }),
+  loanPaymentCancel: audit({ entity: "loan_payment", id: plainId, action: "cancel", load: byPk(LoanPayment), label: (r: any) => r.number,
+    fields: ["status", "principal", "interest", "fee", "penalty"] }),
   incomeUpdate: audit({ ...income, action: "update", fields: INCOME_FIELDS }),
   incomeCancel: audit({ ...income, action: "cancel", fields: ["status", "balance_income"] }),
   expenseUpdate: audit({ ...expense, action: "update", fields: EXPENSE_FIELDS }),

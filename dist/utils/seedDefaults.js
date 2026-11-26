@@ -272,8 +272,14 @@ const ACCOUNT_MENUS = [
     { name_la: "ເງິນກູ້", name_en: "Loans", name_cn: "借贷款", icons: "fa-solid fa-sack-dollar", path: "/account/loans" },
     // ລະບົບສິນເຊື່ອ (2026-11-26) — ຂຶ້ນສະເພາະບໍລິສັດທີ່ເປີດ use_credit
     { name_la: "ລູກຄ້າສິນເຊື່ອ", name_en: "Borrowers", name_cn: "借款客户", icons: "fa-solid fa-address-card", path: "/credit/customers" },
-    { name_la: "ຄຳຮ້ອງ ແລະ ສັນຍາ", name_en: "Applications & contracts", name_cn: "申请与合同", icons: "fa-solid fa-file-signature", path: "/credit/contracts" },
+    { name_la: "ສັນຍາສິນເຊື່ອ", name_en: "Credit contracts", name_cn: "信贷合同", icons: "fa-solid fa-file-signature", path: "/credit/contracts" },
     { name_la: "ຕັ້ງຄ່າສິນເຊື່ອ", name_en: "Credit settings", name_cn: "信贷设置", icons: "fa-solid fa-sliders", path: "/credit/settings" },
+    // ລະບົບສິນເຊື່ອ — ແຕ່ລະສ່ວນເປັນເມນູຂອງຕົນເອງ (ໃຫ້ສິດແຍກຕາມຜູ້ໃຊ້ໄດ້: ພະນັກງານເກັບເງິນ ເຫັນແຕ່ ຕິດຕາມໜີ້ …)
+    { name_la: "ພາບລວມສິນເຊື່ອ", name_en: "Credit overview", name_cn: "信贷概览", icons: "fa-solid fa-chart-pie", path: "/credit/overview" },
+    { name_la: "ຄຳຮ້ອງຂໍກູ້", name_en: "Loan applications", name_cn: "贷款申请", icons: "fa-solid fa-file-pen", path: "/credit/applications" },
+    { name_la: "ຕິດຕາມໜີ້ ແລະ ຮັບຊຳລະ", name_en: "Collections", name_cn: "催收与收款", icons: "fa-solid fa-phone-volume", path: "/credit/collections" },
+    { name_la: "ຈັດຊັ້ນໜີ້ ແລະ ເງິນແຮ", name_en: "Classification & provisions", name_cn: "分类与拨备", icons: "fa-solid fa-layer-group", path: "/credit/classification" },
+    { name_la: "ລາຍງານສິນເຊື່ອ", name_en: "Credit reports", name_cn: "信贷报表", icons: "fa-solid fa-chart-column", path: "/credit/reports" },
 ];
 const seedDefaults = async () => {
     await ensureIndexes();
@@ -299,6 +305,8 @@ const seedDefaults = async () => {
         }
         console.log(`🌱 tbl_main_menu: ${missing.length} account menus`);
     }
+    // ຊື່ເກົ່າ "ຄຳຮ້ອງ ແລະ ສັນຍາ" → "ສັນຍາສິນເຊື່ອ" (ຄຳຮ້ອງແຍກເປັນເມນູຂອງຕົນເອງແລ້ວ) — ສະເພາະເມື່ອຍັງເປັນຊື່ເດີມ
+    await mainMenuModel_1.default.update({ name_la: "ສັນຍາສິນເຊື່ອ", name_en: "Credit contracts", name_cn: "信贷合同" }, { where: { types: 2, path: "/credit/contracts", name_la: "ຄຳຮ້ອງ ແລະ ສັນຍາ" } });
     await seedAccountingSettings();
     await (0, treasuryAcountController_1.ensureTreasuryAccountCodes)();
     await seedHrDefaults();
