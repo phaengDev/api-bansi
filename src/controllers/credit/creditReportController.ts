@@ -177,7 +177,8 @@ export const getCreditReport = async (req: Request<{ type: string }>, res: Respo
       // ຜູ້ຍົກເລີກການຊຳລະ = ຜູ້ສ້າງໃບກັບລາຍການ (reversal) ຂອງໃບຊຳລະນັ້ນ
       const originals = payments.length ? await JournalEntry.findAll({ where: { source_type: "LOAN_PAYMENT", source_id: payments.map((p) => String(p._uuid)), reversal_of: null }, attributes: ["_uuid", "source_id", "reversed_by"] }) : [];
       const reversals = originals.length ? await JournalEntry.findAll({ where: { _uuid: originals.map((e) => e.reversed_by).filter(Boolean) as number[] }, attributes: ["_uuid", "created_by", "entry_number"] }) : [];
-      const approvals = apps.length ? await LoanApproval.findAll({ where: { application_id: apps.map((a) => a._uuid) }, order: [["_uuid", "DESC"]] }) : [];
+      // ສະເພາະການຕັດສິນ (decision 1–3) — ແຖວ "ສົ່ງໃຫ້ພິຈາລະນາ" (4) ບໍ່ແມ່ນຜູ້ປະຕິເສດ
+      const approvals = apps.length ? await LoanApproval.findAll({ where: { application_id: apps.map((a) => a._uuid), decision: [1, 2, 3] }, order: [["_uuid", "DESC"]] }) : [];
       const look = await lookups([...credit.map((l) => l.customer_id), ...apps.map((a) => a.customer_id)], [], []);
       const names = await userNames([...reversals.map((r) => r.created_by), ...approvals.map((a) => a.approver_id), ...writeoffs.map((w) => w.created_by), ...restructures.map((r) => r.created_by)]);
       const loanOf = (id: number | null) => credit.find((l) => l._uuid === id);
@@ -318,7 +319,7 @@ export const getCreditReport = async (req: Request<{ type: string }>, res: Respo
     if (type === "applications") {
       const { from, to } = rangeOf(req);
       const apps = await LoanApplication.findAll({ where: { apply_date: { [Op.between]: [from, to] } }, order: [["apply_date", "DESC"], ["_uuid", "DESC"]] });
-      const approvals = apps.length ? await LoanApproval.findAll({ where: { application_id: apps.map((a) => a._uuid) }, order: [["_uuid", "ASC"]] }) : [];
+      const approvals = apps.length ? await LoanApproval.findAll({ where: { application_id: apps.map((a) => a._uuid), decision: [1, 2, 3] }, order: [["_uuid", "ASC"]] }) : [];
       const [look, names] = await Promise.all([
         lookups(apps.map((a) => a.customer_id), apps.map((a) => a.product_id), apps.map((a) => a.officer_id)),
         userNames([...approvals.map((a) => a.approver_id), ...apps.map((a) => a.created_by)]),

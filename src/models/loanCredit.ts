@@ -216,6 +216,11 @@ export class LoanApplication extends Model {
   declare loan_id: number | null;
   declare note: string | null;
   declare created_by: number | null;
+  /** ຜູ້ທີ່ຖືກສົ່ງໃຫ້ພິຈາລະນາຂັ້ນຕໍ່ໄປ (tbl_users) — null = ໃຜທີ່ມີສິດກໍ່ພິຈາລະນາໄດ້ (ຄຳຮ້ອງເກົ່າ) */
+  declare assigned_to: number | null;
+  /** ຜູ້ສົ່ງ (ປ່ຽນຄົນໄດ້) ແລະ ເວລາສົ່ງ */
+  declare assigned_by: number | null;
+  declare assigned_at: Date | null;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -250,12 +255,18 @@ LoanApplication.init(
     loan_id: DataTypes.INTEGER,
     note: DataTypes.STRING(255),
     created_by: DataTypes.INTEGER,
+    assigned_to: DataTypes.INTEGER,
+    assigned_by: DataTypes.INTEGER,
+    assigned_at: DataTypes.DATE,
     ...stamps,
   },
   { sequelize, modelName: "LoanApplication", tableName: "tbl_loan_application", timestamps: true }
 );
 
-/** 4. ປະຫວັດການອະນຸມັດ — decision 1 ອະນຸມັດ, 2 ປະຕິເສດ, 3 ສົ່ງກັບໃຫ້ແກ້ໄຂ */
+/**
+ * 4. ປະຫວັດການອະນຸມັດ — decision 1 ອະນຸມັດ, 2 ປະຕິເສດ, 3 ສົ່ງກັບໃຫ້ແກ້ໄຂ, 4 ສົ່ງໃຫ້ພິຈາລະນາ
+ * (approver_id = ຜູ້ສົ່ງ, forward_to = ຜູ້ຮັບ, forward_mode 1 ອັດຕະໂນມັດ / 2 ເລືອກເອງ)
+ */
 export class LoanApproval extends Model {
   declare _uuid: number;
   declare application_id: number;
@@ -266,6 +277,8 @@ export class LoanApproval extends Model {
   declare approved_term: number | null;
   declare approved_rate: string | null;
   declare comment: string | null;
+  declare forward_to: number | null;
+  declare forward_mode: number | null;
   declare decided_at: Date;
 }
 
@@ -280,6 +293,8 @@ LoanApproval.init(
     approved_term: DataTypes.INTEGER,
     approved_rate: DataTypes.DECIMAL(9, 4),
     comment: DataTypes.STRING(500),
+    forward_to: DataTypes.INTEGER,
+    forward_mode: DataTypes.TINYINT,
     decided_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   },
   { sequelize, modelName: "LoanApproval", tableName: "tbl_loan_approval", timestamps: false }

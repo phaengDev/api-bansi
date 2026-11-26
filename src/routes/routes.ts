@@ -10,10 +10,11 @@ import {
   cancelLoanPayment, createLoan, deleteLoan, getAccrualRuns, getLoan, getLoans, payLoan, previewAccrual, previewLoan, runAccrual, undoAccrual, updateLoan,
 } from "../controllers/bansi/loanController";
 import {
-  cancelApplication, createApplication, createCollateral, createCustomer, createProduct, decideApplication, deleteApplication, deleteCollateral,
+  cancelApplication, routeApplication, createApplication, createCollateral, createCustomer, createProduct, decideApplication, deleteApplication, deleteCollateral,
   deleteCustomer, disburseApplication, getApplication, getApplications, getContract, getContracts, getCustomer, getCustomers, getProducts,
   previewApplication, saveClassRules, undoDisbursement, updateApplication, updateCollateral, updateCustomer, updateProduct,
 } from "../controllers/credit/creditController";
+import { getRouteOptions } from "../controllers/credit/creditRouting";
 import {
   collectContract, createCollection, deleteCollection, getCollections, getDashboard, quoteContract, undoWaiver, waivePenalty,
 } from "../controllers/credit/collectionController";
@@ -338,6 +339,9 @@ router.post("/credit/application", requirePermission("creates"), createApplicati
 router.put("/credit/application/:id", requirePermission("updates"), updateApplication);
 router.post("/credit/application/:id/decide", requirePermission("updates"), AUDIT.creditAppDecide, decideApplication);
 router.post("/credit/application/:id/cancel", requirePermission("updates"), AUDIT.creditAppCancel, cancelApplication);
+// ສົ່ງໃຫ້ຜູ້ພິຈາລະນາ: ທາງເລືອກ (ອັດຕະໂນມັດ / ຄົນທີ່ຕຳແໜ່ງສູງກວ່າ) ແລະ ປ່ຽນ / ສົ່ງຕໍ່
+router.get("/credit/route-options", getRouteOptions);
+router.post("/credit/application/:id/route", requirePermission("updates"), AUDIT.creditAppRoute, routeApplication);
 router.post("/credit/application/:id/disburse", requirePermission("creates"), AUDIT.creditDisburse, disburseApplication);
 router.delete("/credit/application/:id", requirePermission("deletes"), AUDIT.creditAppDelete, deleteApplication);
 router.get("/credit/contract", getContracts);

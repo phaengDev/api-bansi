@@ -107,6 +107,7 @@ exports.AUDIT = {
         fields: ["full_name", "id_no", "phone"] }),
     creditAppDecide: (0, audit_1.audit)({ ...application, action: "decide", fields: APP_FIELDS }),
     creditAppCancel: (0, audit_1.audit)({ ...application, action: "cancel", fields: ["status", "note"] }),
+    creditAppRoute: (0, audit_1.audit)({ ...application, action: "forward", fields: ["assigned_to", "assigned_by"] }),
     creditAppDelete: (0, audit_1.audit)({ ...application, action: "delete", fields: ["requested_amount", "requested_term", "status"] }),
     creditDisburse: (0, audit_1.audit)({ ...application, action: "disburse", fields: ["status", "loan_id"] }),
     creditUndoDisburse: (0, audit_1.audit)({ ...contract, action: "reverse", fields: ["principal", "start_date"] }),

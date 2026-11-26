@@ -10,6 +10,7 @@ const recurringExpenseController_1 = require("../controllers/bansi/recurringExpe
 const menuAccess_1 = require("../middleware/menuAccess");
 const loanController_1 = require("../controllers/bansi/loanController");
 const creditController_1 = require("../controllers/credit/creditController");
+const creditRouting_1 = require("../controllers/credit/creditRouting");
 const collectionController_1 = require("../controllers/credit/collectionController");
 const riskController_1 = require("../controllers/credit/riskController");
 const creditDocController_1 = require("../controllers/credit/creditDocController");
@@ -258,6 +259,9 @@ router.post("/credit/application", (0, permission_1.requirePermission)("creates"
 router.put("/credit/application/:id", (0, permission_1.requirePermission)("updates"), creditController_1.updateApplication);
 router.post("/credit/application/:id/decide", (0, permission_1.requirePermission)("updates"), auditRoutes_1.AUDIT.creditAppDecide, creditController_1.decideApplication);
 router.post("/credit/application/:id/cancel", (0, permission_1.requirePermission)("updates"), auditRoutes_1.AUDIT.creditAppCancel, creditController_1.cancelApplication);
+// ສົ່ງໃຫ້ຜູ້ພິຈາລະນາ: ທາງເລືອກ (ອັດຕະໂນມັດ / ຄົນທີ່ຕຳແໜ່ງສູງກວ່າ) ແລະ ປ່ຽນ / ສົ່ງຕໍ່
+router.get("/credit/route-options", creditRouting_1.getRouteOptions);
+router.post("/credit/application/:id/route", (0, permission_1.requirePermission)("updates"), auditRoutes_1.AUDIT.creditAppRoute, creditController_1.routeApplication);
 router.post("/credit/application/:id/disburse", (0, permission_1.requirePermission)("creates"), auditRoutes_1.AUDIT.creditDisburse, creditController_1.disburseApplication);
 router.delete("/credit/application/:id", (0, permission_1.requirePermission)("deletes"), auditRoutes_1.AUDIT.creditAppDelete, creditController_1.deleteApplication);
 router.get("/credit/contract", creditController_1.getContracts);

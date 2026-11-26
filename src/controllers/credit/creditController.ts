@@ -9,6 +9,7 @@ import {
 import Users from "../../models/userModel";
 import MainMenu from "../../models/mainMenuModel";
 import { readMenuAccess } from "../menuController";
+import { FORWARD, assignRoute, notifyAssignee, resolveRoute } from "./creditRouting";
 import Employee from "../../models/employee";
 import { GlError, glReady, roleAccountId, round2 } from "../bansi/glCore";
 import { actorOf, toDateOnly } from "../bansi/bansiHelpers";
@@ -549,6 +550,7 @@ export const getApplications = async (_req: Request, res: Response) => {
       LoanProduct.findAll({ attributes: ["_uuid", "product_code", "name_la", "approval_levels"], raw: true }),
       Loan.findAll({ where: { application_id: { [Op.ne]: null } }, attributes: ["_uuid", "loan_code", "application_id"], raw: true }),
     ]);
+    const assignees = await userNames(apps.filter((a) => Number(a.status) === APP.PENDING).map((a) => a.assigned_to));
     res.status(200).json({
       data: apps.map((a) => {
         const c: any = customers.find((x: any) => x._uuid === a.customer_id);
@@ -557,6 +559,7 @@ export const getApplications = async (_req: Request, res: Response) => {
           customer: c ? { _uuid: c._uuid, code: c.customer_code, name: c.full_name, phone: c.phone } : null,
           product: p ? { _uuid: p._uuid, code: p.product_code, name: p.name_la, approval_levels: p.approval_levels } : null,
           loan_code: (loans as any[]).find((l) => l.application_id === a._uuid)?.loan_code ?? null,
+          assigned_name: a.assigned_to ? assignees.get(Number(a.assigned_to)) ?? null : null,
         });
       }),
       next_no: await nextNumber(LoanApplication, "application_no", "APP-"),
@@ -601,7 +604,11 @@ export const getApplication = async (req: Request<{ id: string }>, res: Response
       LoanApproval.findAll({ where: { application_id: a._uuid }, order: [["_uuid", "ASC"]] }),
       currencyMap(),
     ]);
-    const users = new Map(((await Users.findAll({ where: { user_uuid: approvals.map((x) => x.approver_id).concat(a.created_by ?? 0) }, attributes: ["user_uuid", "user_name"], raw: true })) as any[]).map((u) => [Number(u.user_uuid), u.user_name]));
+    const users = await userNames([
+      ...approvals.map((x) => x.approver_id), ...approvals.map((x) => x.forward_to), a.created_by, a.assigned_to, a.assigned_by,
+    ]);
+    const pending = Number(a.status) === APP.PENDING;
+    const lastForward = [...approvals].reverse().find((x) => Number(x.decision) === FORWARD);
     const amount = a.approved_amount !== null ? num(a.approved_amount) : num(a.requested_amount);
     const term = a.approved_term ?? a.requested_term;
     const rate = a.approved_rate !== null ? Number(a.approved_rate) : Number(a.annual_rate);
@@ -627,9 +634,15 @@ export const getApplication = async (req: Request<{ id: string }>, res: Response
         approvals: approvals.map((x) => ({
           ...x.get({ plain: true }), approved_amount: x.approved_amount === null ? null : num(x.approved_amount),
           approved_rate: x.approved_rate === null ? null : Number(x.approved_rate), approver_name: users.get(Number(x.approver_id)) ?? null,
+          forward_name: x.forward_to ? users.get(Number(x.forward_to)) ?? null : null,
         })),
         created_by_name: users.get(Number(a.created_by)) ?? null,
-        approvers: Number(a.status) === APP.PENDING ? await nextApprovers(a, approvals) : null,
+        // ລໍໃຜ: ສົ່ງໃຫ້ຄົນໃດຄົນໜຶ່ງ (assigned) ຫຼື ຄຳຮ້ອງເກົ່າທີ່ບໍ່ໄດ້ກຳນົດ → ທຸກຄົນທີ່ມີສິດ (approvers)
+        assigned: pending && a.assigned_to ? {
+          to: Number(a.assigned_to), to_name: users.get(Number(a.assigned_to)) ?? null, by: Number(a.assigned_by) || null,
+          by_name: users.get(Number(a.assigned_by)) ?? null, at: a.assigned_at, mode: lastForward ? Number(lastForward.forward_mode) || null : null,
+        } : null,
+        approvers: pending && !a.assigned_to ? await nextApprovers(a, approvals) : null,
         check: { issues: check?.issues ?? [], ltv: check?.ltv ?? null, debt_ratio: check?.debtRatio ?? null, monthly: check?.monthly ?? null, collateral_value: check?.collateralValue ?? 0 },
         schedule: schedule?.rows ?? [],
         fee: product ? feeOf(product, amount, await currencyDecimals(product.currency_id)) : 0,
@@ -690,7 +703,9 @@ export const createApplication = async (req: Request, res: Response) => {
       debt_ratio: check.debtRatio, status: submit ? APP.PENDING : APP.DRAFT, created_by: Number(actorOf(req)) || null,
     } as any, { transaction: t });
     await saveApplicationLinks(row._uuid, collateralIds, guarantors, t);
+    if (submit) await assignRoute(row, await resolveRoute(body.route, row, Number(actorOf(req)) || 0, t), 1, Number(actorOf(req)) || 0, null, t);
     await t.commit();
+    if (submit) void notifyAssignee(row, 1, Number(product.approval_levels), Number(actorOf(req)) || 0, { customer: check.customer?.full_name, amount: `₭ ${values.requested_amount.toLocaleString("en-US")}` });
     res.status(200).json({ message: "Successfully created application", data: row, issues: check.issues });
   } catch (error) {
     await t.rollback();
@@ -725,7 +740,9 @@ export const updateApplication = async (req: Request<{ id: string }>, res: Respo
       status: submit ? APP.PENDING : APP.DRAFT, updatedAt: new Date(),
     } as any, { transaction: t });
     await saveApplicationLinks(row._uuid, collateralIds, guarantors, t);
+    if (submit) await assignRoute(row, await resolveRoute(body.route, row, Number(actorOf(req)) || 0, t), 1, Number(actorOf(req)) || 0, null, t);
     await t.commit();
+    if (submit) void notifyAssignee(row, 1, Number(product.approval_levels), Number(actorOf(req)) || 0, { customer: check.customer?.full_name, amount: `₭ ${values.requested_amount.toLocaleString("en-US")}` });
     res.status(200).json({ message: "Successfully updated application", data: row, issues: check.issues });
   } catch (error) {
     await t.rollback();
@@ -746,6 +763,10 @@ export const decideApplication = async (req: Request<{ id: string }>, res: Respo
     if (Number(row.status) !== APP.PENDING) throw new GlError("ພິຈາລະນາໄດ້ສະເພາະຄຳຮ້ອງທີ່ລໍຖ້າພິຈາລະນາ");
     const actorId = Number(actorOf(req)) || 0;
     if (actorId && actorId === Number(row.created_by)) throw new GlError("ຄົນສ້າງຄຳຮ້ອງ ພິຈາລະນາຄຳຮ້ອງຂອງຕົນເອງບໍ່ໄດ້ (maker-checker)");
+    if (row.assigned_to && Number(row.assigned_to) !== actorId) {
+      const who = (await userNames([row.assigned_to])).get(Number(row.assigned_to));
+      throw new GlError(`ຄຳຮ້ອງນີ້ສົ່ງໃຫ້ ${who ?? "ຄົນອື່ນ"} ພິຈາລະນາ — ຜູ້ສົ່ງປ່ຽນຜູ້ພິຈາລະນາໄດ້`);
+    }
     const decision = Number(req.body?.decision);
     if (![DECISION.APPROVE, DECISION.REJECT, DECISION.RETURN].includes(decision as 1 | 2 | 3)) throw new GlError("ກະລຸນາເລືອກຜົນການພິຈາລະນາ");
     const comment = text(req.body?.comment, 500);
@@ -753,6 +774,7 @@ export const decideApplication = async (req: Request<{ id: string }>, res: Respo
     const level = Number(row.approval_level) + 1;
     const product = await LoanProduct.findByPk(row.product_id, { transaction: t });
     if (!product) throw new GlError("ບໍ່ພົບຜະລິດຕະພັນ");
+    let next: { level: number; levels: number; amount: number } | null = null;
 
     if (decision === DECISION.APPROVE) {
       if (await LoanApproval.count({ where: { application_id: row._uuid, approver_id: actorId, decision: DECISION.APPROVE, level: { [Op.lte]: row.approval_level } }, transaction: t })) {
@@ -771,16 +793,25 @@ export const decideApplication = async (req: Request<{ id: string }>, res: Respo
       const done = level >= Number(product.approval_levels);
       await row.update({
         approval_level: level, approved_amount: amount, approved_term: term, approved_rate: rate,
-        status: done ? APP.APPROVED : APP.PENDING, updatedAt: new Date(),
+        status: done ? APP.APPROVED : APP.PENDING, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date(),
       } as any, { transaction: t });
+      // ຍັງມີຂັ້ນຕໍ່ໄປ → ຜູ້ອະນຸມັດຂັ້ນນີ້ສົ່ງຕໍ່ (ອັດຕະໂນມັດ / ເລືອກຄົນທີ່ຕຳແໜ່ງສູງກວ່າຕົນ)
+      if (!done) {
+        await assignRoute(row, await resolveRoute(req.body?.route, row, actorId, t), level + 1, actorId, null, t);
+        next = { level: level + 1, levels: Number(product.approval_levels), amount };
+      }
     } else {
       await LoanApproval.create({ application_id: row._uuid, level, approver_id: actorId, decision, comment } as any, { transaction: t });
       await row.update(decision === DECISION.REJECT
-        ? { status: APP.REJECTED, reject_reason: comment, updatedAt: new Date() }
-        : { status: APP.DRAFT, approval_level: 0, approved_amount: null, approved_term: null, approved_rate: null, updatedAt: new Date() } as any, { transaction: t });
+        ? { status: APP.REJECTED, reject_reason: comment, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() }
+        : { status: APP.DRAFT, approval_level: 0, approved_amount: null, approved_term: null, approved_rate: null, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() } as any, { transaction: t });
       if (decision === DECISION.REJECT) await LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
     }
     await t.commit();
+    if (next) {
+      const customer = await LoanCustomer.findByPk(row.customer_id, { attributes: ["full_name"] });
+      void notifyAssignee(row, next.level, next.levels, actorId, { customer: customer?.full_name, amount: `₭ ${next.amount.toLocaleString("en-US")}` });
+    }
     res.status(200).json({ message: "Successfully recorded decision", data: { status: row.status, approval_level: row.approval_level } });
   } catch (error) {
     await t.rollback();
@@ -795,13 +826,45 @@ export const cancelApplication = async (req: Request<{ id: string }>, res: Respo
     const row = await LoanApplication.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
     if (!row) throw new GlError("ບໍ່ພົບຄຳຮ້ອງ");
     if (![APP.DRAFT, APP.PENDING, APP.APPROVED].includes(Number(row.status) as 1 | 2 | 3)) throw new GlError("ຍົກເລີກໄດ້ສະເພາະກ່ອນປ່ອຍກູ້");
-    await row.update({ status: APP.CANCELLED, note: text(req.body?.comment, 255) ?? row.note, updatedAt: new Date() }, { transaction: t });
+    await row.update({ status: APP.CANCELLED, note: text(req.body?.comment, 255) ?? row.note, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() } as any, { transaction: t });
     await LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
     await t.commit();
     res.status(200).json({ message: "Successfully cancelled application" });
   } catch (error) {
     await t.rollback();
     fail(res, error, "Error cancelling application");
+  }
+};
+
+/**
+ * POST /credit/application/:id/route { route: { mode: "auto" | "manual", to? }, comment? } — ປ່ຽນ / ສົ່ງຕໍ່ຜູ້ພິຈາລະນາຂັ້ນທີ່ລໍຢູ່.
+ * ຜູ້ສົ່ງ (assigned_by) ປ່ຽນຄົນໄດ້; ຄົນທີ່ຖືກສົ່ງໃຫ້ສົ່ງຕໍ່ໃຫ້ຄົນທີ່ຕຳແໜ່ງສູງກວ່າຕົນໄດ້; ຄຳຮ້ອງທີ່ບໍ່ໄດ້ກຳນົດຄົນ = ຜູ້ສ້າງສົ່ງໄດ້
+ */
+export const routeApplication = async (req: Request<{ id: string }>, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const row = await LoanApplication.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
+    if (!row) throw new GlError("ບໍ່ພົບຄຳຮ້ອງ");
+    if (Number(row.status) !== APP.PENDING) throw new GlError("ສົ່ງຕໍ່ໄດ້ສະເພາະຄຳຮ້ອງທີ່ລໍຖ້າພິຈາລະນາ");
+    const actorId = Number(actorOf(req)) || 0;
+    const allowed = row.assigned_to
+      ? [Number(row.assigned_by), Number(row.assigned_to)].includes(actorId)
+      : actorId === Number(row.created_by) || (await LoanApproval.count({ where: { application_id: row._uuid, approver_id: actorId, decision: DECISION.APPROVE, level: Number(row.approval_level) }, transaction: t })) > 0;
+    if (!allowed) throw new GlError("ສະເພາະຜູ້ສົ່ງ ຫຼື ຜູ້ທີ່ຖືກສົ່ງໃຫ້ ຈຶ່ງປ່ຽນຜູ້ພິຈາລະນາໄດ້");
+    const resolved = await resolveRoute(req.body?.route ?? { mode: "auto" }, row, actorId, t);
+    if (!resolved.to) throw new GlError("ກະລຸນາເລືອກຜູ້ພິຈາລະນາ");
+    if (Number(row.assigned_to) === resolved.to._uuid) throw new GlError(`ຄຳຮ້ອງນີ້ລໍ ${resolved.to.name} ຢູ່ແລ້ວ`);
+    const level = Number(row.approval_level) + 1;
+    await assignRoute(row, resolved, level, actorId, text(req.body?.comment, 500), t);
+    const product = await LoanProduct.findByPk(row.product_id, { attributes: ["approval_levels"], transaction: t });
+    await t.commit();
+    const customer = await LoanCustomer.findByPk(row.customer_id, { attributes: ["full_name"] });
+    const amount = row.approved_amount !== null ? num(row.approved_amount) : num(row.requested_amount);
+    void notifyAssignee(row, level, Number(product?.approval_levels) || level, actorId, { customer: customer?.full_name, amount: `₭ ${amount.toLocaleString("en-US")}` });
+    res.status(200).json({ message: "Successfully routed application", data: { assigned_to: resolved.to } });
+  } catch (error) {
+    await t.rollback();
+    fail(res, error, "Error routing application");
   }
 };
 
@@ -812,7 +875,8 @@ export const deleteApplication = async (req: Request<{ id: string }>, res: Respo
     const row = await LoanApplication.findByPk(Number(req.params.id), { transaction: t });
     if (!row) throw new GlError("ບໍ່ພົບຄຳຮ້ອງ");
     if (![APP.DRAFT, APP.REJECTED, APP.CANCELLED].includes(Number(row.status) as 1 | 4 | 6)) throw new GlError("ລຶບໄດ້ສະເພາະຮ່າງ / ປະຕິເສດ / ຍົກເລີກ");
-    if (await LoanApproval.count({ where: { application_id: row._uuid }, transaction: t })) throw new GlError("ມີປະຫວັດການພິຈາລະນາແລ້ວ ລຶບບໍ່ໄດ້ — ຍົກເລີກແທນ");
+    if (await LoanApproval.count({ where: { application_id: row._uuid, decision: { [Op.ne]: FORWARD } }, transaction: t })) throw new GlError("ມີປະຫວັດການພິຈາລະນາແລ້ວ ລຶບບໍ່ໄດ້ — ຍົກເລີກແທນ");
+    await LoanApproval.destroy({ where: { application_id: row._uuid, decision: FORWARD }, transaction: t });
     await LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
     await LoanGuarantor.destroy({ where: { application_id: row._uuid, loan_id: null }, transaction: t });
     await row.destroy({ transaction: t });

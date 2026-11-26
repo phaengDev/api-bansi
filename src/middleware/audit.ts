@@ -5,7 +5,7 @@ type Row = Record<string, unknown>;
 
 /** ການກະທຳທີ່ເກັບ — ບໍ່ມີ "ເພີ່ມ" (ບັນທຶກປົກກະຕິ ບໍ່ຕ້ອງເກັບປະຫວັດ) */
 export type AuditAction = "update" | "cancel" | "delete" | "reverse" | "close" | "reopen" | "pay" | "unpay" | "password" | "lock" | "unlock"
-  | "decide" | "disburse" | "collect" | "waive" | "writeoff" | "restructure" | "classify";
+  | "decide" | "disburse" | "collect" | "waive" | "writeoff" | "restructure" | "classify" | "forward";
 
 export type AuditSpec = {
   /** ປະເພດເອກະສານ (ໜ້າເວັບແປເປັນຊື່) */

@@ -139,9 +139,15 @@ LoanApplication.init({
     loan_id: sequelize_1.DataTypes.INTEGER,
     note: sequelize_1.DataTypes.STRING(255),
     created_by: sequelize_1.DataTypes.INTEGER,
+    assigned_to: sequelize_1.DataTypes.INTEGER,
+    assigned_by: sequelize_1.DataTypes.INTEGER,
+    assigned_at: sequelize_1.DataTypes.DATE,
     ...stamps,
 }, { sequelize: database_1.default, modelName: "LoanApplication", tableName: "tbl_loan_application", timestamps: true });
-/** 4. ປະຫວັດການອະນຸມັດ — decision 1 ອະນຸມັດ, 2 ປະຕິເສດ, 3 ສົ່ງກັບໃຫ້ແກ້ໄຂ */
+/**
+ * 4. ປະຫວັດການອະນຸມັດ — decision 1 ອະນຸມັດ, 2 ປະຕິເສດ, 3 ສົ່ງກັບໃຫ້ແກ້ໄຂ, 4 ສົ່ງໃຫ້ພິຈາລະນາ
+ * (approver_id = ຜູ້ສົ່ງ, forward_to = ຜູ້ຮັບ, forward_mode 1 ອັດຕະໂນມັດ / 2 ເລືອກເອງ)
+ */
 class LoanApproval extends sequelize_1.Model {
 }
 exports.LoanApproval = LoanApproval;
@@ -155,6 +161,8 @@ LoanApproval.init({
     approved_term: sequelize_1.DataTypes.INTEGER,
     approved_rate: sequelize_1.DataTypes.DECIMAL(9, 4),
     comment: sequelize_1.DataTypes.STRING(500),
+    forward_to: sequelize_1.DataTypes.INTEGER,
+    forward_mode: sequelize_1.DataTypes.TINYINT,
     decided_at: { type: sequelize_1.DataTypes.DATE, allowNull: false, defaultValue: sequelize_1.DataTypes.NOW },
 }, { sequelize: database_1.default, modelName: "LoanApproval", tableName: "tbl_loan_approval", timestamps: false });
 /** 5. ຜູ້ຄ້ຳປະກັນ — ຜູກກັບຄຳຮ້ອງ ແລະ / ຫຼື ສັນຍາ */

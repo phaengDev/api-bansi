@@ -76,6 +76,7 @@ export const AUDIT = {
     fields: ["full_name", "id_no", "phone"] }),
   creditAppDecide: audit({ ...application, action: "decide", fields: APP_FIELDS }),
   creditAppCancel: audit({ ...application, action: "cancel", fields: ["status", "note"] }),
+  creditAppRoute: audit({ ...application, action: "forward", fields: ["assigned_to", "assigned_by"] }),
   creditAppDelete: audit({ ...application, action: "delete", fields: ["requested_amount", "requested_term", "status"] }),
   creditDisburse: audit({ ...application, action: "disburse", fields: ["status", "loan_id"] }),
   creditUndoDisburse: audit({ ...contract, action: "reverse", fields: ["principal", "start_date"] }),

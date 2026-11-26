@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.contractsWithSummary = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.APP = exports.userNames = void 0;
+exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.routeApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.contractsWithSummary = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.APP = exports.userNames = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -45,6 +45,7 @@ const loanCredit_1 = require("../../models/loanCredit");
 const userModel_1 = __importDefault(require("../../models/userModel"));
 const mainMenuModel_1 = __importDefault(require("../../models/mainMenuModel"));
 const menuController_1 = require("../menuController");
+const creditRouting_1 = require("./creditRouting");
 const employee_1 = __importDefault(require("../../models/employee"));
 const glCore_1 = require("../bansi/glCore");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
@@ -607,6 +608,7 @@ const getApplications = async (_req, res) => {
             loanCredit_1.LoanProduct.findAll({ attributes: ["_uuid", "product_code", "name_la", "approval_levels"], raw: true }),
             loan_1.default.findAll({ where: { application_id: { [sequelize_1.Op.ne]: null } }, attributes: ["_uuid", "loan_code", "application_id"], raw: true }),
         ]);
+        const assignees = await (0, creditPenalty_1.userNames)(apps.filter((a) => Number(a.status) === exports.APP.PENDING).map((a) => a.assigned_to));
         res.status(200).json({
             data: apps.map((a) => {
                 const c = customers.find((x) => x._uuid === a.customer_id);
@@ -615,6 +617,7 @@ const getApplications = async (_req, res) => {
                     customer: c ? { _uuid: c._uuid, code: c.customer_code, name: c.full_name, phone: c.phone } : null,
                     product: p ? { _uuid: p._uuid, code: p.product_code, name: p.name_la, approval_levels: p.approval_levels } : null,
                     loan_code: loans.find((l) => l.application_id === a._uuid)?.loan_code ?? null,
+                    assigned_name: a.assigned_to ? assignees.get(Number(a.assigned_to)) ?? null : null,
                 });
             }),
             next_no: await nextNumber(loanCredit_1.LoanApplication, "application_no", "APP-"),
@@ -660,7 +663,11 @@ const getApplication = async (req, res) => {
             loanCredit_1.LoanApproval.findAll({ where: { application_id: a._uuid }, order: [["_uuid", "ASC"]] }),
             (0, loanController_1.currencyMap)(),
         ]);
-        const users = new Map((await userModel_1.default.findAll({ where: { user_uuid: approvals.map((x) => x.approver_id).concat(a.created_by ?? 0) }, attributes: ["user_uuid", "user_name"], raw: true })).map((u) => [Number(u.user_uuid), u.user_name]));
+        const users = await (0, creditPenalty_1.userNames)([
+            ...approvals.map((x) => x.approver_id), ...approvals.map((x) => x.forward_to), a.created_by, a.assigned_to, a.assigned_by,
+        ]);
+        const pending = Number(a.status) === exports.APP.PENDING;
+        const lastForward = [...approvals].reverse().find((x) => Number(x.decision) === creditRouting_1.FORWARD);
         const amount = a.approved_amount !== null ? num(a.approved_amount) : num(a.requested_amount);
         const term = a.approved_term ?? a.requested_term;
         const rate = a.approved_rate !== null ? Number(a.approved_rate) : Number(a.annual_rate);
@@ -687,9 +694,15 @@ const getApplication = async (req, res) => {
                 approvals: approvals.map((x) => ({
                     ...x.get({ plain: true }), approved_amount: x.approved_amount === null ? null : num(x.approved_amount),
                     approved_rate: x.approved_rate === null ? null : Number(x.approved_rate), approver_name: users.get(Number(x.approver_id)) ?? null,
+                    forward_name: x.forward_to ? users.get(Number(x.forward_to)) ?? null : null,
                 })),
                 created_by_name: users.get(Number(a.created_by)) ?? null,
-                approvers: Number(a.status) === exports.APP.PENDING ? await nextApprovers(a, approvals) : null,
+                // ລໍໃຜ: ສົ່ງໃຫ້ຄົນໃດຄົນໜຶ່ງ (assigned) ຫຼື ຄຳຮ້ອງເກົ່າທີ່ບໍ່ໄດ້ກຳນົດ → ທຸກຄົນທີ່ມີສິດ (approvers)
+                assigned: pending && a.assigned_to ? {
+                    to: Number(a.assigned_to), to_name: users.get(Number(a.assigned_to)) ?? null, by: Number(a.assigned_by) || null,
+                    by_name: users.get(Number(a.assigned_by)) ?? null, at: a.assigned_at, mode: lastForward ? Number(lastForward.forward_mode) || null : null,
+                } : null,
+                approvers: pending && !a.assigned_to ? await nextApprovers(a, approvals) : null,
                 check: { issues: check?.issues ?? [], ltv: check?.ltv ?? null, debt_ratio: check?.debtRatio ?? null, monthly: check?.monthly ?? null, collateral_value: check?.collateralValue ?? 0 },
                 schedule: schedule?.rows ?? [],
                 fee: product ? feeOf(product, amount, await (0, loanController_1.currencyDecimals)(product.currency_id)) : 0,
@@ -751,7 +764,11 @@ const createApplication = async (req, res) => {
             debt_ratio: check.debtRatio, status: submit ? exports.APP.PENDING : exports.APP.DRAFT, created_by: Number((0, bansiHelpers_1.actorOf)(req)) || null,
         }, { transaction: t });
         await saveApplicationLinks(row._uuid, collateralIds, guarantors, t);
+        if (submit)
+            await (0, creditRouting_1.assignRoute)(row, await (0, creditRouting_1.resolveRoute)(body.route, row, Number((0, bansiHelpers_1.actorOf)(req)) || 0, t), 1, Number((0, bansiHelpers_1.actorOf)(req)) || 0, null, t);
         await t.commit();
+        if (submit)
+            void (0, creditRouting_1.notifyAssignee)(row, 1, Number(product.approval_levels), Number((0, bansiHelpers_1.actorOf)(req)) || 0, { customer: check.customer?.full_name, amount: `₭ ${values.requested_amount.toLocaleString("en-US")}` });
         res.status(200).json({ message: "Successfully created application", data: row, issues: check.issues });
     }
     catch (error) {
@@ -790,7 +807,11 @@ const updateApplication = async (req, res) => {
             status: submit ? exports.APP.PENDING : exports.APP.DRAFT, updatedAt: new Date(),
         }, { transaction: t });
         await saveApplicationLinks(row._uuid, collateralIds, guarantors, t);
+        if (submit)
+            await (0, creditRouting_1.assignRoute)(row, await (0, creditRouting_1.resolveRoute)(body.route, row, Number((0, bansiHelpers_1.actorOf)(req)) || 0, t), 1, Number((0, bansiHelpers_1.actorOf)(req)) || 0, null, t);
         await t.commit();
+        if (submit)
+            void (0, creditRouting_1.notifyAssignee)(row, 1, Number(product.approval_levels), Number((0, bansiHelpers_1.actorOf)(req)) || 0, { customer: check.customer?.full_name, amount: `₭ ${values.requested_amount.toLocaleString("en-US")}` });
         res.status(200).json({ message: "Successfully updated application", data: row, issues: check.issues });
     }
     catch (error) {
@@ -815,6 +836,10 @@ const decideApplication = async (req, res) => {
         const actorId = Number((0, bansiHelpers_1.actorOf)(req)) || 0;
         if (actorId && actorId === Number(row.created_by))
             throw new glCore_1.GlError("ຄົນສ້າງຄຳຮ້ອງ ພິຈາລະນາຄຳຮ້ອງຂອງຕົນເອງບໍ່ໄດ້ (maker-checker)");
+        if (row.assigned_to && Number(row.assigned_to) !== actorId) {
+            const who = (await (0, creditPenalty_1.userNames)([row.assigned_to])).get(Number(row.assigned_to));
+            throw new glCore_1.GlError(`ຄຳຮ້ອງນີ້ສົ່ງໃຫ້ ${who ?? "ຄົນອື່ນ"} ພິຈາລະນາ — ຜູ້ສົ່ງປ່ຽນຜູ້ພິຈາລະນາໄດ້`);
+        }
         const decision = Number(req.body?.decision);
         if (![DECISION.APPROVE, DECISION.REJECT, DECISION.RETURN].includes(decision))
             throw new glCore_1.GlError("ກະລຸນາເລືອກຜົນການພິຈາລະນາ");
@@ -825,6 +850,7 @@ const decideApplication = async (req, res) => {
         const product = await loanCredit_1.LoanProduct.findByPk(row.product_id, { transaction: t });
         if (!product)
             throw new glCore_1.GlError("ບໍ່ພົບຜະລິດຕະພັນ");
+        let next = null;
         if (decision === DECISION.APPROVE) {
             if (await loanCredit_1.LoanApproval.count({ where: { application_id: row._uuid, approver_id: actorId, decision: DECISION.APPROVE, level: { [sequelize_1.Op.lte]: row.approval_level } }, transaction: t })) {
                 throw new glCore_1.GlError("ທ່ານອະນຸມັດຂັ້ນກ່ອນແລ້ວ — ຂັ້ນຕໍ່ໄປຕ້ອງເປັນຄົນອື່ນ");
@@ -843,18 +869,27 @@ const decideApplication = async (req, res) => {
             const done = level >= Number(product.approval_levels);
             await row.update({
                 approval_level: level, approved_amount: amount, approved_term: term, approved_rate: rate,
-                status: done ? exports.APP.APPROVED : exports.APP.PENDING, updatedAt: new Date(),
+                status: done ? exports.APP.APPROVED : exports.APP.PENDING, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date(),
             }, { transaction: t });
+            // ຍັງມີຂັ້ນຕໍ່ໄປ → ຜູ້ອະນຸມັດຂັ້ນນີ້ສົ່ງຕໍ່ (ອັດຕະໂນມັດ / ເລືອກຄົນທີ່ຕຳແໜ່ງສູງກວ່າຕົນ)
+            if (!done) {
+                await (0, creditRouting_1.assignRoute)(row, await (0, creditRouting_1.resolveRoute)(req.body?.route, row, actorId, t), level + 1, actorId, null, t);
+                next = { level: level + 1, levels: Number(product.approval_levels), amount };
+            }
         }
         else {
             await loanCredit_1.LoanApproval.create({ application_id: row._uuid, level, approver_id: actorId, decision, comment }, { transaction: t });
             await row.update(decision === DECISION.REJECT
-                ? { status: exports.APP.REJECTED, reject_reason: comment, updatedAt: new Date() }
-                : { status: exports.APP.DRAFT, approval_level: 0, approved_amount: null, approved_term: null, approved_rate: null, updatedAt: new Date() }, { transaction: t });
+                ? { status: exports.APP.REJECTED, reject_reason: comment, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() }
+                : { status: exports.APP.DRAFT, approval_level: 0, approved_amount: null, approved_term: null, approved_rate: null, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() }, { transaction: t });
             if (decision === DECISION.REJECT)
                 await loanCredit_1.LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
         }
         await t.commit();
+        if (next) {
+            const customer = await loanCredit_1.LoanCustomer.findByPk(row.customer_id, { attributes: ["full_name"] });
+            void (0, creditRouting_1.notifyAssignee)(row, next.level, next.levels, actorId, { customer: customer?.full_name, amount: `₭ ${next.amount.toLocaleString("en-US")}` });
+        }
         res.status(200).json({ message: "Successfully recorded decision", data: { status: row.status, approval_level: row.approval_level } });
     }
     catch (error) {
@@ -872,7 +907,7 @@ const cancelApplication = async (req, res) => {
             throw new glCore_1.GlError("ບໍ່ພົບຄຳຮ້ອງ");
         if (![exports.APP.DRAFT, exports.APP.PENDING, exports.APP.APPROVED].includes(Number(row.status)))
             throw new glCore_1.GlError("ຍົກເລີກໄດ້ສະເພາະກ່ອນປ່ອຍກູ້");
-        await row.update({ status: exports.APP.CANCELLED, note: text(req.body?.comment, 255) ?? row.note, updatedAt: new Date() }, { transaction: t });
+        await row.update({ status: exports.APP.CANCELLED, note: text(req.body?.comment, 255) ?? row.note, assigned_to: null, assigned_by: null, assigned_at: null, updatedAt: new Date() }, { transaction: t });
         await loanCredit_1.LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
         await t.commit();
         res.status(200).json({ message: "Successfully cancelled application" });
@@ -883,6 +918,44 @@ const cancelApplication = async (req, res) => {
     }
 };
 exports.cancelApplication = cancelApplication;
+/**
+ * POST /credit/application/:id/route { route: { mode: "auto" | "manual", to? }, comment? } — ປ່ຽນ / ສົ່ງຕໍ່ຜູ້ພິຈາລະນາຂັ້ນທີ່ລໍຢູ່.
+ * ຜູ້ສົ່ງ (assigned_by) ປ່ຽນຄົນໄດ້; ຄົນທີ່ຖືກສົ່ງໃຫ້ສົ່ງຕໍ່ໃຫ້ຄົນທີ່ຕຳແໜ່ງສູງກວ່າຕົນໄດ້; ຄຳຮ້ອງທີ່ບໍ່ໄດ້ກຳນົດຄົນ = ຜູ້ສ້າງສົ່ງໄດ້
+ */
+const routeApplication = async (req, res) => {
+    const t = await database_1.default.transaction();
+    try {
+        const row = await loanCredit_1.LoanApplication.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
+        if (!row)
+            throw new glCore_1.GlError("ບໍ່ພົບຄຳຮ້ອງ");
+        if (Number(row.status) !== exports.APP.PENDING)
+            throw new glCore_1.GlError("ສົ່ງຕໍ່ໄດ້ສະເພາະຄຳຮ້ອງທີ່ລໍຖ້າພິຈາລະນາ");
+        const actorId = Number((0, bansiHelpers_1.actorOf)(req)) || 0;
+        const allowed = row.assigned_to
+            ? [Number(row.assigned_by), Number(row.assigned_to)].includes(actorId)
+            : actorId === Number(row.created_by) || (await loanCredit_1.LoanApproval.count({ where: { application_id: row._uuid, approver_id: actorId, decision: DECISION.APPROVE, level: Number(row.approval_level) }, transaction: t })) > 0;
+        if (!allowed)
+            throw new glCore_1.GlError("ສະເພາະຜູ້ສົ່ງ ຫຼື ຜູ້ທີ່ຖືກສົ່ງໃຫ້ ຈຶ່ງປ່ຽນຜູ້ພິຈາລະນາໄດ້");
+        const resolved = await (0, creditRouting_1.resolveRoute)(req.body?.route ?? { mode: "auto" }, row, actorId, t);
+        if (!resolved.to)
+            throw new glCore_1.GlError("ກະລຸນາເລືອກຜູ້ພິຈາລະນາ");
+        if (Number(row.assigned_to) === resolved.to._uuid)
+            throw new glCore_1.GlError(`ຄຳຮ້ອງນີ້ລໍ ${resolved.to.name} ຢູ່ແລ້ວ`);
+        const level = Number(row.approval_level) + 1;
+        await (0, creditRouting_1.assignRoute)(row, resolved, level, actorId, text(req.body?.comment, 500), t);
+        const product = await loanCredit_1.LoanProduct.findByPk(row.product_id, { attributes: ["approval_levels"], transaction: t });
+        await t.commit();
+        const customer = await loanCredit_1.LoanCustomer.findByPk(row.customer_id, { attributes: ["full_name"] });
+        const amount = row.approved_amount !== null ? num(row.approved_amount) : num(row.requested_amount);
+        void (0, creditRouting_1.notifyAssignee)(row, level, Number(product?.approval_levels) || level, actorId, { customer: customer?.full_name, amount: `₭ ${amount.toLocaleString("en-US")}` });
+        res.status(200).json({ message: "Successfully routed application", data: { assigned_to: resolved.to } });
+    }
+    catch (error) {
+        await t.rollback();
+        (0, loanController_1.fail)(res, error, "Error routing application");
+    }
+};
+exports.routeApplication = routeApplication;
 /** DELETE /credit/application/:id — ສະເພາະຮ່າງ / ປະຕິເສດ / ຍົກເລີກ ທີ່ບໍ່ມີປະຫວັດອະນຸມັດ */
 const deleteApplication = async (req, res) => {
     const t = await database_1.default.transaction();
@@ -892,8 +965,9 @@ const deleteApplication = async (req, res) => {
             throw new glCore_1.GlError("ບໍ່ພົບຄຳຮ້ອງ");
         if (![exports.APP.DRAFT, exports.APP.REJECTED, exports.APP.CANCELLED].includes(Number(row.status)))
             throw new glCore_1.GlError("ລຶບໄດ້ສະເພາະຮ່າງ / ປະຕິເສດ / ຍົກເລີກ");
-        if (await loanCredit_1.LoanApproval.count({ where: { application_id: row._uuid }, transaction: t }))
+        if (await loanCredit_1.LoanApproval.count({ where: { application_id: row._uuid, decision: { [sequelize_1.Op.ne]: creditRouting_1.FORWARD } }, transaction: t }))
             throw new glCore_1.GlError("ມີປະຫວັດການພິຈາລະນາແລ້ວ ລຶບບໍ່ໄດ້ — ຍົກເລີກແທນ");
+        await loanCredit_1.LoanApproval.destroy({ where: { application_id: row._uuid, decision: creditRouting_1.FORWARD }, transaction: t });
         await loanCredit_1.LoanCollateral.update({ application_id: null }, { where: { application_id: row._uuid }, transaction: t });
         await loanCredit_1.LoanGuarantor.destroy({ where: { application_id: row._uuid, loan_id: null }, transaction: t });
         await row.destroy({ transaction: t });
