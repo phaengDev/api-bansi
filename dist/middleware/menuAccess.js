@@ -21,7 +21,7 @@ const hasMenu = async (req, path) => {
     const allowed = (0, menuController_1.readMenuAccess)(user.menu_access);
     if (!allowed)
         return true;
-    const menu = await mainMenuModel_1.default.findOne({ where: { types: 2, path }, attributes: ["_uuid"] });
+    const menu = await mainMenuModel_1.default.findOne({ where: { types: 2, path }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
     return !menu || allowed.includes(Number(menu._uuid));
 };
 exports.hasMenu = hasMenu;

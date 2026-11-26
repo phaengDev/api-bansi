@@ -12,7 +12,20 @@ const userModel_1 = __importDefault(require("../models/userModel"));
  */
 /** ເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ — ມີໜ້າຜູ້ໃຊ້ລະບົບ, ຖອນອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກ) */
 exports.USER_ADMIN_MENU_PATH = "/hr";
-const activeMenus = () => mainMenuModel_1.default.scope("withPassword").findAll({ where: { status: 1, types: 2 }, order: [["_uuid", "ASC"]] });
+/**
+ * ເມນູທີ່ເປີດໃຊ້ — path ດຽວກັນຫຼາຍແຖວ (seed ເຮັດພ້ອມກັນສອງ process) ເອົາແຖວທຳອິດ (_uuid ນ້ອຍສຸດ)
+ * ບໍ່ໃຫ້ desktop ມີໄອຄອນຊ້ຳ ແລະ ຟອມສິດເຂົ້າເມນູ ມີຊ່ອງຊ້ຳ
+ */
+const activeMenus = async () => {
+    const menus = await mainMenuModel_1.default.scope("withPassword").findAll({ where: { status: 1, types: 2 }, order: [["_uuid", "ASC"]] });
+    const seen = new Set();
+    return menus.filter((menu) => {
+        if (seen.has(menu.path))
+            return false;
+        seen.add(menu.path);
+        return true;
+    });
+};
 const present = (menu) => {
     const { password, ...rest } = menu.get({ plain: true });
     return { ...rest, locked: !!password };
@@ -39,7 +52,7 @@ const parseMenuAccess = async (input) => {
         return { value: null, ids: null };
     if (!Array.isArray(input))
         return { error: "ຮູບແບບເມນູບໍ່ຖືກຕ້ອງ" };
-    const menus = await mainMenuModel_1.default.findAll({ where: { status: 1, types: 2 }, attributes: ["_uuid"], raw: true });
+    const menus = await activeMenus();
     const valid = new Set(menus.map((m) => Number(m._uuid)));
     const ids = [...new Set(input.map(Number))].filter((id) => valid.has(id)).sort((a, b) => a - b);
     if (!ids.length)
@@ -51,7 +64,7 @@ const parseMenuAccess = async (input) => {
 exports.parseMenuAccess = parseMenuAccess;
 /** _uuid ຂອງເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ (null = ບໍ່ມີແຖວນີ້) */
 const userAdminMenuId = async () => {
-    const row = await mainMenuModel_1.default.findOne({ where: { types: 2, path: exports.USER_ADMIN_MENU_PATH }, attributes: ["_uuid"] });
+    const row = await mainMenuModel_1.default.findOne({ where: { types: 2, path: exports.USER_ADMIN_MENU_PATH }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
     return row ? Number(row._uuid) : null;
 };
 exports.userAdminMenuId = userAdminMenuId;

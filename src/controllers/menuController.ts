@@ -10,8 +10,19 @@ import Users from "../models/userModel";
 /** ເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ — ມີໜ້າຜູ້ໃຊ້ລະບົບ, ຖອນອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກ) */
 export const USER_ADMIN_MENU_PATH = "/hr";
 
-const activeMenus = () =>
-  MainMenu.scope("withPassword").findAll({ where: { status: 1, types: 2 }, order: [["_uuid", "ASC"]] });
+/**
+ * ເມນູທີ່ເປີດໃຊ້ — path ດຽວກັນຫຼາຍແຖວ (seed ເຮັດພ້ອມກັນສອງ process) ເອົາແຖວທຳອິດ (_uuid ນ້ອຍສຸດ)
+ * ບໍ່ໃຫ້ desktop ມີໄອຄອນຊ້ຳ ແລະ ຟອມສິດເຂົ້າເມນູ ມີຊ່ອງຊ້ຳ
+ */
+const activeMenus = async () => {
+  const menus = await MainMenu.scope("withPassword").findAll({ where: { status: 1, types: 2 }, order: [["_uuid", "ASC"]] });
+  const seen = new Set<string>();
+  return menus.filter((menu) => {
+    if (seen.has(menu.path)) return false;
+    seen.add(menu.path);
+    return true;
+  });
+};
 
 const present = (menu: MainMenu) => {
   const { password, ...rest } = menu.get({ plain: true });
@@ -38,7 +49,7 @@ export const parseMenuAccess = async (
 ): Promise<{ value: string | null; ids: number[] | null } | { error: string }> => {
   if (input === null) return { value: null, ids: null };
   if (!Array.isArray(input)) return { error: "ຮູບແບບເມນູບໍ່ຖືກຕ້ອງ" };
-  const menus = await MainMenu.findAll({ where: { status: 1, types: 2 }, attributes: ["_uuid"], raw: true });
+  const menus = await activeMenus();
   const valid = new Set(menus.map((m) => Number(m._uuid)));
   const ids = [...new Set(input.map(Number))].filter((id) => valid.has(id)).sort((a, b) => a - b);
   if (!ids.length) return { error: "ກະລຸນາເລືອກຢ່າງໜ້ອຍ 1 ເມນູ" };
@@ -48,7 +59,7 @@ export const parseMenuAccess = async (
 
 /** _uuid ຂອງເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ (null = ບໍ່ມີແຖວນີ້) */
 export const userAdminMenuId = async () => {
-  const row = await MainMenu.findOne({ where: { types: 2, path: USER_ADMIN_MENU_PATH }, attributes: ["_uuid"] });
+  const row = await MainMenu.findOne({ where: { types: 2, path: USER_ADMIN_MENU_PATH }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
   return row ? Number(row._uuid) : null;
 };
 

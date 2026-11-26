@@ -14,7 +14,7 @@ export const hasMenu = async (req: Request, path: string) => {
   if (!user || Number(user.status) !== 1) return false;
   const allowed = readMenuAccess(user.menu_access);
   if (!allowed) return true;
-  const menu = await MainMenu.findOne({ where: { types: 2, path }, attributes: ["_uuid"] });
+  const menu = await MainMenu.findOne({ where: { types: 2, path }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
   return !menu || allowed.includes(Number(menu._uuid));
 };
 
