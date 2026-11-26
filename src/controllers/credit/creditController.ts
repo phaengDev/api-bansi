@@ -7,6 +7,8 @@ import {
   LoanApplication, LoanApproval, LoanClassRule, LoanCollateral, LoanCollection, LoanCustomer, LoanGuarantor, LoanNotice, LoanPenalty, LoanProduct,
 } from "../../models/loanCredit";
 import Users from "../../models/userModel";
+import MainMenu from "../../models/mainMenuModel";
+import { readMenuAccess } from "../menuController";
 import Employee from "../../models/employee";
 import { GlError, glReady, roleAccountId, round2 } from "../bansi/glCore";
 import { actorOf, toDateOnly } from "../bansi/bansiHelpers";
@@ -565,6 +567,28 @@ export const getApplications = async (_req: Request, res: Response) => {
 };
 
 /** GET /credit/application/:id — ຄຳຮ້ອງ + ລູກຄ້າ + ຜະລິດຕະພັນ + ຕາຕະລາງຕົວຢ່າງ + ຫຼັກຊັບ + ຜູ້ຄ້ຳ + ປະຫວັດອະນຸມັດ + ຜົນກວດ */
+/**
+ * ຜູ້ທີ່ພິຈາລະນາຂັ້ນຕໍ່ໄປໄດ້ (ສະແດງໃນຄຳຮ້ອງ ໃຫ້ຮູ້ວ່າລໍໃຜ — decide ກວດສິດເອງ): ຜູ້ໃຊ້ທີ່ເປີດໃຊ້ ແລະ ມີສິດແກ້ໄຂ,
+ * ບໍ່ແມ່ນຄົນສ້າງ, ບໍ່ແມ່ນຄົນທີ່ອະນຸມັດຂັ້ນກ່ອນໃນຮອບນີ້ (maker-checker), ແລະ ເຂົ້າເມນູ ຄຳຮ້ອງຂໍກູ້ ໄດ້ (menu_access)
+ */
+const nextApprovers = async (a: LoanApplication, approvals: LoanApproval[]) => {
+  const excluded = new Set<number>([
+    Number(a.created_by) || 0,
+    ...approvals.filter((x) => Number(x.decision) === DECISION.APPROVE && Number(x.level) <= Number(a.approval_level)).map((x) => Number(x.approver_id)),
+  ]);
+  const [menu, users] = await Promise.all([
+    MainMenu.findOne({ where: { types: 2, path: "/credit/applications" }, attributes: ["_uuid"] }),
+    Users.findAll({ where: { status: 1, updates: 1 }, attributes: ["user_uuid", "user_name", "menu_access"], order: [["user_name", "ASC"]] }),
+  ]);
+  return users
+    .filter((u) => !excluded.has(Number(u.user_uuid)))
+    .filter((u) => {
+      const allowed = readMenuAccess(u.menu_access);
+      return !allowed || !menu || allowed.includes(Number(menu._uuid));
+    })
+    .map((u) => ({ _uuid: Number(u.user_uuid), name: u.user_name }));
+};
+
 export const getApplication = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const a = await LoanApplication.findByPk(Number(req.params.id));
@@ -605,6 +629,7 @@ export const getApplication = async (req: Request<{ id: string }>, res: Response
           approved_rate: x.approved_rate === null ? null : Number(x.approved_rate), approver_name: users.get(Number(x.approver_id)) ?? null,
         })),
         created_by_name: users.get(Number(a.created_by)) ?? null,
+        approvers: Number(a.status) === APP.PENDING ? await nextApprovers(a, approvals) : null,
         check: { issues: check?.issues ?? [], ltv: check?.ltv ?? null, debt_ratio: check?.debtRatio ?? null, monthly: check?.monthly ?? null, collateral_value: check?.collateralValue ?? 0 },
         schedule: schedule?.rows ?? [],
         fee: product ? feeOf(product, amount, await currencyDecimals(product.currency_id)) : 0,

@@ -43,6 +43,8 @@ const database_1 = __importDefault(require("../../config/database"));
 const loan_1 = __importStar(require("../../models/loan"));
 const loanCredit_1 = require("../../models/loanCredit");
 const userModel_1 = __importDefault(require("../../models/userModel"));
+const mainMenuModel_1 = __importDefault(require("../../models/mainMenuModel"));
+const menuController_1 = require("../menuController");
 const employee_1 = __importDefault(require("../../models/employee"));
 const glCore_1 = require("../bansi/glCore");
 const bansiHelpers_1 = require("../bansi/bansiHelpers");
@@ -624,6 +626,27 @@ const getApplications = async (_req, res) => {
 };
 exports.getApplications = getApplications;
 /** GET /credit/application/:id — ຄຳຮ້ອງ + ລູກຄ້າ + ຜະລິດຕະພັນ + ຕາຕະລາງຕົວຢ່າງ + ຫຼັກຊັບ + ຜູ້ຄ້ຳ + ປະຫວັດອະນຸມັດ + ຜົນກວດ */
+/**
+ * ຜູ້ທີ່ພິຈາລະນາຂັ້ນຕໍ່ໄປໄດ້ (ສະແດງໃນຄຳຮ້ອງ ໃຫ້ຮູ້ວ່າລໍໃຜ — decide ກວດສິດເອງ): ຜູ້ໃຊ້ທີ່ເປີດໃຊ້ ແລະ ມີສິດແກ້ໄຂ,
+ * ບໍ່ແມ່ນຄົນສ້າງ, ບໍ່ແມ່ນຄົນທີ່ອະນຸມັດຂັ້ນກ່ອນໃນຮອບນີ້ (maker-checker), ແລະ ເຂົ້າເມນູ ຄຳຮ້ອງຂໍກູ້ ໄດ້ (menu_access)
+ */
+const nextApprovers = async (a, approvals) => {
+    const excluded = new Set([
+        Number(a.created_by) || 0,
+        ...approvals.filter((x) => Number(x.decision) === DECISION.APPROVE && Number(x.level) <= Number(a.approval_level)).map((x) => Number(x.approver_id)),
+    ]);
+    const [menu, users] = await Promise.all([
+        mainMenuModel_1.default.findOne({ where: { types: 2, path: "/credit/applications" }, attributes: ["_uuid"] }),
+        userModel_1.default.findAll({ where: { status: 1, updates: 1 }, attributes: ["user_uuid", "user_name", "menu_access"], order: [["user_name", "ASC"]] }),
+    ]);
+    return users
+        .filter((u) => !excluded.has(Number(u.user_uuid)))
+        .filter((u) => {
+        const allowed = (0, menuController_1.readMenuAccess)(u.menu_access);
+        return !allowed || !menu || allowed.includes(Number(menu._uuid));
+    })
+        .map((u) => ({ _uuid: Number(u.user_uuid), name: u.user_name }));
+};
 const getApplication = async (req, res) => {
     try {
         const a = await loanCredit_1.LoanApplication.findByPk(Number(req.params.id));
@@ -666,6 +689,7 @@ const getApplication = async (req, res) => {
                     approved_rate: x.approved_rate === null ? null : Number(x.approved_rate), approver_name: users.get(Number(x.approver_id)) ?? null,
                 })),
                 created_by_name: users.get(Number(a.created_by)) ?? null,
+                approvers: Number(a.status) === exports.APP.PENDING ? await nextApprovers(a, approvals) : null,
                 check: { issues: check?.issues ?? [], ltv: check?.ltv ?? null, debt_ratio: check?.debtRatio ?? null, monthly: check?.monthly ?? null, collateral_value: check?.collateralValue ?? 0 },
                 schedule: schedule?.rows ?? [],
                 fee: product ? feeOf(product, amount, await (0, loanController_1.currencyDecimals)(product.currency_id)) : 0,
