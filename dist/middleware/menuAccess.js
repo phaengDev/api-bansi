@@ -19,7 +19,7 @@ const hasMenu = async (req, path) => {
     if (!user || Number(user.status) !== 1)
         return false;
     const allowed = (0, menuController_1.readMenuAccess)(user.menu_access);
-    if (!allowed)
+    if (!allowed || menuController_1.ALWAYS_ON_PATHS.includes(path))
         return true;
     const menu = await mainMenuModel_1.default.findOne({ where: { types: 2, path }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
     return !menu || allowed.includes(Number(menu._uuid));

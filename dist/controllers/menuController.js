@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllMainMenus = exports.getMainMenus = exports.userAdminMenuId = exports.parseMenuAccess = exports.readMenuAccess = exports.USER_ADMIN_MENU_PATH = void 0;
+exports.getAllMainMenus = exports.getMainMenus = exports.userAdminMenuId = exports.parseMenuAccess = exports.readMenuAccess = exports.USER_ADMIN_MENU_PATH = exports.ALWAYS_ON_PATHS = void 0;
 const mainMenuModel_1 = __importDefault(require("../models/mainMenuModel"));
 const userModel_1 = __importDefault(require("../models/userModel"));
 /**
  * ເມນູໜ້າ desktop ບັນຊີ (tbl_main_menu types 2) ແລະ ສິດເຂົ້າເມນູຂອງແຕ່ລະບັນຊີ (tbl_users.menu_access:
  * JSON array ຂອງ _uuid, NULL = ທຸກເມນູ). ບໍ່ສົ່ງ hash ລະຫັດເມນູອອກໄປ — ສົ່ງແຕ່ locked
  */
+/** ເມນູທີ່ທຸກບັນຊີໄດ້ສະເໝີ ບໍ່ຢູ່ໃນການຕິກສິດ — ປະຕິທິນ (ວັນທີລາວ ບໍ່ມີຂໍ້ມູນຂອງບໍລິສັດ) */
+exports.ALWAYS_ON_PATHS = ["/calendar"];
 /** ເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ — ມີໜ້າຜູ້ໃຊ້ລະບົບ, ຖອນອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກ) */
 exports.USER_ADMIN_MENU_PATH = "/hr";
 /**
@@ -52,7 +54,8 @@ const parseMenuAccess = async (input) => {
         return { value: null, ids: null };
     if (!Array.isArray(input))
         return { error: "ຮູບແບບເມນູບໍ່ຖືກຕ້ອງ" };
-    const menus = await activeMenus();
+    // ເມນູທີ່ໄດ້ສະເໝີ (ປະຕິທິນ) ບໍ່ນັບ — ຕິກຄົບທຸກເມນູທີ່ເຫຼືອ = NULL
+    const menus = (await activeMenus()).filter((m) => !exports.ALWAYS_ON_PATHS.includes(m.path));
     const valid = new Set(menus.map((m) => Number(m._uuid)));
     const ids = [...new Set(input.map(Number))].filter((id) => valid.has(id)).sort((a, b) => a - b);
     if (!ids.length)
@@ -77,7 +80,7 @@ const getMainMenus = async (req, res) => {
         const user = await userModel_1.default.findByPk(Number(req.user?.sub), { attributes: ["user_uuid", "menu_access"] });
         const allowed = (0, exports.readMenuAccess)(user?.menu_access);
         const menus = await activeMenus();
-        const data = (allowed ? menus.filter((menu) => allowed.includes(Number(menu._uuid))) : menus).map(present);
+        const data = (allowed ? menus.filter((menu) => allowed.includes(Number(menu._uuid)) || exports.ALWAYS_ON_PATHS.includes(menu.path)) : menus).map(present);
         res.status(200).json({ data, all: !allowed });
     }
     catch (error) {

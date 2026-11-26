@@ -7,6 +7,9 @@ import Users from "../models/userModel";
  * JSON array ຂອງ _uuid, NULL = ທຸກເມນູ). ບໍ່ສົ່ງ hash ລະຫັດເມນູອອກໄປ — ສົ່ງແຕ່ locked
  */
 
+/** ເມນູທີ່ທຸກບັນຊີໄດ້ສະເໝີ ບໍ່ຢູ່ໃນການຕິກສິດ — ປະຕິທິນ (ວັນທີລາວ ບໍ່ມີຂໍ້ມູນຂອງບໍລິສັດ) */
+export const ALWAYS_ON_PATHS = ["/calendar"];
+
 /** ເມນູ ຕັ້ງຄ່າຂໍ້ມູນພື້ນຖານ — ມີໜ້າຜູ້ໃຊ້ລະບົບ, ຖອນອອກຈາກບັນຊີຂອງຕົນເອງບໍ່ໄດ້ (ກັນລັອກຕົວເອງອອກ) */
 export const USER_ADMIN_MENU_PATH = "/hr";
 
@@ -49,7 +52,8 @@ export const parseMenuAccess = async (
 ): Promise<{ value: string | null; ids: number[] | null } | { error: string }> => {
   if (input === null) return { value: null, ids: null };
   if (!Array.isArray(input)) return { error: "ຮູບແບບເມນູບໍ່ຖືກຕ້ອງ" };
-  const menus = await activeMenus();
+  // ເມນູທີ່ໄດ້ສະເໝີ (ປະຕິທິນ) ບໍ່ນັບ — ຕິກຄົບທຸກເມນູທີ່ເຫຼືອ = NULL
+  const menus = (await activeMenus()).filter((m) => !ALWAYS_ON_PATHS.includes(m.path));
   const valid = new Set(menus.map((m) => Number(m._uuid)));
   const ids = [...new Set(input.map(Number))].filter((id) => valid.has(id)).sort((a, b) => a - b);
   if (!ids.length) return { error: "ກະລຸນາເລືອກຢ່າງໜ້ອຍ 1 ເມນູ" };
@@ -72,7 +76,7 @@ export const getMainMenus = async (req: Request, res: Response) => {
     const user = await Users.findByPk(Number(req.user?.sub), { attributes: ["user_uuid", "menu_access"] });
     const allowed = readMenuAccess(user?.menu_access);
     const menus = await activeMenus();
-    const data = (allowed ? menus.filter((menu) => allowed.includes(Number(menu._uuid))) : menus).map(present);
+    const data = (allowed ? menus.filter((menu) => allowed.includes(Number(menu._uuid)) || ALWAYS_ON_PATHS.includes(menu.path)) : menus).map(present);
     res.status(200).json({ data, all: !allowed });
   } catch (error) {
     console.error("GET MAIN MENUS ERROR:", error);

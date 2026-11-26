@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import MainMenu from "../models/mainMenuModel";
 import Users from "../models/userModel";
-import { readMenuAccess } from "../controllers/menuController";
+import { ALWAYS_ON_PATHS, readMenuAccess } from "../controllers/menuController";
 import { EMPLOYEE_TOKEN } from "./auth";
 
 /**
@@ -13,7 +13,7 @@ export const hasMenu = async (req: Request, path: string) => {
   const user = await Users.findByPk(Number(req.user?.sub), { attributes: ["user_uuid", "status", "menu_access"] });
   if (!user || Number(user.status) !== 1) return false;
   const allowed = readMenuAccess(user.menu_access);
-  if (!allowed) return true;
+  if (!allowed || ALWAYS_ON_PATHS.includes(path)) return true;
   const menu = await MainMenu.findOne({ where: { types: 2, path }, attributes: ["_uuid"], order: [["_uuid", "ASC"]] });
   return !menu || allowed.includes(Number(menu._uuid));
 };
