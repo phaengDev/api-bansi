@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.APP = void 0;
+exports.getContract = exports.getContracts = exports.undoDisbursement = exports.disburseApplication = exports.previewApplication = exports.deleteApplication = exports.cancelApplication = exports.decideApplication = exports.updateApplication = exports.createApplication = exports.getApplication = exports.getApplications = exports.deleteCollateral = exports.updateCollateral = exports.createCollateral = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomer = exports.getCustomers = exports.contractsWithSummary = exports.saveClassRules = exports.updateProduct = exports.createProduct = exports.getProducts = exports.userNames = exports.APP = void 0;
 const sequelize_1 = require("sequelize");
 const moment_1 = __importDefault(require("moment"));
 const database_1 = __importDefault(require("../../config/database"));
@@ -50,6 +50,7 @@ const journalHelpers_1 = require("../bansi/journalHelpers");
 const hrHelpers_1 = require("../hr/hrHelpers");
 const loanController_1 = require("../bansi/loanController");
 const loanSchedule_1 = require("../../utils/loanSchedule");
+const creditPenalty_1 = require("./creditPenalty");
 /**
  * ລະບົບສິນເຊື່ອ (sql/credit_system.sql): ຜະລິດຕະພັນ, ລູກຄ້າ (KYC), ຫຼັກຊັບ, ຄຳຮ້ອງ → ອະນຸມັດ (ຫຼາຍຂັ້ນ, maker-checker) → ປ່ອຍກູ້.
  * ປ່ອຍກູ້ = ສ້າງສັນຍາ tbl_loan (direction 2, CR-000001) ຈາກເງື່ອນໄຂທີ່ອະນຸມັດ → ຕາຕະລາງຜ່ອນ / ການຊຳລະ / ດອກເບ້ຍຄ້າງ / ລົງບັນຊີ
@@ -76,6 +77,15 @@ const nextNumber = async (model, field, prefix, t) => {
     const max = rows.reduce((n, r) => Math.max(n, Number(String(r[field]).slice(prefix.length)) || 0), 0);
     return `${prefix}${String(max + 1).padStart(6, "0")}`;
 };
+/** ຊື່ຜູ້ໃຊ້ (ຜູ້ອະນຸມັດ, ຜູ້ບັນທຶກ) ຕາມ user_uuid */
+const userNames = async (ids) => {
+    const wanted = [...new Set(ids.map(Number).filter(Boolean))];
+    if (!wanted.length)
+        return new Map();
+    const rows = (await userModel_1.default.findAll({ where: { user_uuid: wanted }, attributes: ["user_uuid", "user_name"], raw: true }));
+    return new Map(rows.map((u) => [Number(u.user_uuid), u.user_name]));
+};
+exports.userNames = userNames;
 // ================= ຜະລິດຕະພັນ
 const presentProduct = (p) => ({
     ...p.get({ plain: true }),
@@ -260,7 +270,7 @@ const assertUniqueId = async (idNo, exceptId) => {
     if (other)
         throw new glCore_1.GlError(`ເລກບັດ ${idNo} ມີແລ້ວ: ${other.customer_code} ${other.full_name}`);
 };
-/** ສັນຍາສິນເຊື່ອ (tbl_loan) ພ້ອມສະຫຼຸບ */
+/** ສັນຍາສິນເຊື່ອ (tbl_loan) ພ້ອມສະຫຼຸບ + ຄ່າປັບຄ້າງ ແລະ ມື້ກາຍກຳນົດ (ຮອດມື້ນີ້) — ໃຊ້ຮ່ວມ: ລາຍການສັນຍາ, ລູກຄ້າ, ຕິດຕາມໜີ້, ພາບລວມ */
 const contractsWithSummary = async (where) => {
     const [loans, currencies] = await Promise.all([
         loan_1.default.findAll({ where: { direction: loanController_1.LENT, customer_id: { [sequelize_1.Op.ne]: null }, ...where }, order: [["_uuid", "DESC"]] }),
@@ -269,32 +279,40 @@ const contractsWithSummary = async (where) => {
     if (!loans.length)
         return [];
     const ids = loans.map((l) => l._uuid);
-    const [installments, payments, products, customers] = await Promise.all([
+    const today = (0, journalHelpers_1.todayLao)();
+    const [installments, payments, products, customers, ledger] = await Promise.all([
         loan_1.LoanInstallment.findAll({ where: { loan_id: ids }, order: [["loan_id", "ASC"], ["no", "ASC"]] }),
         loan_1.LoanPayment.findAll({ where: { loan_id: ids, status: ACTIVE } }),
         loanCredit_1.LoanProduct.findAll({ attributes: ["_uuid", "product_code", "name_la"], raw: true }),
         loanCredit_1.LoanCustomer.findAll({ where: { _uuid: [...new Set(loans.map((l) => l.customer_id))] }, attributes: ["_uuid", "customer_code", "full_name", "phone"], raw: true }),
+        loanCredit_1.LoanPenalty.findAll({ where: { loan_id: ids } }),
     ]);
     return loans.map((loan) => {
         const stored = installments.filter((r) => r.loan_id === loan._uuid).map((r) => ({
             no: r.no, due_date: String(r.due_date), principal: num(r.principal), interest: num(r.interest), settled: Number(r.settled) === 1,
         }));
-        const { summary } = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(payments.filter((p) => p.loan_id === loan._uuid)));
+        const paid = payments.filter((p) => p.loan_id === loan._uuid);
+        const { summary } = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(paid));
         const product = products.find((p) => p._uuid === loan.product_id);
         const customer = customers.find((c) => c._uuid === loan.customer_id);
+        const penalty = (0, creditPenalty_1.penaltyState)(loan, stored, paid, ledger.filter((x) => x.loan_id === loan._uuid), today, (0, loanSchedule_1.decimalsOf)(currencies.get(Number(loan.currency_id))?.name));
+        const daysOverdue = summary.closed ? 0 : penalty.days_overdue;
         return {
             ...(0, loanController_1.presentLoan)(loan, currencies), ...summary, upfront_fee: num(loan.upfront_fee),
+            paid_penalty: (0, glCore_1.round2)(paid.reduce((n, p) => n + num(p.penalty), 0)),
+            penalty_due: penalty.due, days_overdue: daysOverdue, aging: (0, creditPenalty_1.agingOf)(daysOverdue),
             product: product ? { _uuid: product._uuid, code: product.product_code, name: product.name_la } : null,
             customer: customer ? { _uuid: customer._uuid, code: customer.customer_code, name: customer.full_name, phone: customer.phone } : null,
         };
     });
 };
+exports.contractsWithSummary = contractsWithSummary;
 /** GET /credit/customer — ລູກຄ້າ + ສັນຍາທີ່ຍັງຜ່ອນ, ຍອດຄົງເຫຼືອ, ກາຍກຳນົດ, ຄຳຮ້ອງທີ່ຄ້າງ */
 const getCustomers = async (_req, res) => {
     try {
         const [customers, loans, pending] = await Promise.all([
             loanCredit_1.LoanCustomer.findAll({ include: [hrHelpers_1.districtInclude], order: [["_uuid", "DESC"]] }),
-            contractsWithSummary({}),
+            (0, exports.contractsWithSummary)({}),
             loanCredit_1.LoanApplication.findAll({ where: { status: [exports.APP.DRAFT, exports.APP.PENDING, exports.APP.APPROVED] }, attributes: ["customer_id"], raw: true }),
         ]);
         res.status(200).json({
@@ -324,7 +342,7 @@ const getCustomer = async (req, res) => {
         if (!c)
             throw new glCore_1.GlError("ບໍ່ພົບລູກຄ້າ");
         const [loans, applications, collaterals, guaranteeing] = await Promise.all([
-            contractsWithSummary({ customer_id: c._uuid }),
+            (0, exports.contractsWithSummary)({ customer_id: c._uuid }),
             loanCredit_1.LoanApplication.findAll({ where: { customer_id: c._uuid }, order: [["_uuid", "DESC"]] }),
             loanCredit_1.LoanCollateral.findAll({ where: { customer_id: c._uuid }, order: [["status", "ASC"], ["_uuid", "DESC"]] }),
             loanCredit_1.LoanGuarantor.findAll({ where: { customer_id: c._uuid }, attributes: ["application_id", "loan_id"], raw: true }),
@@ -534,7 +552,7 @@ const checkApplication = async (app, strict, t) => {
         issues.push(`ຈຳນວນງວດຂອງ ${product.name_la}: ${product.min_term} – ${product.max_term}`);
     // ວົງເງິນຂອງລູກຄ້າ = ຍອດຄ້າງຂອງສັນຍາທີ່ຍັງເປີດ + ຍອດນີ້
     if (num(customer.credit_limit) > 0) {
-        const open = (await contractsWithSummary({ customer_id: customer._uuid })).filter((l) => !l.closed);
+        const open = (await (0, exports.contractsWithSummary)({ customer_id: customer._uuid })).filter((l) => !l.closed);
         const exposure = (0, glCore_1.round2)(open.reduce((n, l) => n + l.outstanding, 0) + app.amount);
         if (exposure > num(customer.credit_limit) + 0.004) {
             issues.push(`ເກີນວົງເງິນຂອງລູກຄ້າ (${num(customer.credit_limit).toLocaleString("en-US")}) — ລວມຍອດຄ້າງ ${exposure.toLocaleString("en-US")}`);
@@ -989,7 +1007,7 @@ const getContracts = async (_req, res) => {
     try {
         if (!(await (0, glCore_1.glReady)()))
             throw new glCore_1.GlError("ຍັງບໍ່ໄດ້ເປີດໃຊ້ລະບົບບັນຊີຄູ່");
-        res.status(200).json({ data: await contractsWithSummary({}) });
+        res.status(200).json({ data: await (0, exports.contractsWithSummary)({}) });
     }
     catch (error) {
         (0, loanController_1.fail)(res, error, "Error getting contracts");
@@ -1011,13 +1029,33 @@ const getContract = async (req, res) => {
             loan_1.LoanPayment.findAll({ where: { loan_id: loan._uuid }, order: [["pay_date", "DESC"], ["_uuid", "DESC"]] }),
             loan.officer_id ? employee_1.default.findByPk(loan.officer_id, { attributes: ["_uuid", "first_name", "last_name"] }) : null,
         ]);
-        const { rows, summary } = (0, loanController_1.summarize)(loan, await (0, loanController_1.installmentsOf)(loan._uuid), (0, loanController_1.paymentsOf)(payments.filter((p) => Number(p.status) === ACTIVE)));
+        const stored = await (0, loanController_1.installmentsOf)(loan._uuid);
+        const active = payments.filter((p) => Number(p.status) === ACTIVE);
+        const { rows, summary } = (0, loanController_1.summarize)(loan, stored, (0, loanController_1.paymentsOf)(active));
         const app = loan.application_id ? await loanCredit_1.LoanApplication.findByPk(loan.application_id, { attributes: ["_uuid", "application_no"] }) : null;
         const { treasury, payments: paymentRows } = await (0, loanController_1.presentPayments)(loan, payments);
+        const [ledger, logs] = await Promise.all([
+            loanCredit_1.LoanPenalty.findAll({ where: { loan_id: loan._uuid }, order: [["_uuid", "DESC"]] }),
+            loanCredit_1.LoanCollection.findAll({ where: { loan_id: loan._uuid }, order: [["contact_date", "DESC"], ["_uuid", "DESC"]] }),
+        ]);
+        const penalty = (0, creditPenalty_1.penaltyState)(loan, stored, active, ledger, (0, journalHelpers_1.todayLao)(), (0, loanSchedule_1.decimalsOf)(currencies.get(Number(loan.currency_id))?.name));
+        const names = await (0, exports.userNames)([...ledger.map((x) => x.waived_by), ...logs.map((x) => x.created_by)]);
+        // ຍອດຄົງເຫຼືອຫຼັງແຕ່ລະການຊຳລະ (ໃບຮັບເງິນ) — ຕາມລຳດັບວັນທີ
+        let balance = num(loan.principal) - stored.filter((r) => r.settled).reduce((n, r) => n + r.principal, 0);
+        const after = new Map();
+        [...active].sort((a, b) => String(a.pay_date).localeCompare(String(b.pay_date)) || a._uuid - b._uuid).forEach((p) => {
+            balance = (0, glCore_1.round2)(balance - num(p.principal));
+            after.set(p._uuid, Math.max(0, balance));
+        });
         res.status(200).json({
             data: {
                 ...(0, loanController_1.presentLoan)(loan, currencies), ...summary,
                 treasury, upfront_fee: num(loan.upfront_fee), penalty_rate: Number(loan.penalty_rate),
+                penalty: { ...penalty, days_overdue: summary.closed ? 0 : penalty.days_overdue },
+                waivers: ledger.filter((x) => Number(x.status) === creditPenalty_1.PENALTY_WAIVED).map((x) => ({
+                    _uuid: x._uuid, installment_no: x.installment_no, date: x.calc_date, amount: num(x.waived_amount), reason: x.waive_reason, by: names.get(Number(x.waived_by)) ?? null,
+                })),
+                collections: logs.map((x) => ({ ...x.get({ plain: true }), promise_amount: num(x.promise_amount), by: names.get(Number(x.created_by)) ?? null })),
                 customer: customer && { ...customer.get({ plain: true }), monthly_income: num(customer.monthly_income) },
                 product: product && presentProduct(product),
                 officer: officer ? [officer.first_name, officer.last_name].filter(Boolean).join(" ") : null,
@@ -1025,8 +1063,8 @@ const getContract = async (req, res) => {
                 collaterals: collaterals.map((c) => ({ ...c.get({ plain: true }), market_value: num(c.market_value), appraised_value: num(c.appraised_value) })),
                 guarantors: guarantors.map((g) => ({ ...g.get({ plain: true }), monthly_income: num(g.monthly_income) })),
                 schedule: rows,
-                payments: paymentRows,
-                locked: payments.some((p) => Number(p.status) === ACTIVE) || (await loan_1.LoanAccrual.count({ where: { loan_id: loan._uuid } })) > 0,
+                payments: paymentRows.map((p) => ({ ...p, balance_after: after.get(p._uuid) ?? null })),
+                locked: active.length > 0 || (await loan_1.LoanAccrual.count({ where: { loan_id: loan._uuid } })) > 0,
             },
         });
     }

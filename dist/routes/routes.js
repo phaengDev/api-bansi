@@ -10,6 +10,7 @@ const recurringExpenseController_1 = require("../controllers/bansi/recurringExpe
 const menuAccess_1 = require("../middleware/menuAccess");
 const loanController_1 = require("../controllers/bansi/loanController");
 const creditController_1 = require("../controllers/credit/creditController");
+const collectionController_1 = require("../controllers/credit/collectionController");
 const auditController_1 = require("../controllers/auditController");
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
 const hideEmployeeSalary = (0, salaryAccess_1.hideSalaryFields)("basic_salary");
@@ -259,6 +260,15 @@ router.delete("/credit/application/:id", (0, permission_1.requirePermission)("de
 router.get("/credit/contract", creditController_1.getContracts);
 router.get("/credit/contract/:id", creditController_1.getContract);
 router.post("/credit/contract/:id/undo-disburse", (0, permission_1.requirePermission)("deletes"), creditController_1.undoDisbursement);
+// ຮັບຊຳລະ (ຄ່າປັບ → ດອກເບ້ຍ → ຕົ້ນທຶນ), ຍົກເວັ້ນຄ່າປັບ, ຕິດຕາມໜີ້, ພາບລວມ
+router.post("/credit/contract/:id/quote", collectionController_1.quoteContract);
+router.post("/credit/contract/:id/collect", (0, permission_1.requirePermission)("creates"), collectionController_1.collectContract);
+router.post("/credit/contract/:id/waive", (0, permission_1.requirePermission)("updates"), collectionController_1.waivePenalty);
+router.delete("/credit/penalty/:id", (0, permission_1.requirePermission)("deletes"), collectionController_1.undoWaiver);
+router.get("/credit/collections", collectionController_1.getCollections);
+router.post("/credit/collection", (0, permission_1.requirePermission)("creates"), collectionController_1.createCollection);
+router.delete("/credit/collection/:id", (0, permission_1.requirePermission)("deletes"), collectionController_1.deleteCollection);
+router.get("/credit/dashboard", collectionController_1.getDashboard);
 // ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
 router.get("/loan/fetch", loanController_1.getLoans);
 router.get("/loan/accrual-runs", loanController_1.getAccrualRuns);

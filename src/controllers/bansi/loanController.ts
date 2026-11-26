@@ -3,7 +3,7 @@ import { Op, QueryTypes, Transaction } from "sequelize";
 import moment from "moment";
 import sequelize from "../../config/database";
 import Loan, { LoanAccrual, LoanInstallment, LoanPayment } from "../../models/loan";
-import { LoanProduct } from "../../models/loanCredit";
+import { LoanPenalty, LoanProduct } from "../../models/loanCredit";
 import ChartAccount from "../../models/chartAccount";
 import JournalEntry from "../../models/journalEntry";
 import TreasuryAccount from "../../models/treasuryAcount";
@@ -510,10 +510,91 @@ export const deleteLoan = async (req: Request<{ id: string }>, res: Response) =>
 
 // ================= ການຈ່າຍ / ຮັບຄືນ
 
+export type PaymentInput = {
+  date: string;
+  treasuryId: number;
+  principal: number;
+  interest: number;
+  fee: number;
+  /** ຄ່າປັບກາຍກຳນົດ (ສັນຍາສິນເຊື່ອ) */
+  penalty?: number;
+  /** 1 ຕາມງວດ, 2 ຈ່າຍລ່ວງໜ້າບາງສ່ວນ, 3 ປິດບັນຊີກ່ອນກຳນົດ */
+  paymentType?: number;
+  reference?: string | null;
+  note?: string | null;
+};
+
 /**
- * POST /loan/pay/:id { pay_date, treasury_account_id, principal, interest, fee?, reference?, note? } —
- * ຈ່າຍຄືນ (ເງິນກູ້ຢືມ) / ຮັບຄືນ (ເງິນໃຫ້ກູ້). ຕົ້ນທຶນບໍ່ເກີນຍອດຄົງເຫຼືອ; ຍອດທີ່ຈ່າຍຕັດໃສ່ງວດເກົ່າສຸດກ່ອນ
+ * ບັນທຶກການຈ່າຍ/ຮັບຄືນ (ໃຊ້ຮ່ວມ: POST /loan/pay ແລະ ຮັບຊຳລະສັນຍາສິນເຊື່ອ) — ກວດວັນທີ / ຍອດ, ເງິນເຂົ້າ-ອອກບັນຊີເງິນຄັງ,
+ * ລົງບັນຊີ (ຕົ້ນທຶນ, ດອກເບ້ຍ, ຄ່າທຳນຽມ, ຄ່າປັບ). ເອີ້ນພາຍໃນ transaction ທີ່ລັອກເງິນກູ້ແລ້ວ
  */
+export const recordLoanPayment = async (loan: Loan, input: PaymentInput, t: Transaction, actorId: number | null) => {
+  const date = input.date;
+  if (!date) throw new GlError("ກະລຸນາເລືອກວັນທີ");
+  if (date > todayLao()) throw new GlError("ວັນທີຕ້ອງບໍ່ເກີນມື້ນີ້");
+  if (date < bookedOn(loan)) throw new GlError(`ວັນທີຕ້ອງບໍ່ກ່ອນ ${moment(bookedOn(loan)).format("DD/MM/YYYY")} (ວັນທີເງິນກູ້ເຂົ້າບັນຊີ)`);
+  // ປັດຕາມສະກຸນ (ກີບ = ຈຳນວນເຕັມ) — ຍອດບັນຊີເງິນຄັງເກັບເປັນຈຳນວນເຕັມ
+  const decimals = await currencyDecimals(loan.currency_id, t);
+  const principal = roundTo(Number(input.principal) || 0, decimals);
+  const interest = roundTo(Number(input.interest) || 0, decimals);
+  const fee = roundTo(Number(input.fee) || 0, decimals);
+  const penalty = roundTo(Number(input.penalty) || 0, decimals);
+  if (principal < 0 || interest < 0 || fee < 0 || penalty < 0) throw new GlError("ຈຳນວນເງິນຕ້ອງບໍ່ຕິດລົບ");
+  const total = round2(principal + interest + fee + penalty);
+  if (!(total > 0)) throw new GlError("ກະລຸນາປ້ອນຈຳນວນເງິນ");
+  const stored = await installmentsOf(loan._uuid, t);
+  const active = await LoanPayment.findAll({ where: { loan_id: loan._uuid, status: ACTIVE }, transaction: t });
+  const { summary } = summarize(loan, stored, paymentsOf(active));
+  if (principal > summary.outstanding + 0.004) {
+    throw new GlError(`ຕົ້ນທຶນເກີນຍອດຄົງເຫຼືອ (${summary.outstanding.toLocaleString("en-US")})`);
+  }
+
+  const borrowed = isBorrowed(loan);
+  const account = await lockTreasury(Number(input.treasuryId), loan.currency_id, t);
+  if (borrowed) takeOut(account, total);
+  const row = await LoanPayment.create({
+    loan_id: loan._uuid, pay_date: date, treasury_account_id: account._uuid, principal, interest, fee, penalty,
+    payment_type: [1, 2, 3].includes(Number(input.paymentType)) ? Number(input.paymentType) : 1,
+    reference: String(input.reference ?? "").trim().slice(0, 100) || null,
+    note: String(input.note ?? "").trim().slice(0, 255) || null,
+    status: ACTIVE, created_by: actorId,
+  } as any, { transaction: t });
+  const number = `LNP-${moment(date).format("YYYYMM")}-${String(row._uuid).padStart(4, "0")}`;
+  await row.update({ number }, { transaction: t });
+
+  const rate = await rateOf(loan.currency_id, date, t);
+  const cash = await treasurySide(account._uuid, date, t);
+  const common = { currencyId: loan.currency_id, rate };
+  const label = `${loan.loan_code} ${loan.counterparty}`;
+  const sideOf = (lineIsLoanSide: boolean) => (borrowed === lineIsLoanSide ? DEBIT : CREDIT);
+  const product = loan.product_id ? await LoanProduct.findByPk(loan.product_id, { transaction: t }) : null;
+  const lines: DraftLine[] = [
+    { ...common, accountId: loan.loan_account_id, side: sideOf(true), amount: principal, description: `${label} · ຕົ້ນທຶນ` },
+    {
+      ...common, side: sideOf(true), amount: interest, description: `${label} · ດອກເບ້ຍ`,
+      accountId: loan.interest_account_id ?? (await roleAccountId(borrowed ? "INTEREST_EXPENSE" : "INTEREST_INCOME", t)),
+    },
+  ];
+  if (fee > 0) {
+    // ສັນຍາສິນເຊື່ອ: ຄ່າທຳນຽມ (ປິດກ່ອນກຳນົດ) → ບັນຊີຄ່າທຳນຽມຂອງຜະລິດຕະພັນ / 4230
+    const feeAccount = borrowed ? await roleAccountId("LOAN_FEE_EXPENSE", t)
+      : loan.customer_id ? product?.fee_account_id ?? (await roleAccountId("CREDIT_FEE_INCOME", t)) : await roleAccountId("LOAN_FEE_INCOME", t);
+    lines.push({ ...common, accountId: feeAccount, side: sideOf(true), amount: fee, description: `${label} · ຄ່າທຳນຽມ` });
+  }
+  if (penalty > 0) {
+    const penaltyAccount = borrowed ? await roleAccountId("LOAN_FEE_EXPENSE", t) : product?.penalty_account_id ?? (await roleAccountId("CREDIT_PENALTY_INCOME", t));
+    lines.push({ ...common, accountId: penaltyAccount, side: sideOf(true), amount: penalty, description: `${label} · ຄ່າປັບກາຍກຳນົດ` });
+  }
+  lines.push({ accountId: cash.accountId, side: sideOf(false), amount: total, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: account._uuid });
+  const description = `${borrowed ? "ຈ່າຍຄືນເງິນກູ້" : "ຮັບຄືນເງິນໃຫ້ກູ້"} ${label}${row.reference ? ` (${row.reference})` : ""}`;
+  await postEntry({ date, sourceType: "LOAN_PAYMENT", sourceId: row._uuid, reference: number, description, lines, actorId }, t);
+  await moveBalance(account, {
+    direction: borrowed ? MOVE_OUT : MOVE_IN, amount: total, source: "LOAN_PAYMENT", sourceId: row._uuid, docNumber: number, date, description, actorId,
+  }, t);
+  return { row, number, total };
+};
+
+/** POST /loan/pay/:id — ຈ່າຍ/ຮັບຄືນ ເງິນກູ້ທົ່ວໄປ (ສັນຍາສິນເຊື່ອ ຮັບຊຳລະຢູ່ /credit/contract/:id/collect — ຄ່າປັບຕ້ອງຕັດກ່ອນ) */
 export const payLoan = async (req: Request<{ id: string }>, res: Response) => {
   const t = await sequelize.transaction();
   try {
@@ -523,60 +604,12 @@ export const payLoan = async (req: Request<{ id: string }>, res: Response) => {
     }
     const loan = await Loan.findByPk(Number(req.params.id), { transaction: t, lock: t.LOCK.UPDATE });
     if (!loan) throw new GlError("ບໍ່ພົບເງິນກູ້");
+    if (loan.customer_id) throw new GlError("ນີ້ແມ່ນສັນຍາສິນເຊື່ອ — ຮັບຊຳລະຢູ່ ຄຳຮ້ອງ ແລະ ສັນຍາ");
     const body = req.body ?? {};
-    const date = toDateOnly(body.pay_date);
-    if (!date) throw new GlError("ກະລຸນາເລືອກວັນທີ");
-    if (date > todayLao()) throw new GlError("ວັນທີຕ້ອງບໍ່ເກີນມື້ນີ້");
-    if (date < bookedOn(loan)) throw new GlError(`ວັນທີຕ້ອງບໍ່ກ່ອນ ${moment(bookedOn(loan)).format("DD/MM/YYYY")} (ວັນທີເງິນກູ້ເຂົ້າບັນຊີ)`);
-    // ປັດຕາມສະກຸນ (ກີບ = ຈຳນວນເຕັມ) — ຍອດບັນຊີເງິນຄັງເກັບເປັນຈຳນວນເຕັມ
-    const decimals = await currencyDecimals(loan.currency_id, t);
-    const principal = roundTo(Number(body.principal) || 0, decimals);
-    const interest = roundTo(Number(body.interest) || 0, decimals);
-    const fee = roundTo(Number(body.fee) || 0, decimals);
-    if (principal < 0 || interest < 0 || fee < 0) throw new GlError("ຈຳນວນເງິນຕ້ອງບໍ່ຕິດລົບ");
-    const total = round2(principal + interest + fee);
-    if (!(total > 0)) throw new GlError("ກະລຸນາປ້ອນຈຳນວນເງິນ");
-    const stored = await installmentsOf(loan._uuid, t);
-    const active = await LoanPayment.findAll({ where: { loan_id: loan._uuid, status: ACTIVE }, transaction: t });
-    const { summary } = summarize(loan, stored, paymentsOf(active));
-    if (principal > summary.outstanding + 0.004) {
-      throw new GlError(`ຕົ້ນທຶນເກີນຍອດຄົງເຫຼືອ (${summary.outstanding.toLocaleString("en-US")})`);
-    }
-
-    const borrowed = isBorrowed(loan);
-    const account = await lockTreasury(Number(body.treasury_account_id), loan.currency_id, t);
-    if (borrowed) takeOut(account, total);
-    const actorId = Number(actorOf(req)) || null;
-    const row = await LoanPayment.create({
-      loan_id: loan._uuid, pay_date: date, treasury_account_id: account._uuid, principal, interest, fee,
-      reference: String(body.reference ?? "").trim().slice(0, 100) || null,
-      note: String(body.note ?? "").trim().slice(0, 255) || null,
-      status: ACTIVE, created_by: actorId,
-    } as any, { transaction: t });
-    const number = `LNP-${moment(date).format("YYYYMM")}-${String(row._uuid).padStart(4, "0")}`;
-    await row.update({ number }, { transaction: t });
-
-    const rate = await rateOf(loan.currency_id, date, t);
-    const cash = await treasurySide(account._uuid, date, t);
-    const common = { currencyId: loan.currency_id, rate };
-    const label = `${loan.loan_code} ${loan.counterparty}`;
-    const sideOf = (lineIsLoanSide: boolean) => (borrowed === lineIsLoanSide ? DEBIT : CREDIT);
-    const lines: DraftLine[] = [
-      { ...common, accountId: loan.loan_account_id, side: sideOf(true), amount: principal, description: `${label} · ຕົ້ນທຶນ` },
-      {
-        ...common, side: sideOf(true), amount: interest, description: `${label} · ດອກເບ້ຍ`,
-        accountId: loan.interest_account_id ?? (await roleAccountId(borrowed ? "INTEREST_EXPENSE" : "INTEREST_INCOME", t)),
-      },
-    ];
-    if (fee > 0) {
-      lines.push({ ...common, accountId: await roleAccountId(borrowed ? "LOAN_FEE_EXPENSE" : "LOAN_FEE_INCOME", t), side: sideOf(true), amount: fee, description: `${label} · ຄ່າທຳນຽມ/ຄ່າປັບ` });
-    }
-    lines.push({ accountId: cash.accountId, side: sideOf(false), amount: total, currencyId: cash.currencyId, rate: cash.rate, treasuryAccountId: account._uuid });
-    const description = `${borrowed ? "ຈ່າຍຄືນເງິນກູ້" : "ຮັບຄືນເງິນໃຫ້ກູ້"} ${label}${row.reference ? ` (${row.reference})` : ""}`;
-    await postEntry({ date, sourceType: "LOAN_PAYMENT", sourceId: row._uuid, reference: number, description, lines, actorId }, t);
-    await moveBalance(account, {
-      direction: borrowed ? MOVE_OUT : MOVE_IN, amount: total, source: "LOAN_PAYMENT", sourceId: row._uuid, docNumber: number, date, description, actorId,
-    }, t);
+    const { row, number } = await recordLoanPayment(loan, {
+      date: toDateOnly(body.pay_date) ?? "", treasuryId: Number(body.treasury_account_id),
+      principal: body.principal, interest: body.interest, fee: body.fee, reference: body.reference, note: body.note,
+    }, t, Number(actorOf(req)) || null);
     await t.commit();
     res.status(200).json({ message: "Successfully recorded loan payment", data: { ...row.get({ plain: true }), number } });
   } catch (error) {
@@ -594,7 +627,9 @@ export const cancelLoanPayment = async (req: Request<{ id: string }>, res: Respo
     const loan = await Loan.findByPk(row.loan_id, { transaction: t });
     const actorId = Number(actorOf(req)) || null;
     await reverseSource("LOAN_PAYMENT", row._uuid, t, actorId);
-    const total = round2(num(row.principal) + num(row.interest) + num(row.fee));
+    const total = round2(num(row.principal) + num(row.interest) + num(row.fee) + num(row.penalty));
+    // ຄ່າປັບທີ່ການຈ່າຍນີ້ຕັດ → ກັບມາຄ້າງ
+    await LoanPenalty.destroy({ where: { payment_id: row._uuid }, transaction: t });
     const account: any = await TreasuryAccount.findByPk(row.treasury_account_id, { transaction: t, lock: t.LOCK.UPDATE });
     if (account) {
       const borrowed = !loan || isBorrowed(loan);
@@ -605,6 +640,8 @@ export const cancelLoanPayment = async (req: Request<{ id: string }>, res: Respo
       }, t);
     }
     await row.update({ status: CANCELLED, updatedAt: new Date() }, { transaction: t });
+    // ສັນຍາທີ່ການຈ່າຍນີ້ປິດໄວ້ → ເປີດຄືນ
+    if (loan?.closed_date && num(row.principal) > 0) await loan.update({ closed_date: null, close_reason: null } as any, { transaction: t });
     await t.commit();
     res.status(200).json({ message: "Successfully cancelled loan payment" });
   } catch (error) {

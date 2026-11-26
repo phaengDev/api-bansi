@@ -14,6 +14,9 @@ import {
   deleteCustomer, disburseApplication, getApplication, getApplications, getContract, getContracts, getCustomer, getCustomers, getProducts,
   previewApplication, saveClassRules, undoDisbursement, updateApplication, updateCollateral, updateCustomer, updateProduct,
 } from "../controllers/credit/creditController";
+import {
+  collectContract, createCollection, deleteCollection, getCollections, getDashboard, quoteContract, undoWaiver, waivePenalty,
+} from "../controllers/credit/collectionController";
 import { getAuditLogs } from "../controllers/auditController";
 
 // ເງິນເດືອນ / ເງິນເບີກ / ເງິນ OT ທີ່ຄິດຈາກເງິນເດືອນ — ຊ່ອນສຳລັບຜູ້ທີ່ບໍ່ມີສິດເມນູເງິນເດືອນ (middleware/salaryAccess)
@@ -335,6 +338,15 @@ router.delete("/credit/application/:id", requirePermission("deletes"), deleteApp
 router.get("/credit/contract", getContracts);
 router.get("/credit/contract/:id", getContract);
 router.post("/credit/contract/:id/undo-disburse", requirePermission("deletes"), undoDisbursement);
+// ຮັບຊຳລະ (ຄ່າປັບ → ດອກເບ້ຍ → ຕົ້ນທຶນ), ຍົກເວັ້ນຄ່າປັບ, ຕິດຕາມໜີ້, ພາບລວມ
+router.post("/credit/contract/:id/quote", quoteContract);
+router.post("/credit/contract/:id/collect", requirePermission("creates"), collectContract);
+router.post("/credit/contract/:id/waive", requirePermission("updates"), waivePenalty);
+router.delete("/credit/penalty/:id", requirePermission("deletes"), undoWaiver);
+router.get("/credit/collections", getCollections);
+router.post("/credit/collection", requirePermission("creates"), createCollection);
+router.delete("/credit/collection/:id", requirePermission("deletes"), deleteCollection);
+router.get("/credit/dashboard", getDashboard);
 
 // ================= ເງິນກູ້ຢືມ / ເງິນໃຫ້ກູ້ — ຕາຕະລາງຜ່ອນ, ການຈ່າຍ/ຮັບຄືນ, ດອກເບ້ຍຄ້າງທ້າຍເດືອນ (bansi/loanController)
 router.get("/loan/fetch", getLoans);

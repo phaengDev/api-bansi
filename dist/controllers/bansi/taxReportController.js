@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cancelWithholding = exports.createWithholding = exports.getWithholdings = exports.postProfitTax = exports.getProfitTax = exports.getVatReport = exports.roleAccount = void 0;
+exports.cancelWithholding = exports.createWithholding = exports.getWithholdings = exports.postProfitTax = exports.getProfitTax = exports.pnlOf = exports.getVatReport = exports.roleAccount = void 0;
 const sequelize_1 = require("sequelize");
 const database_1 = __importDefault(require("../../config/database"));
 const glMapping_1 = __importDefault(require("../../models/glMapping"));
@@ -146,6 +146,7 @@ const pnlOf = async (start, end) => {
     const booked = sum((r) => Number(r.account_group) === 5 && r.account_type === "TAX_EXPENSE");
     return { revenue, expense, profit: (0, glCore_1.round2)(revenue - expense), booked };
 };
+exports.pnlOf = pnlOf;
 /** ວັນທີລົງອາກອນກຳໄລ — ທ້າຍປີ ຫຼື ມື້ນີ້ ຖ້າປີຍັງບໍ່ຈົບ (ລົງຄ້າງຈ່າຍຮອດປັດຈຸບັນ) */
 const taxDateOf = (fiscal) => {
     const today = (0, journalHelpers_1.todayLao)();
@@ -163,7 +164,7 @@ const getProfitTax = async (req, res) => {
         const saved = await taxRecords_1.ProfitTax.findOne({ where: { fiscal_id: fiscal._uuid } });
         res.status(200).json({
             fiscal,
-            pnl: await pnlOf(fiscal.start_date, fiscal.end_date),
+            pnl: await (0, exports.pnlOf)(fiscal.start_date, fiscal.end_date),
             rate: Number(saved?.rate ?? setting.profit_tax_rate),
             saved,
             date: taxDateOf(fiscal),
@@ -182,7 +183,7 @@ const postProfitTax = async (req, res) => {
     const t = await database_1.default.transaction();
     try {
         const fiscal = await fiscalOf(req.body?.fiscal_id);
-        const { profit } = await pnlOf(fiscal.start_date, fiscal.end_date);
+        const { profit } = await (0, exports.pnlOf)(fiscal.start_date, fiscal.end_date);
         const addBack = (0, glCore_1.round2)(Math.max(0, Number(req.body?.add_back) || 0));
         const deduction = (0, glCore_1.round2)(Math.max(0, Number(req.body?.deduction) || 0));
         const rate = Number(req.body?.rate);

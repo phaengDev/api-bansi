@@ -147,7 +147,7 @@ const fiscalOf = async (id: unknown) => {
 };
 
 /** ລາຍຮັບ, ລາຍຈ່າຍ (ບໍ່ລວມອາກອນກຳໄລ) ແລະ ອາກອນກຳໄລທີ່ລົງແລ້ວ ຂອງຊ່ວງ */
-const pnlOf = async (start: string, end: string) => {
+export const pnlOf = async (start: string, end: string) => {
   const rows = await sequelize.query<{ account_group: number; account_type: string; net: string }>(
     `SELECT a.account_group, a.account_type, SUM(l.debit - l.credit) AS net
      FROM tbl_journal_line l
